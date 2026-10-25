@@ -405,6 +405,16 @@ export class Sound {
     }
   }
 
+  // Kill banner chime: climbs a step with each kill in the streak and fills out from three kills on.
+  killStreak(n) {
+    if (!this.ctx) return;
+    const d = this.master, k = Math.min(n, 5), f = [523, 587, 659, 784, 880][k - 1];
+    this.tone({ dest: d, at: 0.15, freq: f, decay: 0.3, gain: 0.13, type: 'triangle' });
+    this.tone({ dest: d, at: 0.15, freq: f * 1.5, decay: 0.35, gain: 0.07 });
+    if (k >= 3) this.tone({ dest: d, at: 0.23, freq: f * 2, decay: 0.4, gain: 0.08, type: 'triangle' });
+    if (k >= 5) this.tone({ dest: d, at: 0.15, freq: 110, end: 55, decay: 0.5, gain: 0.3, type: 'sawtooth' });
+  }
+
   hurt(head) {
     if (!this.ctx) return;
     this.noiseHit({ dest: this.master, lp: 500, decay: 0.14, gain: 0.5 });
