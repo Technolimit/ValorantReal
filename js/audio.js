@@ -492,12 +492,40 @@ export class Sound {
   // id: the gun, for your own uploaded reload sound (played once at the start instead of the clicks).
   reload(duration, steps = [[0.1, 'click'], [0.5, 'thunk'], [0.85, 'click']], id) {
     const clip = this.ctx && this.clip(`${id}:reload`);
-    if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
+    if (clip) { this.reloadClip(clip, duration); return; }
     for (const [f, kind] of steps) {
       const at = duration * f;
       if (kind === 'thunk') this.thunk(at);
       else this.click(at, 0.28);
     }
+  }
+
+  // A reload sound file, fitted to the reload: a clip up to 15% too long is sped up to fit, anything left over
+  // fades out as the reload finishes, and a cancelled reload (weapon swap) cuts it off.
+  reloadClip(clip, duration) {
+    this.stopReload();
+    const c = this.ctx, t = c.currentTime, g = c.createGain();
+    g.gain.value = 0.6;
+    g.connect(this.master);
+    const src = this.playClip(clip, g);
+    const rate = Math.min(1.15, Math.max(1, clip.duration / duration));
+    src.playbackRate.value = rate;
+    if (clip.duration / rate > duration) {
+      g.gain.setValueAtTime(0.6, t + Math.max(0, duration - 0.12));
+      g.gain.linearRampToValueAtTime(0.0001, t + duration);
+      src.stop(t + duration + 0.02);
+    }
+    this.reloading = { src, g };
+  }
+
+  stopReload() {
+    if (!this.reloading || !this.ctx) return;
+    const { src, g } = this.reloading, t = this.ctx.currentTime;
+    this.reloading = null;
+    g.gain.cancelScheduledValues(t);
+    g.gain.setValueAtTime(g.gain.value, t);
+    g.gain.linearRampToValueAtTime(0.0001, t + 0.04);
+    try { src.stop(t + 0.05); } catch { /* already stopped */ }
   }
 
   thunk(at = 0) {
@@ -508,6 +536,7 @@ export class Sound {
 
   equip(id) {
     if (!this.ctx) return;
+    this.stopReload(); // swapping weapons cancels the reload
     const clip = this.clip(`${id}:equip`);
     if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
     this.noiseHit({ dest: this.master, lp: 1500, hp: 400, decay: 0.08, gain: 0.12 });
