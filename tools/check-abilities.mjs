@@ -429,6 +429,26 @@ const checks = [
     const restored = r.worldGroup.visible && [...r.silhouettes.values()].every(m => !m.visible);
     return { pass: beyond > 11 && before < 6 && allies && worldHidden && restored, smokeDistThroughWall: +beyond.toFixed(2), smokeDistStopAtWall: +before.toFixed(2), silhouettesAreSelfAndAllies: allies, silhouettes: sil.length, worldHidden, restoredAfter: restored };
   }],
+  ['Veil orb is drawn while it flies, with a trail and (for its thrower) the size of the smoke; all of it goes when it bursts', async () => {
+    const g = await __start({ agent: 'zephyr' });
+    const p = g.player, k = p.kit, r = window.__game.renderer;
+    if (!__place(g, p, 14)) return { error: 'no open ground' };
+    p.pitch = 0; p.input.abCHeld = true;
+    k.agent.abilities.c.use(k);
+    const d = g.devices.find(x => x.kind === 'cloud');
+    const fx = () => (r.fx2 || []).filter(f => f.obj.parent === r.scene && (f.obj.userData.cloud || f.obj.isLine));
+    const start = [...d.pos];
+    for (let i = 0; i < 6; i++) { __tick(g, 0.1); r.updateFx2(); }
+    const grp = r.fx2.find(f => f.obj.userData.cloud)?.obj;
+    const moved = Math.hypot(d.pos[0] - start[0], d.pos[2] - start[2]);
+    const follows = !!grp && Math.hypot(grp.position.x - d.pos[0], grp.position.z - d.pos[2]) < 0.2;
+    const sizeShown = !!grp?.userData.cloud.size.visible;
+    const trailShown = !!grp?.userData.cloud.trail.visible && grp.userData.cloud.pts.length > 3;
+    p.input.abCHeld = false;
+    for (let i = 0; i < 4; i++) { __tick(g, 0.1); r.updateFx2(); }
+    const burst = d.removed && g.smokes.length > 0, gone = fx().length === 0;
+    return { pass: moved > 3 && follows && sizeShown && trailShown && burst && gone, moved: +moved.toFixed(2), meshFollowsOrb: follows, burstSizeShownWhileHeld: sizeShown, trailShown, burst, meshAndTrailRemoved: gone };
+  }],
   ['Bot 5v5 (6 min): no errors, bots don\'t stay stuck on walls, bot flashes hit enemies more than their own side', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'fight' });
     const s = { flashes: 0, self: 0, ally: 0, enemy: 0, errors: 0, rounds: 0 };

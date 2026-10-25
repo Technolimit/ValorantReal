@@ -835,7 +835,20 @@ export class Renderer {
     const g = new THREE.Group();
     const mat = (c, e = 0) => new THREE.MeshStandardMaterial({ color: c, emissive: e || 0x000000, emissiveIntensity: e ? 1.2 : 0, roughness: 0.5, metalness: 0.4 });
     let light = null, head = null;
-    if (d.kind === 'drone') {
+    if (d.kind === 'cloud') {
+      // Veil: a glowing orb you can follow as it flies, a trail behind it and, for its thrower, the size of
+      // the smoke it will burst into right where it is now.
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12), new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.95 }));
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.25, depthWrite: false }));
+      const size = new THREE.Mesh(new THREE.SphereGeometry(d.radius, 20, 14), new THREE.MeshBasicMaterial({ color: 0x7fe3ff, wireframe: true, transparent: true, opacity: 0.18, depthWrite: false }));
+      const trailGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Array(16 * 3).fill(0), 3));
+      const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0x7fe3ff, transparent: true, opacity: 0.6 }));
+      trail.frustumCulled = false;
+      g.add(orb, glow, size);
+      this.fxAdd(trail, () => (d.removed ? 0 : d.until)); // its own entry, so it is removed with the orb
+      const pts = [];
+      g.userData.cloud = { size, trail, pts };
+    } else if (d.kind === 'drone') {
       const body = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), mat(0x2b3440));
       body.scale.set(1, 0.6, 1.3);
       for (const s of [-1, 1]) { const w = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.02, 0.12), mat(0x3b4656)); w.position.x = s * 0.25; g.add(w); }
@@ -947,6 +960,15 @@ export class Renderer {
       g.position.set(...d.pos);
       g.visible = !(this.shadowSight && this.game.isEnemy(this.game.player, d.owner)); // shadow sight shows no enemy gadgets
       if (d.kind === 'drone') g.rotation.y = Math.atan2(-d.dir[0], -d.dir[2]);
+      if (d.kind === 'cloud') {
+        const { size, trail, pts } = g.userData.cloud;
+        size.visible = d.owner === this.game.player && !!d.owner.input[d.key]; // still steering: this is where it bursts
+        if (!pts.length || Math.hypot(pts[0][0] - d.pos[0], pts[0][1] - d.pos[1], pts[0][2] - d.pos[2]) > 0.25) { pts.unshift([...d.pos]); pts.length = Math.min(pts.length, 16); }
+        const a = trail.geometry.attributes.position;
+        for (let i = 0; i < 16; i++) a.setXYZ(i, ...(pts[Math.min(i, pts.length - 1)]));
+        a.needsUpdate = true;
+        trail.visible = g.visible;
+      }
       if (d.kind === 'boombot' || d.kind === 'decoy' || d.kind === 'tiger' || d.kind === 'prowler' || d.kind === 'gate') g.rotation.y = Math.atan2(-d.dir[0], -d.dir[2]);
       if (d.kind === 'hawk') g.rotation.set(0, Math.atan2(-d.dir[0], -d.dir[2]), 0);
       if (d.kind === 'cam') { const ow = d.owner; g.rotation.set(0, ow.yaw, 0); g.visible &&= !(ow.kit?.view === d); }
