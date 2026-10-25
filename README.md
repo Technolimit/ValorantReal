@@ -15,7 +15,8 @@ It also works as-is on any static host (GitHub Pages, Netlify, an S3 bucket).
 
 `node tools/check-abilities.mjs` runs headless checks of ability interactions in Chromium (it needs
 `playwright`). Pass `--offline` to skip the two-tab online checks. `node tools/check-agent-select.mjs` checks the
-agent select: the pick rules, offline 5v5, and an online room with a player joining mid-match.
+agent select: the pick rules, offline 5v5, and an online room with a player joining mid-match. `node tools/check-spike.mjs`
+checks that bots carry the spike out of spawn and plant it on Divide.
 
 Offline 5v5 uses the same pick screen: you lock in, then the nine bots pick.
 
