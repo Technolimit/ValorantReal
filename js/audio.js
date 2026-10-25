@@ -189,7 +189,6 @@ export class Sound {
   constructor() {
     this.ctx = null;
     this.volume = 0.6;
-    this.falloff = 1; // scales how fast sounds fade with distance (settings: "Distance falloff")
     this.clips = new Map(); // your own uploaded sounds, 'vandal:fire' -> AudioBuffer (see customsounds.js)
     this.clipData = new Map(); // ...and their file bytes, kept until there's an AudioContext to decode them
   }
@@ -308,8 +307,8 @@ export class Sound {
     p.panningModel = 'HRTF';
     p.distanceModel = f.model;
     p.refDistance = f.ref;
-    p.rolloffFactor = f.model === 'linear' ? 1 : f.roll * this.falloff;
-    p.maxDistance = f.model === 'linear' ? f.max / Math.max(0.25, this.falloff) : f.max;
+    p.rolloffFactor = f.model === 'linear' ? 1 : f.roll;
+    p.maxDistance = f.max;
     if (p.positionX) { p.positionX.value = pos[0]; p.positionY.value = pos[1]; p.positionZ.value = pos[2]; }
     else p.setPosition(pos[0], pos[1], pos[2]);
     p.connect(this.world);
@@ -355,8 +354,8 @@ export class Sound {
   distGain(pos, kind) {
     const f = FALLOFF[kind] || FALLOFF.other, l = this.listenerPos;
     const d = Math.max(f.ref, Math.hypot(pos[0] - l[0], pos[1] - l[1], pos[2] - l[2]));
-    if (f.model === 'linear') return Math.max(0, 1 - (d - f.ref) / (f.max / Math.max(0.25, this.falloff) - f.ref));
-    return f.ref / (f.ref + f.roll * this.falloff * (d - f.ref));
+    if (f.model === 'linear') return Math.max(0, 1 - (d - f.ref) / (f.max - f.ref));
+    return f.ref / (f.ref + f.roll * (d - f.ref));
   }
 
   // gun (optional): the Gun firing, which keys the Ares / Odin spin-up whir per gun.

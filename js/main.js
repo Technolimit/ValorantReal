@@ -37,7 +37,6 @@ const canvas = $('view');
 const renderer = new Renderer(canvas, game, settings);
 const sound = new Sound();
 sound.setVolume(settings.volume);
-sound.falloff = settings.falloff;
 const clipNames = new Map(); // 'vandal:fire' -> file name, for the gun sounds list in settings
 loadClips().then((clips) => { for (const [key, c] of clips) { clipNames.set(key, c.name); sound.setClip(key, c.data); } });
 const hud = new Hud(game, renderer, settings);
@@ -410,7 +409,6 @@ const SCHEMA = [
   ]],
   ['Video & audio', [
     ['volume', 'Volume', 'range', { min: 0, max: 1, step: 0.05 }],
-    ['falloff', 'Distance falloff', 'range', { min: 0.5, max: 2, step: 0.1 }],
     ['shadows', 'Shadows', 'checkbox'],
     ['renderScale', 'Render scale', 'select', { 0.5: '50%', 0.75: '75%', 1: '100%' }],
     ['showImpacts', 'Bullet holes', 'checkbox'],
@@ -524,7 +522,6 @@ function buildGunSounds() {
 
 function applySettings(key) {
   if (key === 'volume') sound.setVolume(settings.volume);
-  if (key === 'falloff') sound.falloff = settings.falloff;
   if (key === 'shadows') renderer.setShadows(settings.shadows);
   if (key === 'renderScale') renderer.resize();
   if (key === 'adsMode' && game.player) game.player.adsHold = settings.adsMode === 'hold';

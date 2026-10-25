@@ -11,7 +11,6 @@ export const DEFAULTS = {
   crouchMode: 'hold',
   wheel: 'weapons', // 'weapons' | 'jump'
   volume: 0.6,
-  falloff: 1, // how fast other players' sounds fade with distance (1 = default)
   showImpacts: true,
   impactSeconds: 6,
   damageNumbers: true,
