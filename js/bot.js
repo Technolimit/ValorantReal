@@ -20,6 +20,37 @@ export const DIFFICULTY = {
   pro: { react: [0.19, 0.26], err: 2.2, tau: 0.24, floor: 0.4, tol: 1.6, turn: 900, comp: 0.78, head: 0.5, stop: 1, fov: 80 },
 };
 
+// Static walls only (not ability walls or buy-phase barriers), for the nav helpers below.
+const solidAt = (g, minx, miny, minz, maxx, maxy, maxz) => {
+  for (const b of g.world.boxes) {
+    if (b.passable || b.temp || b.floor) continue;
+    if (minx < b.max[0] && maxx > b.min[0] && miny < b.max[1] && maxy > b.min[1] && minz < b.max[2] && maxz > b.min[2]) return true;
+  }
+  return false;
+};
+const fits = (g, x, y, z, pad = 0.12) => { const r = PLAYER.radius + pad; return !solidAt(g, x - r, y + 0.35, z - r, x + r, y + 1.7, z + r); };
+// The free spot nearest p (within 1 m) where a standing body fits; p itself if nothing is free.
+function fitNear(g, p) {
+  if (fits(g, p[0], p[1], p[2])) return p;
+  for (const r of [0.25, 0.5, 0.75, 1.0]) for (let i = 0; i < 12; i++) {
+    const a = i * Math.PI / 6, x = p[0] + Math.cos(a) * r, z = p[2] + Math.sin(a) * r;
+    if (fits(g, x, p[1], z)) return [x, p[1], z];
+  }
+  return p;
+}
+// Where to walk to in a nav cell: its centre, moved off any wall it hugs. Cached per map.
+function clearSpot(g, [cx, cz]) {
+  const m = g.map, cache = (m.clearSpots ||= new Map()), k = cz * m.W + cx;
+  let p = cache.get(k);
+  if (!p) { const c = m.cellCenter(cx, cz); p = fitNear(g, [c.x, m.heights[cz][cx] ?? 0, c.z]); cache.set(k, p); }
+  return p;
+}
+// Would a step of 0.45 m along (ux, uz) put the body into a wall? Steps and stairs don't count.
+function blockedAhead(g, me, ux, uz) {
+  const x = me.pos[0] + ux * 0.45, z = me.pos[2] + uz * 0.45, r = PLAYER.radius;
+  return !!g.world.overlap(x - r, me.pos[1] + PLAYER.stepHeight + 0.05, z - r, x + r, me.pos[1] + 1.6, z + r);
+}
+
 export class Bot {
   constructor(me, game, difficulty, mode) {
     this.me = me;
@@ -50,6 +81,7 @@ export class Bot {
     this.alertUntil = 0;
     this.lookAt = null;
     this.stuckCheck = { t: now + 1.5, pos: [...this.me.pos] };
+    this.unstickUntil = 0;
     this.crouchSpray = false;
     this.used = new Set(); // abilities already used for a one-per-round purpose
     this.lastSeenPos = null;
@@ -112,13 +144,13 @@ export class Bot {
     if (orb) {
       if (mode.orbNear(me) === orb) { inp.use = true; return; }
       this.moveTo(orb.pos, now, dt);
-      if (!this.path) this.moveDir(orb.pos[0] - me.pos[0], orb.pos[2] - me.pos[2]);
+      if (!this.path) this.steer(orb.pos[0] - me.pos[0], orb.pos[2] - me.pos[2], now);
       return;
     }
     if (gl && lsp && !gl.action && !gl.commit && Math.hypot(me.pos[0] - lsp[0], me.pos[2] - lsp[2]) > 2 &&
         (now < this.pushUntil || (ago > 0.4 && ago < 3.5 && this.aggr > (side === 'atk' ? 0.3 : 0.6)))) {
       this.moveTo(lsp, now, dt);
-      if (!this.path) this.moveDir(lsp[0] - me.pos[0], lsp[2] - me.pos[2]);
+      if (!this.path) this.steer(lsp[0] - me.pos[0], lsp[2] - me.pos[2], now);
       this.turnToward(lsp, PLAYER.standEye, dt, 0.6);
       return;
     }
@@ -127,6 +159,7 @@ export class Bot {
     const inv = this.investigate;
     if (inv && now < inv.until && Math.hypot(me.pos[0] - inv.pos[0], me.pos[2] - inv.pos[2]) > 1.5) {
       this.moveTo(inv.pos, now, dt);
+      if (!this.path) { const t = fitNear(this.game, inv.pos); this.steer(t[0] - me.pos[0], t[2] - me.pos[2], now); }
       if (this.lookAt) this.turnToward(this.lookAt, PLAYER.standEye, dt, 0.5);
     } else {
       this.investigate = null;
@@ -260,10 +293,12 @@ export class Bot {
 
   pursueGoal(now, dt) {
     const me = this.me, gl = this.goal, inp = me.input;
-    const d = Math.hypot(me.pos[0] - gl.pos[0], me.pos[2] - gl.pos[2]);
+    // Head for a spot a body fits in (a planned spot can touch a crate); the spike itself for a defuse.
+    const t = gl.action === 'defuse' ? gl.pos : (gl.fit && gl.fitFor === gl.pos ? gl.fit : (gl.fitFor = gl.pos, gl.fit = fitNear(this.game, gl.pos)));
+    const d = Math.hypot(me.pos[0] - t[0], me.pos[2] - t[2]);
     if (d > (gl.action === 'defuse' ? 1.0 : 1.3)) {
-      this.moveTo(gl.pos, now, dt);
-      if (!this.path) this.moveDir(gl.pos[0] - me.pos[0], gl.pos[2] - me.pos[2]); // no path (off-grid): walk straight
+      this.moveTo(t, now, dt);
+      if (!this.path) this.steer(t[0] - me.pos[0], t[2] - me.pos[2], now); // no path (off-grid or the last stretch): walk straight, around corners
       // Walk the last stretch rather than run, like a careful player clearing an angle.
       if (gl.hold && d < 4) inp.walk = true;
       return;
@@ -287,7 +322,7 @@ export class Bot {
       if (a.crouch) inp.crouch = true;
       if (a.glance) this.turnTo(me.yaw + a.glance * dt * 3, me.pitch, dt, 0.4);
       // Drifting too far from the spot while peeking: step back toward it.
-      if (d > 2.5) this.moveDir(gl.pos[0] - me.pos[0], gl.pos[2] - me.pos[2]);
+      if (d > 2.5) this.moveDir(t[0] - me.pos[0], t[2] - me.pos[2]);
     }
   }
 
@@ -327,19 +362,40 @@ export class Bot {
   }
 
   followPath(now, dt) {
-    const me = this.me, map = this.game.map;
+    const me = this.me;
     if (this.pathIdx >= this.path.length) { this.path = null; return; }
-    const [cx, cz] = this.path[this.pathIdx];
-    const c = map.cellCenter(cx, cz);
-    const dx = c.x - me.pos[0], dz = c.z - me.pos[2];
+    // Aim for a spot in the next cell that a body actually fits in: a cell centre can sit right against a wall.
+    const c = clearSpot(this.game, this.path[this.pathIdx]);
+    const dx = c[0] - me.pos[0], dz = c[2] - me.pos[2];
     if (Math.hypot(dx, dz) < 0.8) { this.pathIdx++; return; }
-    this.moveDir(dx, dz);
     // Look where we're going, keeping the crosshair at head height.
     this.turnTo(Math.atan2(-dx, -dz), 0, dt, 0.35);
+    this.steer(dx, dz, now);
+  }
 
+  // Walk toward (dx, dz), sliding around whatever corner is in the way. If the body still hasn't moved for
+  // a while, back off sideways for a moment and plan again.
+  steer(dx, dz, now) {
+    const me = this.me;
+    if (now < this.unstickUntil) { this.moveDir(...this.unstickDir); me.input.jump = this.unstickJump; return; }
+    const l = Math.hypot(dx, dz) || 1, ux = dx / l, uz = dz / l;
+    if (blockedAhead(this.game, me, ux, uz)) {
+      // Turn along the wall: try angles either side of the way we want to go, closest first.
+      for (const a of [0.5, -0.5, 1.0, -1.0, 1.4, -1.4]) {
+        const cs = Math.cos(a), sn = Math.sin(a), rx = ux * cs - uz * sn, rz = ux * sn + uz * cs;
+        if (!blockedAhead(this.game, me, rx, rz)) { dx = rx; dz = rz; break; }
+      }
+    }
+    this.moveDir(dx, dz);
     if (now >= this.stuckCheck.t) {
       const moved = Math.hypot(me.pos[0] - this.stuckCheck.pos[0], me.pos[2] - this.stuckCheck.pos[2]);
-      if (moved < 0.5) { this.path = null; this.investigate = null; }
+      if (moved < 0.5) {
+        const side = Math.random() < 0.5 ? 1 : -1;
+        this.unstickDir = [-uz * side - ux * 0.5, ux * side - uz * 0.5];
+        this.unstickJump = Math.random() < 0.5;
+        this.unstickUntil = now + 0.5;
+        this.path = null; this.investigate = null;
+      }
       this.stuckCheck = { t: now + 1.5, pos: [...me.pos] };
     }
   }

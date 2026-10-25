@@ -409,7 +409,27 @@ const checks = [
     const withBody = k.agent.abilities.x.use(k) !== false;
     return { pass: still && !without && withBody, riftStaysPut: still, mindreadWithoutBody: without, mindreadOnBody: withBody };
   }],
-  ['Bot 5v5 (6 min): no errors, bot flashes hit enemies more than their own side', async () => {
+  ['Shade goes through walls by default (R makes it stop at the wall); its view shows teammates, not enemies', async () => {
+    const g = await __start({ mode: 'rounds', map: 'divide', agent: 'umbra' });
+    const p = g.player, k = p.kit, r = window.__game.renderer;
+    if (!__place(g, p, 14)) return { error: 'no open ground' };
+    const y = p.pos[1];
+    __box(g, [p.pos[0] - 4, y, p.pos[2] - 6.3], [p.pos[0] + 4, y + 6, p.pos[2] - 6]); // a wall 6 m ahead
+    p.pitch = 0; k.dist = 12; k.distFor = 'e';
+    const through = k.agent.abilities.e.preview(k);
+    k.stopAtWalls = true;
+    const stopped = k.agent.abilities.e.preview(k);
+    k.stopAtWalls = false;
+    const beyond = p.pos[2] - through[2], before = p.pos[2] - stopped[2];
+    r.setShadowSight(true);
+    const sil = [...r.silhouettes.entries()].filter(([, m]) => m.visible).map(([c]) => c);
+    const allies = sil.length > 0 && sil.every(c => !g.isEnemy(p, c)) && sil.includes(p);
+    const worldHidden = !r.worldGroup.visible;
+    r.setShadowSight(false);
+    const restored = r.worldGroup.visible && [...r.silhouettes.values()].every(m => !m.visible);
+    return { pass: beyond > 11 && before < 6 && allies && worldHidden && restored, smokeDistThroughWall: +beyond.toFixed(2), smokeDistStopAtWall: +before.toFixed(2), silhouettesAreSelfAndAllies: allies, silhouettes: sil.length, worldHidden, restoredAfter: restored };
+  }],
+  ['Bot 5v5 (6 min): no errors, bots don\'t stay stuck on walls, bot flashes hit enemies more than their own side', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'fight' });
     const s = { flashes: 0, self: 0, ally: 0, enemy: 0, errors: 0, rounds: 0 };
     const flash = g.flash.bind(g);
@@ -421,8 +441,20 @@ const checks = [
     };
     g.on('roundEnd', () => s.rounds++);
     g.on('live', () => { if (g.player.alive) g.kill(g.player, g.player, { part: 'body', def: { id: 'x', name: 'x' } }); });
-    for (let i = 0; i < 128 * 60 * 6 && g.state === 'playing'; i++) { try { g.tick(); } catch (e) { s.errors++; s.error = String(e.stack).slice(0, 300); } }
-    return { pass: s.errors === 0 && s.rounds > 0 && s.self === 0 && s.enemy >= s.ally, ...s };
+    // Stuck bots: pushing to move but not getting anywhere (sampled every 0.5 s).
+    const last = new Map(), run = new Map();
+    s.stuckSec = 0; s.longestStuck = 0;
+    for (let i = 0; i < 128 * 60 * 6 && g.state === 'playing'; i++) {
+      try { g.tick(); } catch (e) { s.errors++; s.error = String(e.stack).slice(0, 300); }
+      if (i % 64 || g.mode.phase === 'buy' || g.mode.phase === 'end') continue;
+      for (const c of g.bots) {
+        const was = last.get(c); last.set(c, [...c.pos]);
+        const pushing = c.alive && (c.input.fwd || c.input.side) && !(c.st.channelUntil > g.time) && !(c.st.stunUntil > g.time) && !(c.st.slowUntil > g.time);
+        if (pushing && was && Math.hypot(was[0] - c.pos[0], was[2] - c.pos[2]) < 0.05) { s.stuckSec += 0.5; run.set(c, (run.get(c) || 0) + 0.5); s.longestStuck = Math.max(s.longestStuck, run.get(c)); }
+        else run.set(c, 0);
+      }
+    }
+    return { pass: s.errors === 0 && s.rounds > 0 && s.self === 0 && s.enemy >= s.ally && s.longestStuck <= 4 && s.stuckSec < 40, ...s };
   }],
 ];
 
