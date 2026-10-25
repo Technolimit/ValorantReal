@@ -469,6 +469,35 @@ const checks = [
     const newShaders = r.renderer.info.programs.length - programs;
     return { pass: hiddenFirstPerson && shownInCamera && !!k.cam.dart && newShaders === 0, hiddenFirstPerson, shownInCamera, dartHit: !!k.cam.dart, newShaders };
   }],
+  ['Leaving a camera, piloted gadget, Shade view or Nightwalk puts your aim back where it was; the ability itself still goes where you looked', async () => {
+    const out = {};
+    // Look away while the view is elsewhere, then check the facing once it comes back.
+    const run = async (name, agent, enter, leave) => {
+      const g = await __start({ agent });
+      const p = g.player, k = p.kit;
+      if (!__place(g, p, 14)) { out[name] = 'no open ground'; return; }
+      __tick(g, 0.5);
+      p.yaw = 0; p.pitch = -0.1;
+      enter(g, p, k); g.tick();
+      const away = k.aimBefore ? 1 : 0;
+      for (let i = 0; i < 40; i++) { p.yaw += 0.03; p.pitch -= 0.005; g.tick(); } // the mouse turns the remote view
+      leave(g, p, k);
+      const back = Math.abs(p.yaw) < 1e-9 && Math.abs(p.pitch + 0.1) < 1e-9;
+      out[name] = away && back ? 'ok' : { away, yaw: +p.yaw.toFixed(3), pitch: +p.pitch.toFixed(3) };
+      return g;
+    };
+    await run('watcherCamera', 'lattice', (g, p, k) => { p.pitch = -0.3; k.agent.abilities.e.use(k); p.pitch = -0.1; k.agent.abilities.e.reuse(k); },
+      (g, p, k) => { k.agent.abilities.e.reuse(k); g.tick(); });
+    await run('owlDrone', 'hawke', (g, p, k) => k.agent.abilities.c.use(k), (g) => __tick(g, 8));
+    await run('tiger', 'fawn', (g, p, k) => k.agent.abilities.q.use(k), (g) => __tick(g, 7));
+    await run('scoutDrone', 'ballast', (g, p, k) => k.agent.abilities.c.use(k), (g) => __tick(g, 7));
+    await run('nightwalk', 'umbra', (g, p, k) => { k.ultPoints = k.ultCost; const d = __ahead(p, 6); d[1] = p.pos[1]; k.chooseShadow(d); }, (g) => __tick(g, 4.5));
+    let smokeYaw = null;
+    await run('shadeView', 'umbra', (g, p, k) => { p.input.abE = true; },
+      (g, p, k) => { p.input.firePressed = true; g.tick(); __tick(g, 3); const s = g.smokes[g.smokes.length - 1]; smokeYaw = s ? Math.atan2(-(s.pos[0] - p.pos[0]), -(s.pos[2] - p.pos[2])) : null; });
+    out.shadeSmokeWhereYouLooked = smokeYaw !== null && Math.abs(smokeYaw - 0.03 * 40) < 0.15;
+    return { pass: Object.values(out).every(v => v === 'ok' || v === true), ...out };
+  }],
   ['Bot 5v5 (6 min): no errors, bots don\'t stay stuck on walls, bot flashes hit enemies more than their own side', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'fight' });
     const s = { flashes: 0, self: 0, ally: 0, enemy: 0, errors: 0, rounds: 0 };

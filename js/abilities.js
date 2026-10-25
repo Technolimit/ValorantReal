@@ -1574,10 +1574,20 @@ export class Kit {
     this.pilot = null;
     this.view = null;
     this.cam = null;
+    this.aimBefore = null;
     this.gate = null;
     this.hawk = null;
     this.timers = [];
     this.now = now;
+  }
+
+  // While your view is away from your body (a camera, a piloted gadget, Nightwalk's channel, Shade's aiming
+  // view), the mouse turns that view. Coming back, you face where you faced before you left.
+  keepAim() {
+    const o = this.owner, held = this.armed && this.agent.abilities[this.armed.k];
+    const away = !!(this.view || this.pilot || this.shadow || held?.shadowSight);
+    if (away && !this.aimBefore) this.aimBefore = { yaw: o.yaw, pitch: o.pitch };
+    else if (!away && this.aimBefore) { o.yaw = this.aimBefore.yaw; o.pitch = this.aimBefore.pitch; this.aimBefore = null; }
   }
 
   // While true the gun can't fire (blades/beams out, an ability armed, channelling).
