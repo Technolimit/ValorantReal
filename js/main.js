@@ -66,7 +66,7 @@ const look = { dx: 0, dy: 0 };
 const isPlayer = (who) => who === game.player;
 
 // ---- sound hooks ----
-game.on('shot', ({ who, gun }) => sound.gunshot(gun.def, isPlayer(who) ? null : who.eye()));
+game.on('shot', ({ who, gun }) => sound.gunshot(gun.def, isPlayer(who) ? null : who.eye(), gun));
 game.on('footstep', ({ who }) => sound.footstep(isPlayer(who) ? null : who.pos, isPlayer(who)));
 game.on('land', ({ who }) => sound.land(isPlayer(who) ? null : who.pos, isPlayer(who)));
 game.on('hit', ({ attacker, target, part, killed, dot }) => {
