@@ -13,7 +13,7 @@ import { AGENTS, AGENT_ORDER, Kit } from './abilities.js';
 import { ROUND } from './rounds.js';
 import { Minimap } from './minimap.js';
 import { RoundHud } from './roundhud.js';
-import { MAPS, loadMapIndex, preloadMap, mapList, mapInfo, mapJSON, addMap, removeCustomMap, supportsMode } from './map.js';
+import { MAPS, loadMapIndex, preloadMap, mapList, mapInfo, mapJSON, addMap, removeCustomMap, supportsMode, upgradeMap, stringifyMap } from './map.js';
 import { NetSession, roomCode } from './net.js';
 
 const DEG = Math.PI / 180;
@@ -824,6 +824,21 @@ function buildMapList() {
       settings.map = m.id; saveSettings(settings); updateMenuLoadout(); buildMapList();
     };
     btns.appendChild(use);
+    // The map as a version 2 file, to edit and import again (older maps are converted on the way out).
+    const dl = document.createElement('button');
+    dl.textContent = 'Download';
+    dl.title = 'Save this map as a JSON file you can edit, then load it with Import file';
+    dl.onclick = async () => {
+      try {
+        const text = stringifyMap(upgradeMap(await preloadMap(m.id)));
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+        a.download = `${m.id}.json`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      } catch (err) { $('map-status').textContent = err.message; }
+    };
+    btns.appendChild(dl);
     if (m.custom && !m.file) {
       const del = document.createElement('button');
       del.textContent = 'Remove';

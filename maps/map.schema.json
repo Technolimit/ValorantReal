@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tapfire map (version 2)",
+  "description": "A Tapfire map. Every section except format, version, id and one of grid/boxes is optional. See MAPS.md for a walkthrough.",
+  "type": "object",
+  "required": ["format", "version", "id"],
+  "properties": {
+    "format": { "const": "tapfire-map" },
+    "version": { "const": 2 },
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,40}$", "description": "Short unique name: letters, digits, - or _. A map with the same id replaces the old one when imported." },
+    "name": { "type": "string", "description": "Name shown in the menu." },
+    "about": { "type": "string", "description": "One line shown under the name." },
+    "author": { "type": "string" },
+    "modes": { "type": "array", "items": { "enum": ["dm", "rounds"] }, "description": "Leave out to work it out: 'rounds' (5v5) needs sites A and B and spawns for both teams." },
+    "bounds": {
+      "type": "object", "description": "The playable area in metres (x runs east, z runs south). Defaults to the grid's size, or to the extent of the boxes.",
+      "properties": { "x": { "$ref": "#/$defs/pair" }, "z": { "$ref": "#/$defs/pair" } }
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "sky": { "$ref": "#/$defs/color", "description": "Sky colour." },
+        "fog": {
+          "description": "Distance fog. false turns it off.",
+          "oneOf": [{ "const": false }, { "type": "object", "properties": { "color": { "$ref": "#/$defs/color" }, "near": { "type": "number", "description": "Fog starts (m)." }, "far": { "type": "number", "description": "Fully fogged (m)." } } }]
+        },
+        "sun": {
+          "type": "object",
+          "properties": {
+            "color": { "$ref": "#/$defs/color" },
+            "intensity": { "type": "number", "description": "2.2 is normal daylight." },
+            "from": { "$ref": "#/$defs/xyz", "description": "Direction the sunlight comes from, as a point far away [x, y, z]. Higher y = sun higher in the sky." },
+            "shadows": { "type": "boolean" }
+          }
+        },
+        "ambient": {
+          "type": "object", "description": "Soft light from everywhere: one colour from above, another from below.",
+          "properties": { "sky": { "$ref": "#/$defs/color" }, "ground": { "$ref": "#/$defs/color" }, "intensity": { "type": "number" } }
+        },
+        "lights": {
+          "type": "array", "maxItems": 16, "description": "Lamps: coloured light glowing out from a point.",
+          "items": { "type": "object", "required": ["at"], "properties": { "at": { "$ref": "#/$defs/xyz" }, "color": { "$ref": "#/$defs/color" }, "intensity": { "type": "number" }, "range": { "type": "number", "description": "Metres the light reaches." } } }
+        },
+        "ground": {
+          "description": "The floor under the whole map. false for none (then add your own floor boxes).",
+          "oneOf": [{ "const": false }, { "type": "object", "properties": { "mat": { "type": "string" }, "y": { "type": "number", "description": "Height of the ground's top (default 0)." } } }]
+        }
+      }
+    },
+    "physics": {
+      "type": "object",
+      "properties": { "gravity": { "type": "number", "description": "Normal is 22. Lower = floatier jumps." }, "jumpSpeed": { "type": "number", "description": "Normal is 6.95 (about a 1.1 m jump)." } }
+    },
+    "rules": {
+      "type": "object",
+      "properties": {
+        "rounds": {
+          "type": "object", "description": "5v5 timers (seconds) and match length.",
+          "properties": {
+            "buyTime": { "type": "number" }, "firstBuyTime": { "type": "number" }, "roundTime": { "type": "number" }, "spikeTime": { "type": "number" },
+            "plantTime": { "type": "number" }, "defuseTime": { "type": "number" }, "defuseHalfway": { "type": "number" }, "roundEndTime": { "type": "number" },
+            "roundsToWin": { "type": "integer" }, "halftimeAfter": { "type": "integer" }
+          }
+        },
+        "economy": {
+          "type": "object",
+          "properties": {
+            "startCredits": { "type": "number" }, "maxCredits": { "type": "number" }, "winReward": { "type": "number" },
+            "lossRewards": { "type": "array", "items": { "type": "number" }, "description": "Credits after 1, 2 and 3+ lost rounds in a row." },
+            "killReward": { "type": "number" }, "plantReward": { "type": "number" }, "saveReward": { "type": "number" }, "overtimeCredits": { "type": "number" }
+          }
+        },
+        "deathmatch": { "type": "object", "properties": { "respawnTime": { "type": "number" }, "healOnKill": { "type": "boolean" } } }
+      }
+    },
+    "display": {
+      "type": "object",
+      "properties": { "siteColor": { "$ref": "#/$defs/color" }, "groundLabels": { "type": "boolean", "description": "Also paint the labels on the floor (they always show on the minimap)." } }
+    },
+    "materials": {
+      "type": "object", "description": "New materials, or changes to ones in materials.json, by name.",
+      "additionalProperties": { "$ref": "#/$defs/material" }
+    },
+    "grid": {
+      "type": "object", "required": ["layout", "legend"], "description": "Draw the map with characters: each character is a 2 m square, the top row is north.",
+      "properties": {
+        "layout": { "type": "array", "items": { "type": "string" }, "description": "Rows of the same length." },
+        "legend": { "type": "object", "additionalProperties": { "$ref": "#/$defs/legendEntry" }, "description": "What each character means." },
+        "origin": { "$ref": "#/$defs/pair", "description": "World [x, z] of the top-left corner. Default: the grid is centred on 0, 0." }
+      }
+    },
+    "boxes": { "type": "array", "items": { "$ref": "#/$defs/box" }, "description": "Solid blocks: walls, floors, platforms, stairs, cover." },
+    "floorSkins": { "type": "array", "items": { "$ref": "#/$defs/box" }, "description": "Paint only: material surfaces with no collision (street markings, coloured floor areas)." },
+    "decor": {
+      "type": "array", "description": "Coloured decoration with no collision: posters, vines, pipes, lamps.",
+      "items": { "allOf": [{ "$ref": "#/$defs/boxShape" }, { "type": "object", "properties": { "color": { "$ref": "#/$defs/color" }, "glow": { "type": "boolean" }, "area": { "type": "string" } } }] }
+    },
+    "spawns": { "type": "array", "items": { "$ref": "#/$defs/spawn" }, "description": "Deathmatch spawn points." },
+    "teamSpawns": {
+      "type": "object", "description": "5v5 spawn points. atk = attackers, def = defenders. Five or more each.",
+      "properties": { "atk": { "type": "array", "items": { "$ref": "#/$defs/spawn" } }, "def": { "type": "array", "items": { "$ref": "#/$defs/spawn" } } }
+    },
+    "sites": {
+      "type": "object", "description": "Spike sites. 5v5 needs one called A and one called B.",
+      "additionalProperties": {
+        "type": "object", "required": ["min", "max"],
+        "properties": { "min": { "$ref": "#/$defs/pairOrXyz" }, "max": { "$ref": "#/$defs/pairOrXyz" }, "name": { "type": "string" }, "color": { "$ref": "#/$defs/color" } }
+      }
+    },
+    "barriers": {
+      "type": "array", "description": "Walls that hold a team in spawn during the buy phase.",
+      "items": { "allOf": [{ "$ref": "#/$defs/boxShape" }, { "type": "object", "properties": { "team": { "enum": ["atk", "def"] } } }] }
+    },
+    "bots": {
+      "type": "object", "description": "Where bots go in 5v5. Leave out and the game works it out from the sites and spawns.",
+      "properties": {
+        "holds": { "type": "object", "description": "Defender spots per site (A, B, mid): { pos, look }." },
+        "stage": { "type": "object", "description": "Attacker waiting spots per site: { main: [points], mid: [points] }." },
+        "buyStage": { "type": "object", "description": "Attacker buy-phase spots per site: { main: [points], mid: [points] }." }
+      }
+    },
+    "nav": {
+      "type": "object", "description": "Bot walking. Worked out from the boxes when the map loads.",
+      "properties": {
+        "dropCost": { "type": "number", "description": "How much bots avoid jumping down ledges (1.5 default, 0 = don't care)." },
+        "step": { "type": "number", "description": "Tallest step bots walk up (0.45 m)." },
+        "headroom": { "type": "number", "description": "Lowest ceiling bots walk under (2 m)." },
+        "blocked": { "type": "array", "items": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 }, "description": "Areas bots never walk into: [x1, z1, x2, z2]." }
+      }
+    },
+    "labels": {
+      "type": "array", "description": "Area names on the minimap.",
+      "items": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" }, "x": { "type": "number" }, "z": { "type": "number" }, "cell": { "$ref": "#/$defs/pair" }, "y": { "type": "number" }, "size": { "type": "number" } } }
+    },
+    "ropes": {
+      "type": "array", "description": "Climbable ropes.",
+      "items": { "type": "object", "required": ["x", "z", "top"], "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "bottom": { "type": "number" }, "top": { "type": "number" }, "toward": { "$ref": "#/$defs/pair", "description": "Direction you step off at the top [x, z]." }, "color": { "$ref": "#/$defs/color" } } }
+    },
+    "signs": {
+      "type": "array", "description": "Glowing shop signs on walls.",
+      "items": { "type": "object", "required": ["pos"], "properties": { "pos": { "$ref": "#/$defs/xyz" }, "n": { "$ref": "#/$defs/pair", "description": "Which way it faces [x, z]." }, "w": { "type": "number" }, "h": { "type": "number" }, "color": { "$ref": "#/$defs/color" }, "frame": { "$ref": "#/$defs/color" }, "marks": { "type": "boolean" } } }
+    },
+    "trees": {
+      "type": "array", "description": "Trees (visual only).",
+      "items": { "type": "object", "required": ["x", "z"], "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "y": { "type": "number", "description": "Trunk height." }, "r": { "type": "number", "description": "Canopy size." }, "color": { "$ref": "#/$defs/color" }, "trunk": { "$ref": "#/$defs/color" } } }
+    }
+  },
+  "$defs": {
+    "color": { "description": "\"#rrggbb\" (or a number).", "oneOf": [{ "type": "string", "pattern": "^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" }, { "type": "integer" }] },
+    "pair": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+    "xyz": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+    "pairOrXyz": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 3 },
+    "boxShape": {
+      "type": "object", "description": "Either two opposite corners (min, max) or a bottom-centre point and a size (at, size). [x, y, z]; y is height.",
+      "properties": { "min": { "$ref": "#/$defs/xyz" }, "max": { "$ref": "#/$defs/xyz" }, "at": { "$ref": "#/$defs/xyz" }, "size": { "$ref": "#/$defs/xyz" } },
+      "oneOf": [{ "required": ["min", "max"] }, { "required": ["at", "size"] }]
+    },
+    "box": {
+      "allOf": [{ "$ref": "#/$defs/boxShape" }, {
+        "type": "object",
+        "properties": {
+          "mat": { "type": "string", "description": "Material name (materials.json or this map's materials)." },
+          "pen": { "type": "boolean", "description": "Bullets can go through (like crates and thin wood)." },
+          "passable": { "type": "boolean", "description": "Players walk through it, but it blocks bullets and sight." },
+          "collide": { "type": "boolean", "description": "false = you can see it but walk and shoot through it." },
+          "visible": { "type": "boolean", "description": "false = invisible wall." },
+          "area": { "type": "string", "description": "A note for you; the game ignores it." }
+        }
+      }]
+    },
+    "spawn": {
+      "type": "object", "required": ["x", "z"],
+      "properties": {
+        "x": { "type": "number" }, "z": { "type": "number" }, "y": { "type": "number", "description": "Leave out to stand on whatever floor is there." },
+        "yawDeg": { "type": "number", "description": "Facing in degrees: 0 = north, 90 = west, 180 = south, -90 = east." },
+        "yaw": { "type": "number", "description": "Facing in radians (older files)." },
+        "lookAt": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 3, "description": "Face this point [x, z] instead." }
+      }
+    },
+    "legendEntry": {
+      "type": "object", "description": "{} is open floor.",
+      "properties": {
+        "mat": { "type": "string", "description": "Makes the square a solid block of this material." },
+        "h": { "type": "number", "description": "Block height (m)." },
+        "base": { "type": "number", "description": "Block starts this high (m): a floating platform or a beam." },
+        "pen": { "type": "boolean" }, "passable": { "type": "boolean" }, "collide": { "type": "boolean" }, "visible": { "type": "boolean" },
+        "thin": { "type": "number", "description": "Make it a thin panel this thick, along the row or column." },
+        "paint": { "type": "string", "description": "Floor material painted on this square." },
+        "spawn": { "description": "true = deathmatch spawn, \"atk\" / \"def\" = 5v5 team spawn.", "oneOf": [{ "type": "boolean" }, { "enum": ["atk", "def"] }] },
+        "site": { "type": "string", "description": "Part of this spike site (A or B)." },
+        "barrier": { "enum": ["atk", "def"], "description": "Buy-phase barrier for that team." }
+      }
+    },
+    "material": {
+      "type": "object",
+      "properties": {
+        "colors": { "type": "array", "items": { "$ref": "#/$defs/color" }, "minItems": 1, "maxItems": 3, "description": "[base, main lines, fine lines]." },
+        "color": { "$ref": "#/$defs/color", "description": "One colour; the line colours are made from it." },
+        "pattern": { "enum": ["grid", "brick", "plank", "panel", "tile", "diamond", "grate", "none"] },
+        "crossed": { "type": "boolean", "description": "Draw a big X (crates)." },
+        "tileSize": { "type": "number", "description": "Metres per repeat of the pattern (2)." },
+        "glow": { "type": "number", "description": "0 = lit normally, 1 = glows fully." },
+        "opacity": { "type": "number", "description": "1 = solid, lower = see-through." },
+        "noise": { "type": "number", "description": "Amount of grain (1)." },
+        "castShadows": { "type": "boolean" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

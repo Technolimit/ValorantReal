@@ -6,6 +6,7 @@ import { skinFor, SKINS } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
 import { BLADES, SMOKE, bloomTargets } from './abilities.js';
 import { ROUND } from './rounds.js';
+import { materialOf } from './map.js';
 
 const DEG = Math.PI / 180;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -51,38 +52,8 @@ const FEEL_BY_ID = {
 };
 const feelFor = (def) => FEEL_BY_ID[def.id] || FEEL_BY_CAT[def.cat] || FEEL_BY_CAT.Rifle;
 
-const MAT_COLORS = {
-  floor: ['#7d838b', '#6c7279', '#757b83'],
-  wall: ['#cfc6b6', '#b6ad9d', '#c3bba9'],
-  crate: ['#a87a46', '#8a5f31', '#9a6c3b'],
-  wood: ['#b88b55', '#946a3a', '#a77b48'],
-  half: ['#7a8a99', '#65737f', '#6f7e8b'],
-  stone: ['#a39b8d', '#8b8476', '#979082'],
-  // Divide: a Japanese-city palette — white plaster, terracotta, grey street tiles, green planters
-  plaster: ['#eee5d3', '#d6cab4', '#e3d9c5'],
-  terra: ['#cf7148', '#ad5a3a', '#c06644'],
-  tile: ['#8e9198', '#7b7e85', '#878a91'],
-  planter: ['#5d8a4a', '#4a7039', '#567f44'],
-  // Split look, matched to the walkthrough video (see divide.js STYLE)
-  asphalt: ['#4c4f54', '#44474c', '#494c51'], stripe: ['#e9e9e4', '#e9e9e4', '#e9e9e4'],
-  ceiling: ['#8a8780', '#7d7a73', '#85827b'], concrete: ['#85857f', '#76766f', '#7e7e78'], darkconcrete: ['#5e6164', '#53565a', '#595c5f'], lightconcrete: ['#aeaba3', '#9c998f', '#a6a39a'],
-  paving: ['#9a958a', '#827d72', '#8e897e'], darkstone: ['#5a5856', '#4d4b49', '#545250'], woodfloor: ['#9a6038', '#7c4a2a', '#8a5532'],
-  grate: ['#59636c', '#3f474e', '#4d565e'], diamond: ['#6a7178', '#545b62', '#60676e'], slate: ['#6f777d', '#5e666c', '#687076'],
-  bluetile: ['#6b7884', '#5a6672', '#64707c'], grass: ['#6b7046', '#5a5f3a', '#646a41'],
-  stonewall: ['#c9bea6', '#ada28a', '#bdb29a'], terra2: ['#a8704e', '#8e5c3e', '#9c6646'], rust: ['#8c4b38', '#6f3a2a', '#7f4433'],
-  brick: ['#6f6e6a', '#5a5955', '#66655f'], woodfacade: ['#8a5c40', '#6b4530', '#7c5238'], salmon: ['#d8937e', '#c07f6b', '#ce8a75'],
-  olive: ['#5f6a52', '#4f5944', '#58624b'], mural: ['#cfc7b5', '#b8b09e', '#c5bdab'], whitetile: ['#e6e2d8', '#c9c5bb', '#dad6cc'],
-  bluemetal: ['#7d8c97', '#64737e', '#73828d'], beige: ['#d2c6b3', '#b9ad9a', '#c6baa7'], tealpanel: ['#4f6a70', '#3e575c', '#486267'],
-  white: ['#dcdcd8', '#c2c2be', '#d0d0cc'], darkband: ['#4f5a60', '#414b50', '#4a5459'], woodpanel: ['#8a5a3c', '#6e472f', '#7d5136'],
-  greenmetal: ['#6f7a72', '#5b655e', '#67726a'], sewerblue: ['#5f7480', '#4c606b', '#586d79'], greymetal: ['#5b6168', '#4a5056', '#555b62'],
-  greyplaster: ['#8f8b84', '#7a766f', '#86827b'], beigetile: ['#cbbfae', '#b0a493', '#c0b4a3'],
-};
-// Surface patterns: g = the default 1 m grid, brick, plank (horizontal boards), panel (big panels), tile (small squares), diamond plate.
-const MAT_PATTERN = { brick: 'brick', stonewall: 'brick', woodfloor: 'plank', woodfacade: 'plank', woodpanel: 'plank', terra2: 'panel', greymetal: 'panel',
-  bluemetal: 'panel', tealpanel: 'panel', white: 'panel', darkband: 'panel', greenmetal: 'panel', sewerblue: 'panel', whitetile: 'tile', beigetile: 'tile',
-  bluetile: 'tile', paving: 'tile', diamond: 'diamond', grate: 'grate', asphalt: 'none', stripe: 'none', grass: 'none', rust: 'plank' };
-
-function gridTexture(renderer, [base, major, minor], crate = false, pattern = 'g') {
+// A surface texture: base colour, a little noise, then the pattern's lines in the two line colours.
+function gridTexture(renderer, [base, major, minor], crate = false, pattern = 'grid', noise = 1) {
   const s = 256;
   const c = document.createElement('canvas');
   c.width = c.height = s;
@@ -90,7 +61,7 @@ function gridTexture(renderer, [base, major, minor], crate = false, pattern = 'g
   g.fillStyle = base;
   g.fillRect(0, 0, s, s);
   // subtle noise so surfaces read as surfaces
-  for (let i = 0; i < 1400; i++) {
+  for (let i = 0; i < 1400 * noise; i++) {
     g.fillStyle = `rgba(0,0,0,${Math.random() * 0.05})`;
     g.fillRect(Math.random() * s, Math.random() * s, 2, 2);
   }
@@ -282,29 +253,38 @@ export class Renderer {
     this.scene.add(wg);
     const map = this.game.map;
     const ext = Math.max(map.W, map.H) * 1.1 + 6; // half-size of the map in metres, plus a margin
-    const sun = new THREE.DirectionalLight(0xfff3e0, 2.2);
-    sun.position.set(-30, 60, 20);
-    sun.castShadow = true;
+    const env = map.env;
+    const sun = new THREE.DirectionalLight(env.sun.color, env.sun.intensity);
+    sun.position.set(...env.sun.from);
+    sun.castShadow = env.sun.shadows;
     sun.shadow.mapSize.set(2048, 2048);
     const sc = sun.shadow.camera;
     sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.near = 1; sc.far = 200;
     sun.shadow.bias = -0.0005;
     sun.shadow.normalBias = 0.03;
     wg.add(sun);
-    wg.add(new THREE.HemisphereLight(0xdbe7f3, 0x5a554c, 1.3));
-    if (map.sky) { this.scene.background = new THREE.Color(map.sky); this.scene.fog = new THREE.Fog(map.sky, map.fog[0], map.fog[1]); }
-    else { this.scene.background = new THREE.Color(0xa9c2d8); this.scene.fog = new THREE.Fog(0xa9c2d8, 90, 220); }
+    wg.add(new THREE.HemisphereLight(env.ambient.sky, env.ambient.ground, env.ambient.intensity));
+    for (const l of env.lights) { // lamps placed by the map (no shadows, to stay cheap)
+      const pl = new THREE.PointLight(l.color, l.intensity, l.range, 2);
+      pl.position.set(...l.at);
+      wg.add(pl);
+    }
+    this.scene.background = new THREE.Color(env.sky);
+    this.scene.fog = env.fog ? new THREE.Fog(env.fog.color, env.fog.near, env.fog.far) : null;
 
     const byMat = {};
-    for (const b of this.game.map.boxes) (byMat[b.mat] ||= []).push(b);
-    for (const b of this.game.map.floorSkins || []) (byMat[b.mat] ||= []).push(b); // street-level floor surfaces (visual)
+    for (const b of this.game.map.boxes) if (!b.hidden) (byMat[b.mat] ||= []).push(b);
+    for (const b of this.game.map.floorSkins || []) if (!b.hidden) (byMat[b.mat] ||= []).push(b); // visual-only surfaces (street-level floors, boxes you walk through)
     this.mapMaterials = [];
     for (const [mat, list] of Object.entries(byMat)) {
-      const tex = gridTexture(this.renderer, MAT_COLORS[mat] || MAT_COLORS.wall, mat === 'crate', MAT_PATTERN[mat] || 'g');
-      const material = mat === 'ceiling' ? new THREE.MeshLambertMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.45 }) // undersides only get bounce light
-        : new THREE.MeshLambertMaterial({ map: tex });
-      const mesh = new THREE.Mesh(boxesGeometry(list, mat === 'crate' ? 1 : 2), material);
-      mesh.castShadow = mat !== 'floor' && mat !== 'tile';
+      const d = materialOf(map, mat);
+      const tex = gridTexture(this.renderer, d.colors, d.crossed, d.pattern, d.noise);
+      const opts = { map: tex };
+      if (d.glow) Object.assign(opts, { emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: d.glow }); // e.g. ceilings: undersides only get bounce light
+      if (d.opacity < 1) Object.assign(opts, { transparent: true, opacity: d.opacity, depthWrite: false });
+      const material = new THREE.MeshLambertMaterial(opts);
+      const mesh = new THREE.Mesh(boxesGeometry(list, d.tileSize), material);
+      mesh.castShadow = d.castShadows && d.opacity === 1;
       mesh.receiveShadow = true;
       wg.add(mesh);
       this.mapMaterials.push(material);
@@ -320,11 +300,12 @@ export class Renderer {
     }
     // Trees behind the walls: a trunk and a few overlapping canopy blobs.
     if (map.trees?.length) {
-      const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a4030 });
+      const trunkMats = {};
       const canopyMats = {};
       const blob = new THREE.IcosahedronGeometry(1, 1);
       for (const t of map.trees) {
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, t.y, 6), trunkMat);
+        const tc = t.trunk ?? 0x5a4030;
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, t.y, 6), trunkMats[tc] ||= new THREE.MeshLambertMaterial({ color: tc }));
         trunk.position.set(t.x, t.y / 2, t.z);
         wg.add(trunk);
         const m = canopyMats[t.color] ||= new THREE.MeshLambertMaterial({ color: t.color, flatShading: true });
@@ -348,16 +329,17 @@ export class Renderer {
     // Spike sites: a tinted plant zone on the floor with an outline.
     for (const s of Object.values(map.sites || {})) {
       const w = s.max[0] - s.min[0], d = s.max[2] - s.min[2];
-      const zone = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: 0xffd54a, transparent: true, opacity: 0.07, depthWrite: false }));
-      zone.rotation.x = -Math.PI / 2; zone.position.set(s.min[0] + w / 2, 0.015, s.min[2] + d / 2);
-      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w, 0.01, d)), new THREE.LineBasicMaterial({ color: 0xffd54a, transparent: true, opacity: 0.5 }));
-      edge.position.set(s.min[0] + w / 2, 0.02, s.min[2] + d / 2);
+      const color = s.color ?? map.siteColor ?? 0xffd54a, y = s.center?.[1] ?? 0;
+      const zone = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.07, depthWrite: false }));
+      zone.rotation.x = -Math.PI / 2; zone.position.set(s.min[0] + w / 2, y + 0.015, s.min[2] + d / 2);
+      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w, 0.01, d)), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5 }));
+      edge.position.set(s.min[0] + w / 2, y + 0.02, s.min[2] + d / 2);
       wg.add(zone, edge);
     }
     // Ropes
     for (const r of map.ropes || []) {
       const len = r.top - r.bottom + 1.2;
-      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, len, 6), new THREE.MeshLambertMaterial({ color: 0xc9a56a }));
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, len, 6), new THREE.MeshLambertMaterial({ color: r.color ?? 0xc9a56a }));
       rope.position.set(r.x + r.toward[0] * 0.25, r.bottom + len / 2, r.z + r.toward[1] * 0.25);
       const bar = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.08, 0.08), new THREE.MeshLambertMaterial({ color: 0x5d6670 }));
       bar.position.set(rope.position.x, r.bottom + len, rope.position.z);
@@ -368,12 +350,12 @@ export class Renderer {
     for (const pr of map.props || []) {
       if (pr.type !== 'sign') continue;
       const g = new THREE.Group();
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(pr.w + 0.12, pr.h + 0.12, 0.06), new THREE.MeshLambertMaterial({ color: 0x2b2f36 }));
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(pr.w + 0.12, pr.h + 0.12, 0.06), new THREE.MeshLambertMaterial({ color: pr.frame ?? 0x2b2f36 }));
       const face = new THREE.Mesh(new THREE.PlaneGeometry(pr.w, pr.h), new THREE.MeshBasicMaterial({ color: pr.color }));
       face.position.z = 0.035;
       g.add(frame, face);
       const vertical = pr.h > pr.w;
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < (pr.marks === false ? 0 : 3); i++) {
         const bar = new THREE.Mesh(new THREE.PlaneGeometry(vertical ? pr.w * 0.5 : pr.w * 0.18, vertical ? pr.h * 0.16 : pr.h * 0.5), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }));
         bar.position.set(vertical ? 0 : (i - 1) * pr.w * 0.28, vertical ? (1 - i) * pr.h * 0.27 : 0, 0.04);
         g.add(bar);

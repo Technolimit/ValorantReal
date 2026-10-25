@@ -1,7 +1,7 @@
 // Match simulation: combatants, hitscan with wall penetration, damage, kills and respawns (free-for-all).
 import { DT, MATCH, PEN_DEPTH, MAX_RANGE, TAG, PLAYER } from './config.js';
 import { buildMap, supportsMode } from './map.js';
-import { RoundMode, NetRoundMode } from './rounds.js';
+import { RoundMode, NetRoundMode, ROUND, ECON } from './rounds.js';
 import { World } from './world.js';
 import { Combatant, dirFromAngles } from './entity.js';
 import { damageAt, WEAPONS, BUY_GROUPS } from './weapons.js';
@@ -13,6 +13,8 @@ import { SKIN_ORDER } from './skins.js';
 
 const TURRET = { id: 'sentry', name: 'Sentry', cat: 'Ability', dmg: [[50, 0, 0, 0]] };
 const BOOMER = { id: 'boomer', name: 'Boomer', cat: 'Ability', dmg: [[50, 0, 0, 0]] };
+// The tuning a map's "rules" and "physics" can change, as shipped; every match starts from these.
+const BASE_RULES = { rounds: { ...ROUND }, economy: { ...ECON, loss: [...ECON.loss] }, deathmatch: { ...MATCH }, physics: { gravity: PLAYER.gravity, jumpVelocity: PLAYER.jumpVelocity } };
 const BOT_COLORS = [0xff4655, 0xffb547, 0xc86bff, 0x4fd1c5, 0xff7ab8, 0x9be15d, 0x6aa7ff, 0xf28c38, 0xe0e0e0, 0x8e7dff];
 
 export class Game {
@@ -57,6 +59,14 @@ export class Game {
     this.emit('map', this.map);
   }
 
+  // Round timers, economy, respawn time and gravity for this map (anything it leaves out stays standard).
+  applyRules(rules = {}) {
+    Object.assign(ROUND, BASE_RULES.rounds, rules.rounds);
+    Object.assign(ECON, BASE_RULES.economy, rules.economy);
+    Object.assign(MATCH, BASE_RULES.deathmatch, rules.deathmatch);
+    Object.assign(PLAYER, BASE_RULES.physics, rules.physics);
+  }
+
   on(type, fn) { (this.listeners[type] ||= []).push(fn); }
   emit(type, data) { for (const fn of this.listeners[type] || []) fn(data); }
 
@@ -67,6 +77,7 @@ export class Game {
     this.contract = null;
     this.drops = [];
     this.loadMap(opts.mode === 'rounds' ? (supportsMode(opts.map, 'rounds') ? opts.map : 'divide') : (opts.map || 'arena'));
+    this.applyRules(this.map.rules);
     this.killLimit = opts.killLimit;
     this.timeLimit = opts.timeLimit;
     this.combatants = [];

@@ -39,20 +39,21 @@ Imported maps are sent to joiners too.
 
 ## Maps (JSON, loaded with fetch)
 
-`maps/index.json` lists the maps; each is fetched when first needed. Two formats:
+Every map is one editable JSON file in `maps/`, listed in `maps/index.json` and fetched when first needed. A map
+file holds everything about the map: walls and floors (as boxes, a character grid, or both), materials, sky, fog,
+sun and lamps, deathmatch and 5v5 spawns, spike sites, buy-phase barriers, ropes, signs, trees, decoration, labels,
+bot positions, and per-map rules (round timers, economy, respawn time, gravity). Bot navigation is worked out from
+the geometry when the map loads, so editing walls never needs a rebuild step.
 
-- **grid** — hand-written: a character layout plus a legend. See `maps/arena.json` and `maps/foundry.json`.
-  Legend entries: `{ "mat": "wall", "h": 5, "pen": false, "thin": 0.3 }` for a solid box (`pen` = bullets go
-  through, `thin` = a thin panel), `{ "walk": 0 }` for a floor height, `{ "spawn": true }` for spawns.
-  Optional: `floor`, `sky`, `fog`, `labels`.
-- **baked** — finished geometry and 5v5 data generated from code. `maps/divide.json` comes from
-  `tools/divide.js`; after editing that, run `node tools/bake-maps.mjs`.
+**[MAPS.md](MAPS.md)** explains the format in plain language; `maps/map.schema.json` describes every field for
+editors that check JSON. `maps/materials.json` is the shared material library.
 
-To add a map, drop the JSON in `maps/` and list it in `index.json`, or use **Maps → Import file / Load from
-URL** in the game (stored in the browser's localStorage).
+- **Range** (`arena.json`) and **Foundry** (`foundry.json`) are character-grid maps; Foundry also plays 5v5.
+- **Divide** (`divide.json`) is the full 5v5 map, made of boxes, each tagged with the area it belongs to.
 
-Materials: `wall floor crate wood half stone plaster terra tile planter brick` and the rest of `MAT_COLORS`
-in `js/render.js`.
+To add a map, drop the JSON in `maps/` and list it in `index.json`, or use **Maps → Import file / Load from URL** in
+the game (stored in the browser's localStorage). **Maps → Download** saves any map as a file to start from. Older
+`"grid"` / `"baked"` map files still load; `node tools/upgrade-map.mjs old.json new.json` converts them.
 
 ## Skins (all client-side)
 
