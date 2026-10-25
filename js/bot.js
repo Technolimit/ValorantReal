@@ -107,6 +107,14 @@ export class Bot {
     // Active play: after a contact (or right after throwing a flash) push the spot instead of waiting on
     // the assigned position — attackers almost always, defenders depending on temperament.
     const gl = this.goal, side = mode?.side(me), lsp = this.lastSeenPos, ago = now - this.lastSeen;
+    // A free ultimate orb a few steps away and nobody around: go take it.
+    const orb = mode?.orbs && ago > 4 && !gl?.commit && me.kit && me.kit.ultPoints < me.kit.ultCost && mode.orbs.find(o => !o.taken && Math.hypot(me.pos[0] - o.pos[0], me.pos[2] - o.pos[2]) < 10 && Math.abs(me.pos[1] - o.pos[1]) < 1.5);
+    if (orb) {
+      if (mode.orbNear(me) === orb) { inp.use = true; return; }
+      this.moveTo(orb.pos, now, dt);
+      if (!this.path) this.moveDir(orb.pos[0] - me.pos[0], orb.pos[2] - me.pos[2]);
+      return;
+    }
     if (gl && lsp && !gl.action && !gl.commit && Math.hypot(me.pos[0] - lsp[0], me.pos[2] - lsp[2]) > 2 &&
         (now < this.pushUntil || (ago > 0.4 && ago < 3.5 && this.aggr > (side === 'atk' ? 0.3 : 0.6)))) {
       this.moveTo(lsp, now, dt);

@@ -42,7 +42,7 @@ export class Combatant {
     this.adsHold = true;
     this.input = { fwd: 0, side: 0, walk: false, crouch: false, jump: false, fire: false, alt: false, firePressed: false, altPressed: false, reload: false, use: false, jumpHeld: false, abQ: false, abE: false, abC: false, abX: false };
     this.kit = null; // agent abilities (player only)
-    this.st = { slowUntil: 0, slowAmt: 0, blindUntil: 0, blindLen: 1, stunUntil: 0, nearUntil: 0, revealUntil: 0, disarmUntil: 0, vulnUntil: 0, stimUntil: 0, intangibleUntil: 0, hiddenUntil: 0, downedUntil: 0, channelUntil: 0, hasteUntil: 0, hinderUntil: 0 };
+    this.st = { slowUntil: 0, slowAmt: 0, blindUntil: 0, blindLen: 1, stunUntil: 0, nearUntil: 0, revealUntil: 0, disarmUntil: 0, suppressUntil: 0, vulnUntil: 0, stimUntil: 0, intangibleUntil: 0, hiddenUntil: 0, downedUntil: 0, channelUntil: 0, hasteUntil: 0, hinderUntil: 0 };
     this.dash = null;
     this.inv = { primary: null, secondary: null, melee: new Gun(WEAPONS.knife) };
     this.slot = 'melee';
@@ -137,7 +137,7 @@ export class Combatant {
     this.damagedBy = new Set();
     this.decay = 0;
     this.deathPos = null;
-    this.st = { slowUntil: 0, slowAmt: 0, blindUntil: 0, blindLen: 1, stunUntil: 0, nearUntil: 0, revealUntil: 0, disarmUntil: 0, vulnUntil: 0, stimUntil: 0, intangibleUntil: 0, hiddenUntil: 0, downedUntil: 0, channelUntil: 0, hasteUntil: 0, hinderUntil: 0 };
+    this.st = { slowUntil: 0, slowAmt: 0, blindUntil: 0, blindLen: 1, stunUntil: 0, nearUntil: 0, revealUntil: 0, disarmUntil: 0, suppressUntil: 0, vulnUntil: 0, stimUntil: 0, intangibleUntil: 0, hiddenUntil: 0, downedUntil: 0, channelUntil: 0, hasteUntil: 0, hinderUntil: 0 };
     if (this.kit) this.kit.reset(now);
     this.inv.primary = this.loadout.primary ? new Gun(WEAPONS[this.loadout.primary]) : null;
     this.inv.secondary = new Gun(WEAPONS[this.loadout.secondary || 'classic']);
