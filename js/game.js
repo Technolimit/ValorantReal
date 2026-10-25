@@ -44,6 +44,8 @@ export class Game {
     this.state = 'idle';
     this.on('footstep', ({ who }) => this.noise(who, 22));
     this.on('land', ({ who }) => this.noise(who, 18));
+    // Host, offline and online clients all announce deaths with 'kill', so every copy of a kit cleans up.
+    this.on('kill', ({ victim }) => victim.kit?.onDeath(this.time));
   }
 
   // Online: 'host' runs the real match; on a 'client' only the local player is simulated and the host
@@ -542,7 +544,7 @@ export class Game {
         }
       } else if (d.kind === 'cloud') {
         // Steerable smoke orb: follows your crosshair while you hold the key, bursts when you let go.
-        const held = d.owner.input[d.key];
+        const held = d.owner.alive && d.owner.input[d.key];
         if (held) {
           const want = dirOf(d.owner.yaw, d.owner.pitch);
           for (let i = 0; i < 3; i++) d.dir[i] += (want[i] - d.dir[i]) * Math.min(1, 5 * DT);

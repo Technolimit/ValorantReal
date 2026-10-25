@@ -994,7 +994,7 @@ export class NetSession {
         c.pos = [x, y, z]; c.prevPos = [x, y, z]; c.netTarget = null; c.netQ = []; c.netHeld = 0;
         if (!mode) c.kit?.reset(g.time);
         g.emit('respawn', { who: c, round: !!mode });
-      } else if (!alive && c.alive) c.alive = false;
+      } else if (!alive && c.alive) { c.alive = false; c.kit?.onDeath(g.time); } // missed the kill message
       setTarget(c, [x, y, z], yaw, pitch, ca, [vx, vy, vz]);
       setWeapon(c, w);
     }
