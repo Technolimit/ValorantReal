@@ -44,6 +44,7 @@ const net = new NetSession(game, {
   onEnd: () => {},
   onLeft: (why) => { if (running) { running = false; game.state = 'idle'; } netStatus(why, true); updateMenuLoadout(); show('online'); },
   onRoster: () => updateNetBadge(),
+  onBuy: (err) => { rhud.shopKey = ''; if (err) hud.center(`<small>${escHtml(err).toUpperCase()}</small>`); else sound.click(0, 0.25); },
 });
 
 let running = false;
@@ -162,7 +163,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') { minimap.big = !minimap.big; return; }
   if (e.code === 'KeyY') { renderer.inspect(); return; }
   if (e.code === 'KeyG') { if (p.alive) game.dropGun(p, p.slot, true); return; }
-  if (e.code === 'F2') { if (!net.active) openAgents(true); return; } // change agent mid-match (not online: abilities are off)
+  if (e.code === 'F2') { if (!net.active) openAgents(true); return; } // change agent mid-match (offline only: other players' copies keep your agent)
   if (e.code === 'Tab') { $('scoreboard').hidden = false; return; }
   if (e.code === 'F3' || e.code === 'Backquote') { settings.debug = !settings.debug; saveSettings(settings); return; }
   if (WALK_KEYS.includes(e.code) && settings.walkMode === 'toggle') walkToggled = !walkToggled;
@@ -719,13 +720,15 @@ function updateNetBadge() {
 function netProfile() {
   const skinDefs = {};
   for (const sid of Object.values(settings.skins)) if (isCustom(sid) && SKINS[sid]) skinDefs[sid] = SKINS[sid];
-  return { name: settings.netName, color: parseInt(settings.netColor.slice(1), 16), loadout: { ...settings.loadout }, skins: { ...settings.skins }, skinDefs };
+  return { name: settings.netName, color: parseInt(settings.netColor.slice(1), 16), agent: settings.agent, loadout: { ...settings.loadout }, skins: { ...settings.skins }, skinDefs };
 }
 
 function readOnlineForm() {
   settings.netName = $('net-name').value.trim().slice(0, 16) || 'Player';
   settings.netColor = $('net-color').value;
   settings.netTransport = $('net-transport').value;
+  if ($('net-mode').value) settings.mode = $('net-mode').value;
+  if (AGENTS[$('net-agent').value]) settings.agent = $('net-agent').value;
   const room = $('net-room').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   saveSettings(settings);
   return { transport: settings.netTransport, room };
@@ -735,6 +738,10 @@ function openOnline() {
   $('net-name').value = settings.netName;
   $('net-color').value = settings.netColor;
   $('net-transport').value = settings.netTransport;
+  $('net-mode').value = settings.mode;
+  const ag = $('net-agent');
+  if (!ag.options.length) for (const id of AGENT_ORDER) ag.add(new Option(`${AGENTS[id].name} (${AGENTS[id].role})`, id));
+  ag.value = AGENTS[settings.agent] ? settings.agent : 'zephyr';
   if (!$('net-room').value) $('net-room').value = roomCode();
   netStatus(net.active ? `In room ${net.room}` : '');
   show('online');
@@ -743,8 +750,9 @@ function openOnline() {
 async function hostOnline() {
   const { transport, room } = readOnlineForm();
   if (!room) { netStatus('Pick a room code first', true); return false; }
-  const id = settings.map;
-  const ok = await startMatch({ online: true, mode: 'dm', map: id, noAbilities: true, noResume: true });
+  const rounds = settings.mode === 'rounds';
+  const id = rounds && !supportsMode(settings.map, 'rounds') ? 'divide' : settings.map;
+  const ok = await startMatch({ online: true, mode: settings.mode, map: id, noResume: true });
   if (!ok) return false;
   try {
     await net.host({ transport, room, profile: netProfile(), mapJSON: mapInfo(id)?.file ? null : mapJSON(id) });
@@ -776,7 +784,12 @@ async function joinedMatch(w) {
     if (w.mapJSON) addMap(w.mapJSON);
     else await preloadMap(w.map);
   } catch (err) { netStatus(`Can't load the host's map: ${err.message}`, true); net.close(); return; }
-  const ok = await startMatch({ online: true, mode: 'dm', map: w.map, botCount: 0, noAbilities: true, killLimit: w.opts.killLimit, timeLimit: w.opts.timeLimit, noResume: true });
+  const rounds = w.mode === 'rounds';
+  const flip = rounds && w.team === 1; // locally, our team is always team 0
+  const ok = await startMatch({
+    online: true, mode: rounds ? 'rounds' : 'dm', map: w.map, botCount: 0, killLimit: w.opts.killLimit, timeLimit: w.opts.timeLimit, noResume: true,
+    netRounds: rounds, flip, startSide: rounds ? (flip ? (w.ss === 'atk' ? 'def' : 'atk') : w.ss) : undefined, credits: w.credits, net,
+  });
   if (!ok) { net.close(); return; }
   net.attachClient(w);
   updateNetBadge();

@@ -25,7 +25,7 @@ import { priceOf, PRICES } from './prices.js';
 // Price, max charges and free charges for one of a combatant's ability slots.
 export const abilityPrice = (c, k) => priceOf(c.kit.id, c.kit.agent.abilities[k], k);
 
-const TEAM_COLORS = [0x4fd1c5, 0xff4655]; // your team, enemy team
+export const TEAM_COLORS = [0x4fd1c5, 0xff4655]; // your team, enemy team
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
@@ -135,11 +135,12 @@ export class RoundMode {
   }
 
   // Put a combatant at their spawn, healthy. Survivors keep weapons and shields; the dead get a Classic.
-  spawn(c, now) {
+  // Online clients pass the spawn point the host picked.
+  spawn(c, now, at = null) {
     const g = this.game, side = this.side(c);
     const spots = g.map.teamSpawns[side];
     const i = g.combatants.filter(o => this.side(o) === side).indexOf(c);
-    const sp = spots[i % spots.length];
+    const sp = at || spots[i % spots.length];
     const keepArmor = c.survived ? c.armor : 0;
     if (!c.survived) { c.armorKind = null; c.regenPool = 0; }
     // Copy the survivor's guns into a fresh object: spawnAt() below rebuilds c.inv from the DM loadout.
@@ -579,3 +580,118 @@ export class RoundMode {
 }
 
 function dist(a, b) { return Math.hypot(a[0] - b[0], a[2] - b[2]); }
+
+// ---------- online client ----------
+// The host runs the real RoundMode. A client mirrors it: phase, timers, score and spike come from the
+// host's snapshots (net.js), and only the local player is handled here (spawning, buying through the host,
+// freezing while planting or defusing). Teams are relabelled so the local player's team is always team 0,
+// which is what the HUD expects; `flip` says whether that swaps the host's numbering.
+export class NetRoundMode extends RoundMode {
+  constructor(game, opts) {
+    super(game, opts);
+    this.mirror = true;
+    this.flip = !!opts.flip;
+    this.startSide = opts.startSide || 'atk';
+    this.net = opts.net;
+  }
+
+  setup() {
+    const p = this.game.player;
+    p.team = 0;
+    p.credits = this.opts.credits ?? ECON.start;
+    p.agentId = p.kit?.id;
+    p.inv = { primary: null, secondary: new Gun(WEAPONS.classic), melee: new Gun(WEAPONS.knife), ability: null };
+    p.armor = 0; p.survived = false;
+    if (p.kit) { p.kit.charges.c = 0; p.kit.charges.q = 0; p.kit.charges.e = 0; }
+    this.game.bots = [];
+    this.boughtThisRound = new Map();
+    this.barrierBoxes = [];
+    this.round = 0;
+  }
+
+  // Host team number <-> local team number.
+  local(t) { return this.flip ? 1 - t : t; }
+
+  // The host started a round: clear the world, apply the halftime / overtime rules to us and spawn where told.
+  startRoundNet({ r, sp, ss }) {
+    const g = this.game, p = g.player, now = g.time;
+    const half = r === ROUND.half + 1, ot = r > ROUND.half * 2;
+    this.round = r;
+    if (ss) this.startSide = this.flip ? (ss === 'atk' ? 'def' : 'atk') : ss;
+    for (const w of g.walls) g.removeWall(w);
+    g.walls = []; g.smokes = []; g.zones = []; g.devices = []; g.eventide = null; g.drops = [];
+    if (g.contract) g.contract = null;
+    this.emit('roundClear');
+    if (half) { p.survived = false; p.inv.primary = null; p.inv.secondary = new Gun(WEAPONS.classic); p.armor = 0; p.inv.ability = null; if (p.kit) { p.kit.charges.c = 0; p.kit.charges.q = 0; p.kit.charges.e = 0; } }
+    this.boughtThisRound = new Map();
+    this.phase = 'buy';
+    this.spawn(p, now, sp);
+    this.setBarriers(true);
+    this.emit('round', { round: r });
+  }
+
+  // Snapshot of the host's mode (see NetSession.modeState).
+  applyState(m, byNid) {
+    const g = this.game, now = g.time, p = g.player;
+    const prev = this.phase;
+    if (!this.round) { this.round = m.r; if (m.ph === 'buy') this.setBarriers(true); }
+    this.round = Math.max(this.round, m.r);
+    this.score = this.flip ? [m.sc[1], m.sc[0]] : [m.sc[0], m.sc[1]];
+    if (m.ss) this.startSide = this.flip ? (m.ss === 'atk' ? 'def' : 'atk') : m.ss;
+    this.phaseEnd = now + m.pe;
+    const s = m.sp;
+    const old = this.spike;
+    this.spike = s ? {
+      state: s.st, pos: s.pos, carrier: byNid(s.car) || null, plantProg: s.pp, defuseProg: s.dp, defuser: byNid(s.df) || null,
+      plantedAt: now - s.pa, site: s.site, halfDone: s.hd,
+    } : null;
+    this.phase = m.ph;
+    if (prev !== m.ph) {
+      if (prev === 'buy' && m.ph !== 'buy') { this.setBarriers(false); this.liveAt = now; this.emit('live'); }
+      if (m.ph === 'planted' && this.spike) this.emit('planted', { who: this.spike.carrier, site: this.spike.site, pos: this.spike.pos });
+      if (m.ph === 'end' && m.lr) {
+        p.survived = p.alive;
+        this.lastResult = { ...m.lr, winTeam: this.local(m.lr.winTeam) };
+        this.history.push({ winner: this.lastResult.winTeam, side: m.lr.winnerSide, reason: m.lr.reason });
+        this.emit('roundEnd', this.lastResult);
+      }
+    }
+    if (old && this.spike && old.state !== 'exploded' && this.spike.state === 'exploded') this.emit('detonate', { pos: this.spike.pos });
+    if (old && this.spike && !old.halfDone && this.spike.halfDone) this.emit('defuseHalf');
+  }
+
+  // Only the local player: hold still while planting or defusing (the host does the real progress).
+  tick(now) {
+    const g = this.game, p = g.player, sp = this.spike;
+    if (!sp || !p.alive || !p.input.use) return;
+    if (sp.state === 'carried' && sp.carrier === p && this.phase === 'live' && this.inSite(p.pos) && p.grounded) this.channel(p, now);
+    else if (sp.state === 'planted' && this.side(p) === 'def' && Math.hypot(p.pos[0] - sp.pos[0], p.pos[2] - sp.pos[2]) < 1.8) this.channel(p, now);
+  }
+
+  // Purchases go through the host, which owns credits; the result comes back to applyPurchase.
+  buy(c, item) {
+    if (c === this.game.player && !this.applying) { if (!this.canBuy(c)) return 'Buying is only possible during the buy phase'; this.net?.requestBuy(item, false); return null; }
+    return super.buy(c, item);
+  }
+  sell(c, item) {
+    if (c === this.game.player && !this.applying) { if (!this.canBuy(c)) return 'Can only sell during the buy phase'; this.net?.requestBuy(item, true); return null; }
+    return super.sell(c, item);
+  }
+  applyPurchase(item, sell, credits) {
+    const p = this.game.player;
+    this.applying = true;
+    p.credits = 99999; // the host already checked the price; credits are set from its answer below
+    const err = sell ? super.sell(p, item) : super.buy(p, item);
+    this.applying = false;
+    p.credits = credits;
+    return err;
+  }
+
+  // Round flow, economy and bots all live on the host.
+  startRound() {}
+  endRound() {}
+  afterRound() {}
+  onKill() {}
+  planBots() {}
+  botBuy() {}
+}

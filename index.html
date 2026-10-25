@@ -435,7 +435,7 @@ th { color: var(--muted); font-weight: 500; }
 <div id="online" class="overlay" hidden>
   <div class="panel">
     <h2>Online match</h2>
-    <p class="note">No game server: one player hosts in their browser and the others join with the room code. Online matches are deathmatch with abilities off, on the map picked under Maps.</p>
+    <p class="note">No game server: one player hosts in their browser and the others join with the room code. The host picks the mode and the map (under Maps). In 5v5, players are split evenly across the two teams and bots fill the empty slots.</p>
     <div class="form">
       <label for="net-name">Your name</label><input id="net-name" maxlength="16">
       <label for="net-color">Colour</label><input id="net-color" type="color">
@@ -444,6 +444,9 @@ th { color: var(--muted); font-weight: 500; }
         <option value="local">This browser: tabs and windows (BroadcastChannel)</option>
         <option value="peer">Internet, peer to peer (PeerJS / WebRTC)</option>
       </select>
+      <label for="net-mode">Mode (host)</label>
+      <select id="net-mode"><option value="dm">Deathmatch</option><option value="rounds">5v5 Rounds (bots fill empty slots)</option></select>
+      <label for="net-agent">Your agent</label><select id="net-agent"></select>
       <label for="net-room">Room code</label><span class="inline"><input id="net-room" maxlength="12" autocomplete="off"><button id="net-newroom">New</button></span>
     </div>
     <p id="online-status"></p>

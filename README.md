@@ -15,8 +15,13 @@ It also works as-is on any static host (GitHub Pages, Netlify, an S3 bucket).
 
 ## Online play (no server)
 
-Main menu → **Online**. One player hosts, the others join with the room code. Online matches are
-deathmatch with abilities off.
+Main menu → **Online**. One player hosts, the others join with the room code. Pick a mode and an agent;
+abilities work in both modes.
+
+- **5v5 rounds** (Divide): the match always has ten players. Each joiner takes a bot's place on the team
+  with fewer humans, so people are split evenly and bots fill the rest. When someone leaves, a bot takes
+  over their body. Buying, the spike, the economy and halftime run on the host.
+- **Deathmatch:** free for all with bots, on any map.
 
 - **This browser (BroadcastChannel):** tabs and windows of the same browser on the same site. Nothing leaves
   the machine. Handy for testing; keep the windows side by side, since browsers slow down hidden tabs.
@@ -27,7 +32,9 @@ deathmatch with abilities off.
 How it syncs (`js/net.js`): the host's browser runs the real match (bots, damage, kills, respawns, score) and
 sends snapshots of every player and bot 20 times a second. Each joiner simulates its own movement and aim,
 sends its position 30 times a second, and reports its own hits to the host (favour-the-shooter, lightly
-sanity-checked). Shots, tracers, kills and skins (including custom designs) are relayed to everyone.
+sanity-checked). Abilities are synced by sending each player's ability inputs, which every browser replays
+on its own copy of that agent; only the host applies ability damage. Shots, tracers, kills, dropped guns
+and skins (including custom designs) are relayed to everyone.
 Imported maps are sent to joiners too.
 
 ## Maps (JSON, loaded with fetch)

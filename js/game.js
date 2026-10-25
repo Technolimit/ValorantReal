@@ -1,7 +1,7 @@
 // Match simulation: combatants, hitscan with wall penetration, damage, kills and respawns (free-for-all).
 import { DT, MATCH, PEN_DEPTH, MAX_RANGE, TAG, PLAYER } from './config.js';
 import { buildMap, supportsMode } from './map.js';
-import { RoundMode } from './rounds.js';
+import { RoundMode, NetRoundMode } from './rounds.js';
 import { World } from './world.js';
 import { Combatant, dirFromAngles } from './entity.js';
 import { damageAt, WEAPONS, BUY_GROUPS } from './weapons.js';
@@ -83,7 +83,7 @@ export class Game {
     this.player = player;
     this.combatants.push(player);
     if (opts.mode === 'rounds') {
-      this.mode = new RoundMode(this, opts);
+      this.mode = opts.netRounds ? new NetRoundMode(this, opts) : new RoundMode(this, opts);
       this.state = 'playing';
       this.mode.setup();
       this.emit('start', {});
@@ -118,8 +118,16 @@ export class Game {
     }
     if (this.mode && this.state === 'playing') this.mode.tick(now);
     for (const b of this.bots) if (b.alive) b.brain.think(now, DT);
+    this.onInputs?.(); // online: record this tick's ability inputs (net.js)
     for (const c of this.combatants) {
-      if (c.remote) { if (c.alive) netStep(c, DT); continue; } // someone else's player: follows the network
+      if (c.remote) {
+        // Someone else's player: follows the network, and replays their ability inputs on its kit.
+        if (!c.alive) continue;
+        netStep(c, DT);
+        this.applyNetInput?.(c);
+        if (c.kit) c.kit.tick(now);
+        continue;
+      }
       if (!c.alive) {
         if (c.kit?.agent.deadCast && this.state === 'playing') c.kit.tickDead(now);
         // A bot Thistle comes back with Not Dead Yet a moment after falling, when it has the points.
@@ -999,6 +1007,7 @@ export class Game {
   }
 
   kill(victim, killer, info) {
+    if (this.netClient) return; // online, the host decides who dies
     victim.alive = false;
     victim.diedAt = this.time;
     victim.deathPos = [...victim.pos];
