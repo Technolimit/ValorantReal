@@ -296,7 +296,9 @@ export class Bot {
     // Head for a spot a body fits in (a planned spot can touch a crate); the spike itself for a defuse.
     const t = gl.action === 'defuse' ? gl.pos : (gl.fit && gl.fitFor === gl.pos ? gl.fit : (gl.fitFor = gl.pos, gl.fit = fitNear(this.game, gl.pos)));
     const d = Math.hypot(me.pos[0] - t[0], me.pos[2] - t[2]);
-    if (d > (gl.action === 'defuse' ? 1.0 : 1.3)) {
+    // A plant only needs the site: a few steps short of the spot is close enough when a crate is in the way.
+    const there = d <= (gl.action === 'defuse' ? 1.0 : 1.3) || (gl.action === 'plant' && d < 3 && this.game.mode?.inSite(me.pos));
+    if (!there) {
       this.moveTo(t, now, dt);
       if (!this.path) this.steer(t[0] - me.pos[0], t[2] - me.pos[2], now); // no path (off-grid or the last stretch): walk straight, around corners
       // Walk the last stretch rather than run, like a careful player clearing an angle.

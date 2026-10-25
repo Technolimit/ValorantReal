@@ -242,6 +242,19 @@ export class RoundMode {
     return null;
   }
 
+  // Floor cells of a site a bot can plant on: walkable, at the site's floor level (not on a crate), with open
+  // cells on all four sides, preferring the middle of the site. Cached per map.
+  plantCells(name) {
+    const map = this.game.map, cache = (map.plantCells ||= {});
+    if (cache[name]) return cache[name];
+    const s = map.sites[name], open = new Set(map.walkable.map(([x, z]) => z * map.W + x));
+    const inSite = map.walkable.filter(([x, z]) => { const c = map.cellCenter(x, z); return c.x >= s.min[0] && c.x <= s.max[0] && c.z >= s.min[2] && c.z <= s.max[2]; });
+    const floor = Math.min(...inSite.map(([x, z]) => map.heights[z][x]));
+    const ok = inSite.filter(([x, z]) => map.heights[z][x] <= floor + 0.3 && [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dz]) => open.has((z + dz) * map.W + x + dx)));
+    const mid = ok.filter(([x, z]) => { const c = map.cellCenter(x, z); return Math.abs(c.x - (s.min[0] + s.max[0]) / 2) <= (s.max[0] - s.min[0]) * 0.35 && Math.abs(c.z - (s.min[2] + s.max[2]) / 2) <= (s.max[2] - s.min[2]) * 0.35; });
+    return (cache[name] = mid.length ? mid : ok);
+  }
+
   // Keep a channelling player still and their gun down.
   channel(c, now) {
     c.input.fwd = c.input.side = 0; c.input.jump = false; c.input.fire = false; c.input.firePressed = false;
@@ -263,7 +276,9 @@ export class RoundMode {
     } else if (sp.state === 'dropped') {
       for (const c of this.alive('atk')) {
         if (Math.hypot(c.pos[0] - sp.pos[0], c.pos[2] - sp.pos[2]) < 1.2 && Math.abs(c.pos[1] - sp.pos[1]) < 1.5) {
-          sp.state = 'carried'; sp.carrier = c; sp.pos = null; this.emit('spikePickup', { who: c }); break;
+          sp.state = 'carried'; sp.carrier = c; sp.pos = null; this.emit('spikePickup', { who: c });
+          if (c.brain && c.brain.goal?.kind === 'pickup') { c.brain.goal = null; this.planBots(false); } // don't stand where the spike was
+          break;
         }
       }
     } else if (sp.state === 'planted') {
@@ -504,6 +519,14 @@ export class RoundMode {
     if (!plan) return;
     const jitter = (p, r) => [p[0] + (Math.random() - 0.5) * r, p[1], p[2] + (Math.random() - 0.5) * r];
     const siteSpot = (name, r = 0.7) => { const s = map.sites[name]; return [s.min[0] + (s.max[0] - s.min[0]) * (0.5 + (Math.random() - 0.5) * r), 0, s.min[2] + (s.max[2] - s.min[2]) * (0.5 + (Math.random() - 0.5) * r)]; };
+    // Where to plant: an open floor cell of the site (a random point in the site's box often lands inside a
+    // crate, which the carrier then walks into for the rest of the round).
+    const plantSpot = (name) => {
+      const cells = this.plantCells(name);
+      if (!cells.length) return siteSpot(name, 0.5);
+      const [cx, cz] = pick(cells), c = map.cellCenter(cx, cz);
+      return [c.x, map.heights[cz][cx], c.z];
+    };
     // Where defenders last saw attackers (bronze/silver habit: everyone rotates toward the first contact).
     let contact = null;
     for (const c of this.alive('def')) {
@@ -587,23 +610,26 @@ export class RoundMode {
           }
           continue;
         }
-        if (role === 'lurk') {
+        // The carrier plants on the called site, whatever role it was given (a lurker holding it would never plant).
+        if (sp.carrier === b && now >= this.goTime + 3) {
+          if (!br.goal || br.goal.kind !== 'plant') br.goal = { kind: 'plant', pos: plantSpot(plan.site), action: 'plant' };
+          continue;
+        }
+        if (role === 'lurk' && sp.carrier !== b) {
           // The lurker sits in the other site's main, then pushes in once the spike is down or late in the round.
           const other = plan.site === 'A' ? 'B' : 'A';
           if (now - (this.liveAt || now) > 45) { if (!br.goal || br.goal.kind !== 'entry') br.goal = { kind: 'entry', pos: siteSpot(other, 0.8), look: siteSpot(other, 0.2), hold: true }; }
           else if (!br.goal || br.goal.kind !== 'stage' || now >= (br.nextShift || 0)) { br.goal = { kind: 'stage', pos: jitter(pick(map.stage[other].main), 3), look: map.sites[other].center, hold: true }; br.nextShift = now + 6 + Math.random() * 5; }
           continue;
         }
-        const st = map.stage[plan.site][role];
+        const st = map.stage[plan.site][role === 'lurk' ? 'main' : role]; // a lurker holding the spike stages with the main group
         const executing = now >= this.goTime;
         if (!executing) {
           // Staging: keep moving between spots in the lane rather than standing still.
           if (!br.goal || br.goal.kind !== 'stage' || now >= (br.nextShift || 0)) { br.goal = { kind: 'stage', pos: jitter(pick(st), 3), look: map.sites[plan.site].center, hold: true }; br.nextShift = now + 3 + Math.random() * 3; }
-        } else if (sp.carrier === b && now < this.goTime + 3) {
-          // The carrier lets the entry players go first, then follows to plant.
-          if (!br.goal || br.goal.kind !== 'stage') br.goal = { kind: 'stage', pos: jitter(pick(st), 2), look: map.sites[plan.site].center, hold: true };
         } else if (sp.carrier === b) {
-          if (!br.goal || br.goal.kind !== 'plant') br.goal = { kind: 'plant', pos: siteSpot(plan.site, 0.5), action: 'plant' };
+          // The carrier lets the entry players go first, then follows to plant (above).
+          if (!br.goal || br.goal.kind !== 'stage') br.goal = { kind: 'stage', pos: jitter(pick(st), 2), look: map.sites[plan.site].center, hold: true };
         } else if (!br.goal || br.goal.kind !== 'entry') br.goal = { kind: 'entry', pos: siteSpot(plan.site, 0.9), look: siteSpot(plan.site, 0.2), hold: true };
       }
     }
