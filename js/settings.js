@@ -20,7 +20,7 @@ export const DEFAULTS = {
   recoilFeel: 1, // physical recoil strength (camera punch, gun kick); 0 turns it off
   sprayTrainer: true, // overlay that draws the spray pattern and where your shots went
   shadows: true,
-  renderScale: 1,
+  renderScale: 'auto', // 0.5 | 0.75 | 1, or 'auto' (see Renderer.autoScale)
   // crosshair
   chColor: '#00ff9c',
   chOutline: true,

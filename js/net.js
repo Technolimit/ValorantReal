@@ -1054,7 +1054,7 @@ function cleanItem(it) {
 // ---------- remote combatant helpers ----------
 function setTarget(c, p, yaw, pitch, ca, v) {
   if (!Array.isArray(p) || p.length !== 3 || !p.every(Number.isFinite)) return;
-  c.netTarget = { p, yaw: +yaw || 0, pitch: +pitch || 0, ca: Math.max(0, Math.min(1, +ca || 0)) };
+  c.netTarget = { p, yaw: +yaw || 0, pitch: +pitch || 0, ca: Math.max(0, Math.min(1, +ca || 0)), at: c.game?.time ?? 0 };
   if (Array.isArray(v) && v.every(Number.isFinite)) c.vel = v.slice(0, 3);
 }
 
@@ -1066,16 +1066,25 @@ function setWeapon(c, id) {
 }
 
 // Move a remote combatant toward its latest networked state (called every tick from Game.tick).
+const EXTRAPOLATE = 0.12;
 export function netStep(c, dt) {
   const t = c.netTarget;
   c.prevPos[0] = c.pos[0]; c.prevPos[1] = c.pos[1]; c.prevPos[2] = c.pos[2];
   c.prevEyeY = c.pos[1] + c.eyeOff;
   if (!t) return;
-  const dx = t.p[0] - c.pos[0], dy = t.p[1] - c.pos[1], dz = t.p[2] - c.pos[2];
+  // Updates come 20-30 times a second, and unevenly over the internet. Chasing the last one made the body speed
+  // up and slow down between updates; instead it chases where that update says they are by now, carried on along
+  // their velocity (on the ground plane, and at most EXTRAPOLATE seconds, so a stop or turn isn't overshot far).
+  // The body moves along that velocity itself, and the gap to the predicted spot closes smoothly.
+  const ahead = Math.min(EXTRAPOLATE, Math.max(0, (c.game?.time ?? 0) - (t.at ?? 0)));
+  const moving = ahead < EXTRAPOLATE ? 1 : 0; // past that, an update is late: wait at the predicted spot
+  const tx = t.p[0] + c.vel[0] * ahead, tz = t.p[2] + c.vel[2] * ahead;
+  const px = c.pos[0] + c.vel[0] * dt * moving, pz = c.pos[2] + c.vel[2] * dt * moving;
+  const dx = tx - px, dy = t.p[1] - c.pos[1], dz = tz - pz;
   if (dx * dx + dy * dy + dz * dz > 16) { c.pos = [...t.p]; c.prevPos = [...t.p]; }
   else {
-    const k = 1 - Math.exp(-dt * 18);
-    c.pos[0] += dx * k; c.pos[1] += dy * k; c.pos[2] += dz * k;
+    const k = 1 - Math.exp(-dt * 10), ky = 1 - Math.exp(-dt * 18);
+    c.pos[0] = px + dx * k; c.pos[1] += dy * ky; c.pos[2] = pz + dz * k;
   }
   let dyaw = t.yaw - c.yaw;
   dyaw -= Math.round(dyaw / (2 * Math.PI)) * 2 * Math.PI;

@@ -141,6 +141,38 @@ function boxesGeometry(boxes, texMeters) {
   return geo;
 }
 
+// three.js draws a see-through double-sided material in two passes (back faces, then front) and flips its side
+// between them, which makes it look up the material's shader again on every draw, every frame (lots of garbage).
+// An unlit one-colour material looks the same in one pass, since both faces blend the same colour.
+function singlePass(o) {
+  const m = o.material;
+  if (m && m.transparent && m.side === THREE.DoubleSide && !m.forceSinglePass && m.isMeshBasicMaterial && !m.map) m.forceSinglePass = true;
+}
+
+const AUTO_SCALES = [0.5, 0.6, 0.7, 0.85, 1];
+
+const vmMats = new WeakMap();
+function vmMaterial(m) {
+  let c = vmMats.get(m);
+  if (!c) { c = m.clone(); vmMats.set(m, c); }
+  return c;
+}
+
+// One geometry from several (position, normal and uv only), for static meshes that share a material.
+function mergeGeometries(list) {
+  const flat = list.map(g => (g.index ? g.toNonIndexed() : g));
+  const total = flat.reduce((n, g) => n + g.attributes.position.count, 0);
+  const out = new THREE.BufferGeometry();
+  for (const [name, size] of [['position', 3], ['normal', 3], ['uv', 2]]) {
+    const arr = new Float32Array(total * size);
+    let o = 0;
+    for (const g of flat) { const a = g.attributes[name]; if (a) arr.set(a.array, o); o += g.attributes.position.count * size; }
+    out.setAttribute(name, new THREE.BufferAttribute(arr, size));
+  }
+  flat.forEach((g, i) => { if (g !== list[i]) g.dispose(); });
+  return out;
+}
+
 function labelTexture(text) {
   const c = document.createElement('canvas');
   c.width = 512; c.height = 256;
@@ -231,6 +263,7 @@ export class Renderer {
     this.fovZoom = 1;
     this.deathCam = null;
 
+    this.auto = { scale: 1, slow: 0, fast: 0, noRiseUntil: 0, rose: false };
     this.resize();
     addEventListener('resize', () => this.resize());
     this.hookEvents();
@@ -296,24 +329,31 @@ export class Renderer {
       mesh.castShadow = !glow; mesh.receiveShadow = true;
       wg.add(mesh);
     }
-    // Trees behind the walls: a trunk and a few overlapping canopy blobs.
+    // Trees, ropes and signs never move: everything with the same material is merged into one mesh, so a map
+    // with dozens of trees costs a handful of draw calls instead of hundreds (each one twice with shadows on).
+    const statics = new Map(); // material -> { parts: [geometry placed in the world], castShadow }
+    const place = (geo, mat, obj, castShadow = false) => {
+      obj.updateWorldMatrix(true, false);
+      const e = statics.get(mat) || { parts: [], castShadow: false };
+      e.parts.push(geo.clone().applyMatrix4(obj.matrixWorld));
+      e.castShadow ||= castShadow;
+      statics.set(mat, e);
+    };
+    const at = new THREE.Object3D();
     if (map.trees?.length) {
       const trunkMats = {};
       const canopyMats = {};
       const blob = new THREE.IcosahedronGeometry(1, 1);
       for (const t of map.trees) {
         const tc = t.trunk ?? 0x5a4030;
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, t.y, 6), trunkMats[tc] ||= new THREE.MeshLambertMaterial({ color: tc }));
-        trunk.position.set(t.x, t.y / 2, t.z);
-        wg.add(trunk);
+        at.position.set(t.x, t.y / 2, t.z); at.rotation.set(0, 0, 0); at.scale.setScalar(1);
+        place(new THREE.CylinderGeometry(0.18, 0.28, t.y, 6), trunkMats[tc] ||= new THREE.MeshLambertMaterial({ color: tc }), at);
         const m = canopyMats[t.color] ||= new THREE.MeshLambertMaterial({ color: t.color, flatShading: true });
         for (let i = 0; i < 3; i++) {
-          const c = new THREE.Mesh(blob, m);
           const a = i * 2.1;
-          c.position.set(t.x + Math.cos(a) * t.r * 0.45, t.y + 0.4 + (i % 2) * 0.6, t.z + Math.sin(a) * t.r * 0.45);
-          c.scale.setScalar(t.r * (0.75 + 0.1 * i));
-          c.castShadow = true;
-          wg.add(c);
+          at.position.set(t.x + Math.cos(a) * t.r * 0.45, t.y + 0.4 + (i % 2) * 0.6, t.z + Math.sin(a) * t.r * 0.45);
+          at.scale.setScalar(t.r * (0.75 + 0.1 * i));
+          place(blob, m, at, true);
         }
       }
     }
@@ -335,32 +375,40 @@ export class Renderer {
       wg.add(zone, edge);
     }
     // Ropes
+    const ropeMats = {}, barMat = new THREE.MeshLambertMaterial({ color: 0x5d6670 });
     for (const r of map.ropes || []) {
       const len = r.top - r.bottom + 1.2;
-      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, len, 6), new THREE.MeshLambertMaterial({ color: r.color ?? 0xc9a56a }));
-      rope.position.set(r.x + r.toward[0] * 0.25, r.bottom + len / 2, r.z + r.toward[1] * 0.25);
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.08, 0.08), new THREE.MeshLambertMaterial({ color: 0x5d6670 }));
-      bar.position.set(rope.position.x, r.bottom + len, rope.position.z);
-      bar.rotation.y = Math.atan2(r.toward[0], r.toward[1]) + Math.PI / 2;
-      wg.add(rope, bar);
+      at.rotation.set(0, 0, 0); at.scale.setScalar(1);
+      at.position.set(r.x + r.toward[0] * 0.25, r.bottom + len / 2, r.z + r.toward[1] * 0.25);
+      const rc = r.color ?? 0xc9a56a;
+      place(new THREE.CylinderGeometry(0.035, 0.035, len, 6), ropeMats[rc] ||= new THREE.MeshLambertMaterial({ color: rc }), at);
+      at.position.y = r.bottom + len;
+      at.rotation.y = Math.atan2(r.toward[0], r.toward[1]) + Math.PI / 2;
+      place(new THREE.BoxGeometry(0.8, 0.08, 0.08), barMat, at);
     }
     // Signs: emissive coloured panels with a darker frame and a few "character" bars.
+    const signMats = {}, flat = (key, make) => signMats[key] ||= make();
+    const markMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
     for (const pr of map.props || []) {
       if (pr.type !== 'sign') continue;
       const g = new THREE.Group();
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(pr.w + 0.12, pr.h + 0.12, 0.06), new THREE.MeshLambertMaterial({ color: pr.frame ?? 0x2b2f36 }));
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(pr.w, pr.h), new THREE.MeshBasicMaterial({ color: pr.color }));
-      face.position.z = 0.035;
-      g.add(frame, face);
-      const vertical = pr.h > pr.w;
-      for (let i = 0; i < (pr.marks === false ? 0 : 3); i++) {
-        const bar = new THREE.Mesh(new THREE.PlaneGeometry(vertical ? pr.w * 0.5 : pr.w * 0.18, vertical ? pr.h * 0.16 : pr.h * 0.5), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }));
-        bar.position.set(vertical ? 0 : (i - 1) * pr.w * 0.28, vertical ? (1 - i) * pr.h * 0.27 : 0, 0.04);
-        g.add(bar);
-      }
       g.position.set(...pr.pos);
       g.rotation.y = Math.atan2(pr.n[0], pr.n[1]);
-      wg.add(g);
+      const part = (geo, mat, x = 0, y = 0, z = 0) => { const o = new THREE.Object3D(); o.position.set(x, y, z); g.add(o); place(geo, mat, o); };
+      const fc = pr.frame ?? 0x2b2f36;
+      part(new THREE.BoxGeometry(pr.w + 0.12, pr.h + 0.12, 0.06), flat('f' + fc, () => new THREE.MeshLambertMaterial({ color: fc })));
+      part(new THREE.PlaneGeometry(pr.w, pr.h), flat('c' + pr.color, () => new THREE.MeshBasicMaterial({ color: pr.color })), 0, 0, 0.035);
+      const vertical = pr.h > pr.w;
+      for (let i = 0; i < (pr.marks === false ? 0 : 3); i++) {
+        part(new THREE.PlaneGeometry(vertical ? pr.w * 0.5 : pr.w * 0.18, vertical ? pr.h * 0.16 : pr.h * 0.5), markMat,
+          vertical ? 0 : (i - 1) * pr.w * 0.28, vertical ? (1 - i) * pr.h * 0.27 : 0, 0.04);
+      }
+    }
+    for (const [mat, { parts, castShadow }] of statics) {
+      const mesh = new THREE.Mesh(mergeGeometries(parts), mat);
+      mesh.castShadow = castShadow;
+      wg.add(mesh);
+      for (const p of parts) p.dispose();
     }
   }
 
@@ -1049,7 +1097,8 @@ export class Renderer {
 
   resize() {
     const w = innerWidth, h = innerHeight;
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2) * (this.settings.renderScale || 1));
+    const scale = this.settings.renderScale === 'auto' ? this.auto.scale : this.settings.renderScale;
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2) * (scale || 1));
     this.renderer.setSize(w, h, false);
     this.aspect = w / h;
     this.camera.aspect = this.vmCamera.aspect = this.aspect;
@@ -1216,6 +1265,9 @@ export class Renderer {
     this.vm.model = def.hands ? handsModel(def.color, def.item) : gunModel(id, skin);
     this.vm.melee = MELEE[id] || null;
     this.vm.glow = this.vm.melee ? ownGlow(this.vm.model, skin) : null;
+    // Its own copies of the skin's materials: the same material drawn in both scenes (here and on your body or
+    // anyone else's gun) has its shader looked up again on every draw, since the two scenes are lit differently.
+    this.vm.model.traverse(o => { if (o.material?.isMaterial && o.material !== this.vm.glow?.mat) o.material = vmMaterial(o.material); });
     if (def.hands) { this.vm.equipStart = performance.now(); this.vm.equipDur = 250; }
     this.vm.model.scale.setScalar(VM_SCALE);
     this.vm.model.userData.muzzle.add(this.vmFlash);
@@ -1224,9 +1276,30 @@ export class Renderer {
     this.vm.kind = def.model;
   }
 
+  // Render scale 'auto': when frames take too long for a couple of seconds (under ~50 fps), draw fewer pixels;
+  // after a long smooth stretch, try a step back up. If that step made it slow again, stay down for a while.
+  autoScale(dt, now) {
+    const a = this.auto;
+    if (this.settings.renderScale !== 'auto' || !(dt > 0)) return;
+    if (dt > 1 / 50) { a.slow += dt; a.fast = 0; } else { a.fast += dt; a.slow = Math.max(0, a.slow - dt * 0.5); }
+    let next = a.scale;
+    if (a.slow > 2 && a.scale > AUTO_SCALES[0]) {
+      next = AUTO_SCALES[AUTO_SCALES.indexOf(a.scale) - 1];
+      if (a.rose) a.noRiseUntil = now + 30000;
+      a.rose = false;
+    } else if (a.fast > 6 && a.scale < 1 && now > a.noRiseUntil) {
+      next = AUTO_SCALES[AUTO_SCALES.indexOf(a.scale) + 1];
+      a.rose = true;
+    } else return;
+    a.slow = a.fast = 0;
+    a.scale = next;
+    this.resize();
+  }
+
   render(alpha, dt, look) {
     const g = this.game, p = g.player;
     const now = performance.now();
+    this.autoScale(dt, now);
     if (p) this.updateCamera(p, alpha, dt, look);
     this.updateCharacters(alpha, now);
     this.updateFx(dt, now);
@@ -1236,6 +1309,7 @@ export class Renderer {
     this.updateSpike();
     this.updateOrbs();
     this.updateNearsight(p);
+    this.scene.traverseVisible(singlePass);
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
     if (p && (p.alive || this.specTarget) && this.vmVisible) {

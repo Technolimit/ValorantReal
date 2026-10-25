@@ -646,6 +646,23 @@ function finish(m, stairCell, dropCost, links = null) {
 
 // A* over the grid. Steps up at most 0.45 m (0.8 m between stair cells, whose fine treads make it walkable),
 // drops any height. Diagonals only when both sides are open. Maps with worked-out links use those instead.
+const scratch = new Map();
+function scratchFor(n) {
+  let sc = scratch.get(n);
+  if (!sc) {
+    sc = { gen: 0, g: new Float64Array(n), came: new Int32Array(n), seen: new Uint32Array(n), shut: new Uint32Array(n), heap: null };
+    sc.grow = () => {
+      const old = sc.heap, len = old ? old.k.length * 2 : 1024;
+      const heap = { k: new Int32Array(len), f: new Float64Array(len), o: new Float64Array(len) };
+      if (old) { heap.k.set(old.k); heap.f.set(old.f); heap.o.set(old.o); }
+      sc.heap = heap;
+    };
+    sc.grow();
+    scratch.set(n, sc);
+  }
+  return sc;
+}
+
 export function findPath(heights, W, H, start, goal, stairCell = null, dropCost = 0, links = null) {
   const key = (x, z) => z * W + x;
   const ok = (x, z) => x >= 0 && z >= 0 && x < W && z < H && heights[z][x] !== null;
@@ -660,23 +677,47 @@ export function findPath(heights, W, H, start, goal, stairCell = null, dropCost 
     const same = (stairCell[bz][bx] === f || !stairCell[bz][bx]) && (stairCell[az][ax] === f || !stairCell[az][ax]);
     return along && same;
   };
-  const g = new Map([[key(...start), 0]]);
-  const came = new Map();
-  const open = [[start[0], start[1], 0]];
+  // Scratch arrays shared by every search on a grid this size (a generation number marks what this search set),
+  // and a binary heap for the open list: no garbage, and long paths across a big map stay fast.
+  const n = W * H, sc = scratchFor(n), gen = ++sc.gen;
+  const { g, came, seen, shut } = sc;
+  let heap = sc.heap;
   const h = (x, z) => Math.hypot(x - goal[0], z - goal[1]);
-  const closed = new Set();
-  while (open.length) {
-    let bi = 0;
-    for (let i = 1; i < open.length; i++) if (open[i][2] < open[bi][2]) bi = i;
-    const [x, z] = open[bi];
-    open[bi] = open[open.length - 1]; open.pop();
-    const k = key(x, z);
-    if (closed.has(k)) continue;
-    closed.add(k);
+  let size = 0, order = 0;
+  // Heap entries: cell, f, and an insertion counter so equal f pops first-in first.
+  const less = (i, j) => heap.f[i] < heap.f[j] || (heap.f[i] === heap.f[j] && heap.o[i] < heap.o[j]);
+  const swap = (i, j) => {
+    const { k, f, o } = heap;
+    let t = k[i]; k[i] = k[j]; k[j] = t;
+    t = f[i]; f[i] = f[j]; f[j] = t;
+    t = o[i]; o[i] = o[j]; o[j] = t;
+  };
+  const push = (k, f) => {
+    if (size === heap.k.length) { sc.grow(); heap = sc.heap; }
+    let i = size++;
+    heap.k[i] = k; heap.f[i] = f; heap.o[i] = order++;
+    while (i > 0) { const p = (i - 1) >> 1; if (!less(i, p)) break; swap(i, p); i = p; }
+  };
+  const pop = () => {
+    const k = heap.k[0];
+    size--;
+    if (size > 0) {
+      heap.k[0] = heap.k[size]; heap.f[0] = heap.f[size]; heap.o[0] = heap.o[size];
+      let i = 0;
+      for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < size && less(l, m)) m = l; if (r < size && less(r, m)) m = r; if (m === i) break; swap(i, m); i = m; }
+    }
+    return k;
+  };
+  const s0 = key(start[0], start[1]);
+  g[s0] = 0; seen[s0] = gen; came[s0] = -1;
+  push(s0, 0);
+  while (size) {
+    const k = pop(), x = k % W, z = (k - x) / W;
+    if (shut[k] === gen) continue;
+    shut[k] = gen;
     if (x === goal[0] && z === goal[1]) {
       const path = [[x, z]];
-      let c = k;
-      while (came.has(c)) { c = came.get(c); path.push([c % W, Math.floor(c / W)]); }
+      for (let c = came[k]; c >= 0; c = came[c]) path.push([c % W, Math.floor(c / W)]);
       return path.reverse();
     }
     for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
@@ -685,14 +726,14 @@ export function findPath(heights, W, H, start, goal, stairCell = null, dropCost 
       if (!ok(nx, nz) || !canStep(x, z, nx, nz)) continue;
       if (dx && dz && (!ok(x + dx, z) || !ok(x, z + dz) || !canStep(x, z, x + dx, z) || !canStep(x, z, x, z + dz))) continue;
       const nk = key(nx, nz);
-      if (closed.has(nk)) continue;
+      if (shut[nk] === gen) continue;
       // Drops are allowed but can cost a little more, so bots prefer stairs over jumping off ledges.
       const drop = dropCost && heights[z][x] - heights[nz][nx] > 0.45 ? dropCost : 0;
-      const ng = g.get(k) + (dx && dz ? 1.414 : 1) + drop;
-      if (ng < (g.get(nk) ?? Infinity)) {
-        g.set(nk, ng);
-        came.set(nk, k);
-        open.push([nx, nz, ng + h(nx, nz)]);
+      const ng = g[k] + (dx && dz ? 1.414 : 1) + drop;
+      if (seen[nk] !== gen || ng < g[nk]) {
+        g[nk] = ng; seen[nk] = gen;
+        came[nk] = k;
+        push(nk, ng + h(nx, nz));
       }
     }
   }
