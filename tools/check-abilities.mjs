@@ -456,11 +456,11 @@ if (!offline) {
     Object.assign(window.__game.settings, { botCount: 1, botMode: 'static', map: 'arena', agent });
   };
   await H.evaluate(form, 'cinder'); await C.evaluate(form, 'thistle');
-  await H.evaluate(() => window.__game.hostOnline());
-  await C.evaluate(() => window.__game.joinOnline());
+  await H.evaluate(() => window.__game.hostOnline({ lobby: false }));
+  await C.evaluate(() => window.__game.joinOnline({ agent: 'thistle' }));
   // The local transport can miss the first handshake on a slow machine, so join once more before giving up.
   const joined = () => C.waitForFunction(() => window.__game.net?.role === 'client', null, { timeout: 15000 }).then(() => true, () => false);
-  if (!await joined()) { await C.evaluate(() => window.__game.joinOnline()); if (!await joined()) throw new Error('client never joined the host'); }
+  if (!await joined()) { await C.evaluate(() => window.__game.joinOnline({ agent: 'thistle' })); if (!await joined()) throw new Error('client never joined the host'); }
   await H.waitForTimeout(2000);
   // Kill the client's Thistle on the host, then cast Ruse from the grave.
   const killedAt = await H.evaluate(() => { const g = window.__game.game, c = __remote(); g.damage(c, g.player, 999, { part: 'head', def: { id: 'vandal', name: 'Vandal' }, dist: 3, point: c.eye() }); c.respawnAt = Infinity; return g.time; }); // no deathmatch respawn: only Not Dead Yet can bring her back

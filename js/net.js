@@ -9,6 +9,11 @@
 //
 // Both modes work online: deathmatch, and 5v5 rounds where joiners are split evenly across the teams and
 // bots fill the empty slots (a joiner takes over a bot; a bot takes over from a player who leaves).
+//
+// Agent select: a room usually opens on the pick screen (agentselect.js). The host owns the Lobby, everyone
+// else sends hover / lock requests and draws the state it broadcasts; when the pick is done the host starts
+// the match and welcomes everyone in it. Someone who joins a match already running first gets a 'pick'
+// message with the agents they can't have, picks one, and then joins with it.
 import { PLAYER, MATCH } from './config.js';
 import { WEAPONS } from './weapons.js';
 import { Combatant } from './entity.js';
@@ -18,6 +23,7 @@ import { applyCast } from './botkit.js';
 import { Bot, BOT_NAMES } from './bot.js';
 import { TEAM_COLORS } from './rounds.js';
 import { sanitizeSkin, registerSkin, SKINS } from './skins.js';
+import { takenAgents } from './agentselect.js';
 
 // TIMEOUT: silence that counts as gone. LOAD_TIMEOUT: a joiner's first message can take this long, since it
 // downloads and builds the map after the welcome and sends nothing meanwhile.
@@ -138,9 +144,9 @@ for (const name of ['mapClick', 'mapConfirm', 'mapCancel']) {
 
 // ---------- session ----------
 export class NetSession {
-  constructor(game, { onStatus = () => {}, onWelcome = () => {}, onEnd = () => {}, onLeft = () => {}, onRoster = () => {}, onBuy = () => {} } = {}) {
+  constructor(game, { onStatus = () => {}, onWelcome = () => {}, onEnd = () => {}, onLeft = () => {}, onRoster = () => {}, onBuy = () => {}, onLobby = () => {}, onLobbyDone = () => {}, onPick = () => {} } = {}) {
     this.game = game;
-    this.cb = { onStatus, onWelcome, onEnd, onLeft, onRoster, onBuy };
+    this.cb = { onStatus, onWelcome, onEnd, onLeft, onRoster, onBuy, onLobby, onLobbyDone, onPick };
     this.role = null;
     this.nid = newId();
     this.peers = new Map(); // host: nid -> { c, seen, seenWall, life, name }; client: nid -> { c, name }
@@ -156,9 +162,13 @@ export class NetSession {
 
   get active() { return !!this.role; }
   get rounds() { return !!this.game.mode; }
+  // In a running match (not on the pick screen, not still joining).
+  get live() { return this.role === 'host' ? !this.lobby : this.role === 'client'; }
 
   // ---- lifecycle ----
-  async host({ transport, room, profile, mapJSON }) {
+  // With a `lobby` (agentselect.js) the room opens on the pick screen and the match starts later, from
+  // startFromLobby(). Without one the host's match is already running and people join it directly.
+  async host({ transport, room, profile, mapJSON, lobby = null }) {
     this.close();
     this.room = room; this.profile = profile; this.mapJSON = mapJSON;
     this.t = transport === 'peer' ? new PeerTransport(room, this.nid, true) : new LocalTransport(room, this.nid);
@@ -166,7 +176,21 @@ export class NetSession {
     await this.t.open();
     this.role = 'host';
     this.t.onmessage = (m) => this.hostRecv(m);
-    this.t.onpeergone = (id) => this.dropPeer(id);
+    this.t.onpeergone = (id) => (this.lobby ? this.leaveLobby(id) : this.dropPeer(id));
+    if (lobby) {
+      this.lobby = lobby;
+      this.lobbyPeers = new Map(); // nid -> { profile, seenWall }
+      lobby.add(this.nid, cleanName(profile.name), true);
+      this.lobbyTimer = setInterval(() => this.lobbyTick(), 100);
+      this.cb.onStatus(`Hosting room ${room}`);
+      this.lobbyChanged();
+      return;
+    }
+    this.attachHost();
+  }
+
+  // The host's match is running: take charge of it.
+  attachHost() {
     const g = this.game;
     g.netRole = 'host';
     g.onInputs = () => this.recordInputs();
@@ -174,8 +198,21 @@ export class NetSession {
     g.player.nid = this.nid;
     this.byNid.set(this.nid, g.player);
     for (const b of g.bots) { b.nid = this.nid + ':b' + this.botSeq++; this.byNid.set(b.nid, b); }
-    this.cb.onStatus(`Hosting room ${room}`);
+    this.cb.onStatus(`Hosting room ${this.room}`);
     this.cb.onRoster(this.roster());
+  }
+
+  // The pick is over and main.js has started the match from the lineup: let everyone in.
+  startFromLobby() {
+    const L = this.lobby, peers = this.lobbyPeers;
+    clearInterval(this.lobbyTimer);
+    this.lobby = this.lobbyPeers = null;
+    this.attachHost();
+    for (const p of L.humans) {
+      const lp = peers.get(p.n);
+      if (lp && p.n !== this.nid) this.admit(p.n, { ...lp.profile, agent: p.a });
+    }
+    for (const b of this.game.bots) delete b.slotFor; // left during the pick: the bot keeps the place
   }
 
   async join({ transport, room, profile }) {
@@ -191,11 +228,12 @@ export class NetSession {
     const hello = () => this.t.send({ k: 'hello', ...this.profile });
     hello();
     this.helloTimer = setInterval(() => { if (this.role === 'joining') hello(); }, 1000);
-    this.joinDeadline = setTimeout(() => { if (this.role === 'joining') { this.cb.onStatus(`No host found in room ${room}`); this.close(); } }, 8000);
+    this.joinDeadline = setTimeout(() => this.noHost(), 8000);
   }
 
   close() {
-    clearInterval(this.helloTimer); clearTimeout(this.joinDeadline);
+    clearInterval(this.helloTimer); clearTimeout(this.joinDeadline); clearInterval(this.lobbyTimer); clearInterval(this.pickTimer);
+    this.lobby = this.lobbyPeers = null;
     if (this.t) { try { this.t.send({ k: 'bye' }); } catch { /* transport already closed */ } this.t.close(); }
     this.t = null;
     if (this.game.netRole) for (const p of this.peers.values()) this.removeCombatant(p.c);
@@ -255,7 +293,7 @@ export class NetSession {
     });
     g.on('pickup', (d) => { if (this.role === 'host' && d.nid) this.t.send({ k: 'pick', id: d.nid }); });
     g.on('tracer', ({ who, gun, from, to, device }) => {
-      if (!this.role || this.role === 'joining' || device || who.remote || !who.nid || !WEAPONS[gun.def.id]) return;
+      if (!this.live || device || who.remote || !who.nid || !WEAPONS[gun.def.id]) return;
       let e = this.fx.find(f => f.n === who.nid);
       if (!e) this.fx.push(e = { n: who.nid, w: gun.def.id, tr: [] });
       e.tr.push([from, to].flat().map(r3));
@@ -306,7 +344,7 @@ export class NetSession {
 
   // Record this tick's ability inputs of everyone we own (Game.tick calls this after bots think).
   recordInputs() {
-    if (!this.role || this.role === 'joining') return;
+    if (!this.live) return;
     for (const c of this.owned()) {
       if ((!c.alive && !c.kit?.agent.deadCast) || !c.kit || !c.nid) continue; // a dead Thistle still casts
       const i = c.input, kit = c.kit;
@@ -388,7 +426,7 @@ export class NetSession {
 
   // Called once per simulation tick, after game.tick().
   tick() {
-    if (!this.role || this.role === 'joining') return;
+    if (!this.live) return;
     const g = this.game, now = g.time;
     if (this.frames.length) { this.t.send({ k: 'in', f: this.frames }, this.role === 'client' ? this.hostId : undefined); this.frames = []; }
     if (this.role === 'host') {
@@ -412,20 +450,16 @@ export class NetSession {
   // ---- host side ----
   hostRecv(m) {
     const g = this.game, id = m.from;
-    if (m.k === 'hello') {
+    if (this.lobby) { this.lobbyRecv(m); return; }
+    if (m.k === 'hello' || m.k === 'peek') {
       if (g.state !== 'playing') return;
-      let p = this.peers.get(id);
-      if (!p) {
-        const c = this.rounds ? this.takeBotSlot(id, m) : this.addRemote(id, m);
-        if (!c) { this.t.send({ k: 'full' }, id); return; }
-        p = { c, life: 0, seen: g.time, seenWall: performance.now(), name: c.name };
-        this.peers.set(id, p);
-        if (!this.rounds) g.respawn(c); // emits respawn -> tells the client where it spawned
-        this.cb.onStatus(`${c.name} joined room ${this.room}`);
-        this.t.send({ k: 'roster', list: this.roster() });
-        this.cb.onRoster(this.roster());
-      }
-      this.t.send(this.welcome(id, p), id);
+      const p = this.peers.get(id);
+      if (p) { if (m.k === 'hello') this.t.send(this.welcome(id, p), id); return; }
+      // Joining mid-match: pick an agent first (the ones in use are greyed out), then join with it.
+      if (this.rounds && this.joinTeam() < 0) { this.t.send({ k: 'full' }, id); return; }
+      const taken = this.takenForJoiner();
+      if (m.k === 'peek' || !AGENTS[m.agent] || taken.includes(m.agent)) { this.t.send(this.pickInfo(taken, m.k === 'hello' && !!m.agent, m.k === 'hello'), id); return; }
+      this.admit(id, m);
       return;
     }
     const p = this.peers.get(id);
@@ -481,10 +515,108 @@ export class NetSession {
     } else if (m.k === 'bye') this.dropPeer(id);
   }
 
+  // A new player in the running match, playing info.agent.
+  admit(id, info) {
+    const g = this.game;
+    const c = this.rounds ? this.takeBotSlot(id, info) : this.addRemote(id, info);
+    if (!c) { this.t.send({ k: 'full' }, id); return null; }
+    const p = { c, life: 0, seen: g.time, seenWall: performance.now(), name: c.name };
+    this.peers.set(id, p);
+    if (!this.rounds) g.respawn(c); // emits respawn -> tells the client where it spawned
+    this.cb.onStatus(`${c.name} joined room ${this.room}`);
+    this.t.send({ k: 'roster', list: this.roster() });
+    this.cb.onRoster(this.roster());
+    this.t.send(this.welcome(id, p), id);
+    return p;
+  }
+
+  // 5v5: the team a mid-match joiner goes on (fewer people, ties to team 0), or -1 if no bot is left to replace.
+  joinTeam() {
+    const g = this.game, humans = [0, 0];
+    for (const c of g.combatants) if (!c.isBot) humans[c.team]++;
+    for (const t of humans[1] < humans[0] ? [1, 0] : [0, 1]) if (g.bots.some(b => b.team === t)) return t;
+    return -1;
+  }
+
+  // Agents a mid-match joiner can't have: anyone's in deathmatch. In 5v5, the people on the team they'd join;
+  // a bot playing the agent they pick gives its place up to them, so bots never block a pick.
+  takenForJoiner() {
+    const g = this.game, t = this.rounds ? this.joinTeam() : 0;
+    const users = this.rounds ? g.combatants.filter(c => !c.isBot && c.team === t) : g.combatants;
+    return [...new Set(users.map(c => c.kit?.id).filter(Boolean))];
+  }
+
+  pickInfo(taken, retry, withMap) {
+    const g = this.game;
+    return { k: 'pick', mode: this.rounds ? 'rounds' : 'dm', map: g.map.id, mapJSON: withMap ? this.mapJSON : null, taken, retry };
+  }
+
+  // ---- host: the pick screen ----
+  lobbyRecv(m) {
+    const L = this.lobby, id = m.from;
+    if (m.k === 'hello') {
+      if (!L.get(id)) {
+        if (!L.open) { this.t.send({ k: 'wait' }, id); return; } // the pick is finishing: they join the match once it starts
+        if (!L.add(id, cleanName(m.name))) { this.t.send({ k: 'full' }, id); return; }
+        this.cb.onStatus(`${cleanName(m.name)} joined room ${this.room}`);
+      }
+      this.lobbyPeers.set(id, { profile: m, seenWall: performance.now() });
+      this.lobbyChanged();
+      return;
+    }
+    const lp = this.lobbyPeers.get(id);
+    if (!lp) return;
+    lp.seenWall = performance.now();
+    if (m.k === 'hover' && L.hover(id, m.a)) this.lobbyChanged();
+    else if (m.k === 'lock' && L.lock(id, m.a)) this.lobbyChanged();
+    else if (m.k === 'bye') this.leaveLobby(id);
+  }
+
+  leaveLobby(id) {
+    if (!this.lobbyPeers?.has(id)) return;
+    this.lobbyPeers.delete(id);
+    const p = this.lobby.get(id);
+    if (p && this.lobby.open) this.lobby.remove(id); // later than that, a bot takes their slot in the match
+    this.cb.onStatus(`${p?.name || 'A player'} left room ${this.room}`);
+    this.lobbyChanged();
+  }
+
+  lobbyTick() {
+    const L = this.lobby;
+    if (!L) return;
+    const now = performance.now();
+    for (const [id, lp] of this.lobbyPeers) if (now - lp.seenWall > TIMEOUT * 1000) this.leaveLobby(id);
+    const before = L.phase + L.players.filter(p => p.locked).length;
+    if (L.step()) { clearInterval(this.lobbyTimer); this.lobbyChanged(); this.cb.onLobbyDone(L); return; }
+    if (before !== L.phase + L.players.filter(p => p.locked).length || now - this.lobbySent > 250) this.lobbyChanged();
+  }
+
+  lobbyChanged() {
+    const s = this.lobby.state();
+    this.lobbySent = performance.now();
+    this.t.send({ k: 'lobby', s });
+    this.cb.onLobby(s, this.nid, true);
+  }
+
+  // From the pick screen, on the host or a client.
+  lobbyHover(a) {
+    if (this.lobby) { if (this.lobby.hover(this.nid, a)) this.lobbyChanged(); }
+    else if (this.role === 'lobby') this.t.send({ k: 'hover', a }, this.hostId);
+  }
+  lobbyLock(a) {
+    if (this.lobby) { if (this.lobby.lock(this.nid, a)) this.lobbyChanged(); }
+    else if (this.role === 'lobby') this.t.send({ k: 'lock', a }, this.hostId);
+  }
+  lobbyStart() {
+    if (this.lobby?.phase !== 'wait') return;
+    this.lobby.start();
+    this.lobbyChanged();
+  }
+
   welcome(id, p) {
     const g = this.game, c = p.c, mode = g.mode;
     const w = {
-      k: 'welcome', you: id, map: g.map.id, mapJSON: this.mapJSON, roster: this.roster(), life: p.life,
+      k: 'welcome', you: id, agent: c.kit?.id || null, map: g.map.id, mapJSON: this.mapJSON, roster: this.roster(), life: p.life,
       mode: mode ? 'rounds' : 'dm',
       opts: { killLimit: g.killLimit, timeLimit: g.timeLimit, timeLeft: g.timeLimit - g.time },
       sp: { x: c.pos[0], y: c.pos[1], z: c.pos[2], yaw: c.yaw },
@@ -520,13 +652,15 @@ export class NetSession {
 
   // 5v5: the joiner takes over a bot on the team with fewer people, keeping its place in the round
   // (alive or dead, guns, shields, credits).
+  // From the pick screen they take the bot holding their slot; mid-match, preferably the bot already playing
+  // the agent they picked, so a team never has it twice.
   takeBotSlot(nid, info) {
-    const g = this.game, mode = g.mode;
-    const humans = [0, 0];
-    for (const c of g.combatants) if (!c.isBot) humans[c.team]++;
-    const order = humans[1] < humans[0] ? [1, 0] : [0, 1]; // the team with fewer people; ties go to team 0
-    let bot = null;
-    for (const t of order) { bot = g.bots.find(b => b.team === t); if (bot) break; }
+    const g = this.game;
+    let bot = g.bots.find(b => b.slotFor === nid);
+    if (!bot) {
+      const t = this.joinTeam();
+      bot = g.bots.find(b => b.team === t && b.kit?.id === info.agent) || g.bots.find(b => b.team === t);
+    }
     if (!bot) return null;
     const c = new Combatant(g, { name: cleanName(info.name), color: bot.color });
     this.dress(c, nid, info);
@@ -625,10 +759,14 @@ export class NetSession {
   // ---- client side ----
   clientRecv(m) {
     const g = this.game;
-    if (this.role === 'joining') {
+    if (this.role === 'joining' || this.role === 'lobby' || this.role === 'picking') {
       if (m.k === 'full' && m.to === this.nid) { this.cb.onStatus('That match is full (ten players)'); this.close(); return; }
+      if (m.k === 'bye' && m.from === this.hostId) { this.hostGone(); return; }
+      if (m.k === 'wait' && m.to === this.nid) { clearTimeout(this.joinDeadline); this.joinDeadline = setTimeout(() => this.noHost(), 12000); return; }
+      if (m.k === 'lobby' && this.role !== 'picking' && m.s?.players?.some(p => p.n === this.nid)) { this.enterLobby(m); return; }
+      if (m.k === 'pick' && m.to === this.nid) { this.enterPick(m); return; }
       if (m.k !== 'welcome' || m.you !== this.nid) return;
-      clearInterval(this.helloTimer); clearTimeout(this.joinDeadline);
+      clearInterval(this.helloTimer); clearTimeout(this.joinDeadline); clearInterval(this.lobbyTimer); clearInterval(this.pickTimer);
       this.hostId = m.from; this.hostSeen = performance.now();
       this.role = 'client';
       this.life = m.life;
@@ -674,6 +812,54 @@ export class NetSession {
       g.end();
       this.cb.onEnd();
     } else if (m.k === 'bye') this.hostGone();
+  }
+
+  noHost() {
+    if (this.role !== 'joining') return;
+    this.cb.onStatus(`No host found in room ${this.room}`);
+    this.close();
+  }
+
+  // On the host's pick screen: draw what it sends, and tell it we're still here.
+  enterLobby(m) {
+    clearInterval(this.helloTimer); clearTimeout(this.joinDeadline);
+    this.hostSeen = performance.now();
+    if (this.role !== 'lobby') {
+      this.role = 'lobby'; this.hostId = m.from;
+      this.lobbyTimer = setInterval(() => {
+        this.t?.send({ k: 'lhb' }, this.hostId);
+        if (performance.now() - this.hostSeen > TIMEOUT * 1000) this.hostGone();
+      }, 1000);
+    }
+    this.cb.onLobby(m.s, this.nid, false);
+  }
+
+  // The match is running: the host says which agents we can't have.
+  enterPick(m) {
+    if (this.role === 'joining' && this.profile.agent && !m.retry) return; // an answer to an older peek
+    clearInterval(this.helloTimer); clearTimeout(this.joinDeadline);
+    this.hostId = m.from; this.hostSeen = performance.now();
+    if (this.role !== 'picking') {
+      this.role = 'picking';
+      clearInterval(this.pickTimer);
+      this.pickTimer = setInterval(() => {
+        this.t?.send({ k: 'peek', ...this.profile }, this.hostId); // keeps the taken list fresh
+        if (performance.now() - this.hostSeen > TIMEOUT * 1000) this.hostGone();
+      }, 1500);
+    }
+    this.cb.onPick({ mode: m.mode, map: m.map, mapJSON: m.mapJSON, taken: Array.isArray(m.taken) ? m.taken.filter(a => AGENTS[a]) : [], retry: !!m.retry });
+  }
+
+  // Join the running match as `agent` (picked on the deathmatch-style screen).
+  pickAgent(agent) {
+    if (this.role !== 'picking' || !AGENTS[agent]) return;
+    clearInterval(this.pickTimer);
+    this.role = 'joining';
+    this.profile = { ...this.profile, agent };
+    const hello = () => this.t?.send({ k: 'hello', ...this.profile }, this.hostId);
+    hello();
+    this.helloTimer = setInterval(() => { if (this.role === 'joining') hello(); }, 1000);
+    this.joinDeadline = setTimeout(() => this.noHost(), 8000);
   }
 
   addNetDrop(m) {
@@ -807,9 +993,10 @@ export class NetSession {
 
   hostGone() {
     if (!this.role) return;
-    const wasClient = this.role === 'client';
+    const was = this.role;
     this.close();
-    if (wasClient) this.cb.onLeft('The host left the match');
+    if (was === 'client' || was === 'picking') this.cb.onLeft('The host left the match');
+    else if (was === 'lobby') this.cb.onLeft('The host closed the room');
   }
 
   // Tracers and the gunshot for someone else's shot.

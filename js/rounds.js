@@ -52,6 +52,10 @@ export class RoundMode {
     const names = shuffle([...BOT_NAMES]);
     const agents = shuffle(AGENT_ORDER.filter(a => a !== this.opts.agent));
     const agentsB = shuffle([...AGENT_ORDER]);
+    // Picked on the agent select screen: each team's slots in pick order (the host's own is the player).
+    // A slot that belongs to someone online is held by a bot until net.js hands it to them.
+    const line = this.opts.lineup;
+    const slots = line ? [0, 1].map(t => line.filter(s => !s.host && s.t === t)) : null;
     const p = g.player;
     p.team = 0;
     p.credits = ECON.start;
@@ -64,7 +68,9 @@ export class RoundMode {
       c.team = team;
       c.credits = ECON.start;
       // Agents are unique within a team (your team's four never repeat your pick).
-      c.agentId = team === 0 ? agents[i] : agentsB[i - 4];
+      const slot = slots?.[team].shift();
+      c.agentId = slot?.a || (team === 0 ? agents[i] : agentsB[i - 4]);
+      if (slot && !slot.bot) c.slotFor = slot.n;
       c.kit = new Kit(c, c.agentId);
       c.loadout = { primary: null, secondary: 'classic' };
       c.brain = new Bot(c, g, this.opts.difficulty, 'fight');

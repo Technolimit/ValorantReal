@@ -15,6 +15,7 @@ import { Minimap } from './minimap.js';
 import { RoundHud } from './roundhud.js';
 import { MAPS, loadMapIndex, preloadMap, mapList, mapInfo, mapJSON, addMap, removeCustomMap, supportsMode, upgradeMap, stringifyMap } from './map.js';
 import { NetSession, roomCode } from './net.js';
+import { Lobby, SelectScreen, emblem } from './agentselect.js';
 
 const DEG = Math.PI / 180;
 const $ = (id) => document.getElementById(id);
@@ -45,6 +46,9 @@ const net = new NetSession(game, {
   onLeft: (why) => { if (running) { running = false; game.state = 'idle'; } netStatus(why, true); updateMenuLoadout(); show('online'); },
   onRoster: () => updateNetBadge(),
   onBuy: (err) => { rhud.shopKey = ''; if (err) hud.center(`<small>${escHtml(err).toUpperCase()}</small>`); else sound.click(0, 0.25); },
+  onLobby: (state, me, host) => lobbyState(state, me, host),
+  onLobbyDone: (lobby) => startFromLobby(lobby),
+  onPick: (info) => joinPick(info),
 });
 
 let running = false;
@@ -144,7 +148,7 @@ function resume() {
 }
 
 function show(id) {
-  for (const o of ['menu', 'pause', 'settings', 'skins', 'agents', 'end', 'online', 'maps']) $(o).hidden = o !== id;
+  for (const o of ['menu', 'pause', 'settings', 'skins', 'agents', 'select', 'end', 'online', 'maps']) $(o).hidden = o !== id;
   $('hud').hidden = !running;
 }
 
@@ -557,42 +561,14 @@ addEventListener('keydown', (e) => { if (e.code === 'Escape' && !$('skins').hidd
 // ---- agent select ----
 let pickedAgent = settings.agent;
 
-// Original emblems, one per agent, drawn as simple SVG marks in the agent's colour.
-function emblem(type, color) {
-  const paths = {
-    wind: '<path d="M14 40c18-14 46-14 70 2" /><path d="M8 58c24-12 54-10 80 6" /><path d="M20 76c16-8 36-7 52 3" /><circle cx="84" cy="34" r="5" />',
-    flame: '<path d="M50 10c6 18 26 26 26 50a26 26 0 0 1-52 0c0-14 8-20 12-30 2 10 8 14 12 14-4-10-4-22 2-34z" /><path d="M50 56c4 6 10 10 10 18a10 10 0 0 1-20 0c0-6 6-10 10-18z" />',
-    moon: '<path d="M62 14a36 36 0 1 0 22 58 30 30 0 1 1-22-58z" /><path d="M74 26l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" />',
-    eye: '<path d="M8 50c22-30 62-30 84 0-22 30-62 30-84 0z" /><circle cx="50" cy="50" r="13" /><path d="M50 8v12M50 80v12" />',
-    shield: '<path d="M50 8l34 12v26c0 22-14 38-34 46-20-8-34-24-34-46V20z" /><path d="M50 26v50M30 44h40" />',
-    blast: '<circle cx="46" cy="56" r="26" /><path d="M64 36l10-12M74 24l8 2M74 24l-2-8" /><path d="M34 52a12 12 0 0 1 12-12" />',
-    strike: '<path d="M50 6v34" /><path d="M36 26l14 14 14-14" /><circle cx="50" cy="66" r="22" /><path d="M50 52v28M36 66h28" />',
-    snake: '<path d="M28 84c-14-16 4-30 22-30s36-14 22-30c-8-9-22-8-28 0" /><circle cx="44" cy="22" r="3" /><path d="M76 24l10-6M76 24l10 4" />',
-    soul: '<path d="M50 12c14 18 26 28 26 46a26 26 0 0 1-52 0c0-18 12-28 26-46z" /><path d="M40 58l10-10 10 10-10 10z" />',
-    quake: '<path d="M8 62h18l8-22 12 40 10-52 10 34 8-14h18" />',
-    bolt: '<path d="M56 6L24 56h22l-6 38 34-52H52z" />',
-    mask: '<path d="M14 30c12-8 60-8 72 0 0 30-14 52-36 58-22-6-36-28-36-58z" /><path d="M30 46l12 4M70 46l-12 4" />',
-    leaf: '<path d="M18 82C18 40 48 14 86 14c0 38-26 68-68 68z" /><path d="M18 82l44-44" />',
-    cam: '<path d="M18 34h48l16-10v52l-16-10H18z" /><circle cx="42" cy="50" r="9" />',
-    claw: '<path d="M22 84c6-30 16-52 30-70M42 86c4-26 12-46 26-62M62 86c2-20 8-36 20-50" />',
-    crystal: '<path d="M50 8l22 22-22 62-22-62z" /><path d="M28 30h44M50 8v84" />',
-    star: '<path d="M50 10l9 27h28l-23 17 9 28-23-17-23 17 9-28-23-17h28z" />',
-    crown: '<path d="M14 76l8-44 18 22 10-30 10 30 18-22 8 44z" /><path d="M14 86h72" />',
-    wave: '<path d="M8 60c14-22 28-22 42 0s28 22 42 0" /><path d="M8 40c14-22 28-22 42 0s28 22 42 0" />',
-    prism: '<path d="M50 10L86 80H14z" /><path d="M4 52h34M62 46l34-10M62 56l34 4M62 66l34 18" />',
-    hex2: '<path d="M50 8l36 21v42L50 92 14 71V29z" /><path d="M50 30l18 10v20L50 70 32 60V40z" />',
-    target: '<circle cx="50" cy="50" r="36" /><circle cx="50" cy="50" r="14" /><path d="M50 4v20M50 76v20M4 50h20M76 50h20" />',
-    butterfly: '<path d="M50 30v52" /><path d="M50 44C38 18 12 16 14 38s20 22 36 12" /><path d="M50 44c12-26 38-28 36-6s-20 22-36 12" /><path d="M50 56c-10 6-24 16-20 26s16 0 20-10M50 56c10 6 24 16 20 26s-16 0-20-10" />',
-    chip: '<rect x="24" y="24" width="52" height="52" rx="6" /><path d="M36 8v16M50 8v16M64 8v16M36 76v16M50 76v16M64 76v16M8 36h16M8 64h16M76 36h16M76 64h16" />',
-  };
-  return `<svg viewBox="0 0 100 100" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">${paths[type] || paths.wind}</svg>`;
-}
-
 let agentsMid = false; // opened during a match (F2 / pause menu): lock-in swaps your agent and resumes
+let joining = null; // joining a match that's already running: { taken: Set of agents someone else has }
 
-function openAgents(mid = false) {
+// The deathmatch-style screen: offline deathmatch, F2 mid-match, and joining an online match already running.
+function openAgents(mid = false, join = null) {
   if (mid && game.mode) { hud.center('<small>AGENTS ARE LOCKED IN FOR 5V5</small>'); return; } // no swapping in rounds
-  agentsMid = mid && running && game.state === 'playing';
+  joining = join;
+  agentsMid = !join && mid && running && game.state === 'playing';
   if (agentsMid) {
     paused = true; // set first so losing the pointer lock doesn't open the pause menu
     releaseInputs();
@@ -613,10 +589,22 @@ function openAgents(mid = false) {
     b.ondblclick = () => { selectAgent(id); lockIn(); };
     grid.appendChild(b);
   }
-  selectAgent(AGENTS[pickedAgent] ? pickedAgent : 'zephyr');
+  $('agent-sub').textContent = join ? 'This match is already running. Pick an agent to join it; greyed-out agents are taken.' : 'Your agent\'s abilities are on C, Q, E and X (ultimate, charged by kills).';
+  $('agent-note').textContent = '';
+  markTaken(true);
+}
+
+// Greys out the agents a joiner can't have and moves the selection off them.
+function markTaken(first = false) {
+  const taken = joining?.taken || new Set();
+  for (const c of $('agent-grid').children) { c.classList.toggle('taken', taken.has(c.dataset.id)); c.disabled = taken.has(c.dataset.id); }
+  const want = AGENTS[pickedAgent] ? pickedAgent : 'zephyr';
+  if (taken.has(want)) selectAgent(AGENT_ORDER.find(a => !taken.has(a)) || want);
+  else if (first) selectAgent(want);
 }
 
 function selectAgent(id) {
+  if (joining?.taken.has(id)) return;
   pickedAgent = id;
   const a = AGENTS[id];
   for (const c of $('agent-grid').children) c.classList.toggle('sel', c.dataset.id === id);
@@ -636,17 +624,94 @@ function selectAgent(id) {
       ${a.passive ? row('—', a.passive, 'passive') : ''}
     </div>
     <div class="lock"><button id="agent-back">Back</button><button id="agent-lock" class="primary">Lock in</button></div>`;
-  $('agent-back').onclick = () => (agentsMid ? resume() : show('menu'));
-  $('agent-lock').textContent = agentsMid ? 'Swap agent' : 'Lock in';
+  $('agent-back').onclick = () => (joining ? leaveRoom() : agentsMid ? resume() : show('menu'));
+  $('agent-lock').textContent = joining ? 'Join match' : agentsMid ? 'Swap agent' : 'Lock in';
   $('agent-lock').onclick = lockIn;
 }
 
 function lockIn() {
+  if (joining?.taken.has(pickedAgent)) return;
   settings.agent = pickedAgent;
   saveSettings(settings);
   updateMenuLoadout();
-  if (agentsMid) { switchAgent(pickedAgent); resume(); }
+  if (joining) { $('agent-note').textContent = 'Joining…'; $('agent-lock').disabled = true; net.pickAgent(pickedAgent); }
+  else if (agentsMid) { switchAgent(pickedAgent); resume(); }
   else startMatch();
+}
+
+// ---- Valorant-style pick (agentselect.js): online rooms, and offline 5v5 ----
+let localPick = null; // offline 5v5: { lobby, timer }
+const select = new SelectScreen($('select'), {
+  onHover: (a) => { if (localPick) { localPick.lobby.hover('me', a); select.update(localPick.lobby.state()); } else net.lobbyHover(a); },
+  onLock: (a) => {
+    settings.agent = a; saveSettings(settings); updateMenuLoadout();
+    if (localPick) { localPick.lobby.lock('me', a); select.update(localPick.lobby.state()); } else net.lobbyLock(a);
+  },
+  onStart: () => net.lobbyStart(),
+  onBack: () => { if (localPick) { clearInterval(localPick.timer); localPick = null; show('menu'); } else leaveRoom(); },
+});
+
+function leaveRoom() {
+  net.close();
+  joining = null;
+  netStatus('You left the room');
+  show('online');
+}
+
+// Offline 5v5: you pick, then the nine bots pick from what's left, then the match starts.
+function openLocalPick() {
+  const map = supportsMode(settings.map, 'rounds') ? settings.map : 'divide';
+  const lobby = new Lobby({ mode: 'rounds', map, mapName: MAPS[map] || map });
+  lobby.add('me', 'You', true);
+  lobby.start();
+  preloadMap(map).catch(() => {}); // startMatch reports it if it really fails
+  localPick = { lobby };
+  select.show(lobby.state(), 'me', { preferred: settings.agent });
+  show('select');
+  localPick.timer = setInterval(() => {
+    if (!localPick || localPick.lobby !== lobby) return;
+    const done = lobby.step();
+    select.update(lobby.state());
+    if (!done) return;
+    clearInterval(localPick.timer);
+    localPick = null;
+    matchFromPick(() => startMatch({ map, agent: lobby.get('me').a, lineup: lobby.lineup(), noResume: true }));
+  }, 100);
+}
+
+// The pick ended on its own, so there's no click to capture the mouse with: wait on the pause menu.
+async function matchFromPick(start) {
+  const ok = await start();
+  if (ok) $('pause-hint').textContent = 'Match started. Click Resume to play.';
+  return ok;
+}
+
+let autoAgent = null; // automated checks: lock this agent as soon as a pick screen opens
+
+function lobbyState(state, me, host) {
+  if ($('select').hidden || localPick) { localPick && clearInterval(localPick.timer); localPick = null; select.show(state, me, { host, preferred: settings.agent }); show('select'); }
+  else select.update(state);
+  const mine = state.players.find(p => p.n === me);
+  if (autoAgent && mine && !mine.locked && (state.phase === 'wait' || state.phase === 'pick')) net.lobbyLock(autoAgent);
+}
+
+// Host: the pick is over. Start the match with everyone's agents, then let the others in.
+async function startFromLobby(lobby) {
+  const ok = await matchFromPick(() => startMatch({ online: true, mode: lobby.mode, map: lobby.map, agent: lobby.get(net.nid)?.a, lineup: lobby.lineup(), noResume: true }));
+  if (!ok) { net.close(); show('online'); return; }
+  net.startFromLobby();
+  updateNetBadge();
+}
+
+// Joining a running match: pick on the deathmatch-style screen, with the agents in use greyed out.
+function joinPick(info) {
+  if (info.mapJSON) { try { addMap(info.mapJSON); } catch { /* the welcome brings it again */ } }
+  else preloadMap(info.map).catch(() => {});
+  const taken = new Set(info.taken);
+  if (autoAgent && !info.retry) { net.pickAgent(autoAgent); return; }
+  if (!joining || $('agents').hidden) openAgents(false, { taken });
+  else { joining.taken = taken; markTaken(); }
+  if (info.retry) { $('agent-note').textContent = 'Someone took that agent just before you. Pick another.'; $('agent-lock').disabled = false; }
 }
 
 // Swap the player's agent in the middle of a match: abilities reset, ultimate points carry over.
@@ -670,7 +735,7 @@ function updateMenuLoadout() {
   $('menu-map').textContent = settings.mode === 'rounds' && !supportsMode(settings.map, 'rounds') ? 'Divide (5v5 needs a 5v5 map)' : MAPS[settings.map] || settings.map;
 }
 
-$('play').onclick = () => openAgents();
+$('play').onclick = () => (settings.mode === 'rounds' ? openLocalPick() : openAgents());
 for (const b of document.querySelectorAll('.mode')) b.onclick = () => { settings.mode = b.dataset.mode; saveSettings(settings); updateMenuLoadout(); };
 $('menu-settings').onclick = () => openSettings('menu');
 $('resume').onclick = resume;
@@ -720,7 +785,7 @@ function updateNetBadge() {
 function netProfile() {
   const skinDefs = {};
   for (const sid of Object.values(settings.skins)) if (isCustom(sid) && SKINS[sid]) skinDefs[sid] = SKINS[sid];
-  return { name: settings.netName, color: parseInt(settings.netColor.slice(1), 16), agent: settings.agent, loadout: { ...settings.loadout }, skins: { ...settings.skins }, skinDefs };
+  return { name: settings.netName, color: parseInt(settings.netColor.slice(1), 16), loadout: { ...settings.loadout }, skins: { ...settings.skins }, skinDefs };
 }
 
 function readOnlineForm() {
@@ -728,7 +793,6 @@ function readOnlineForm() {
   settings.netColor = $('net-color').value;
   settings.netTransport = $('net-transport').value;
   if ($('net-mode').value) settings.mode = $('net-mode').value;
-  if (AGENTS[$('net-agent').value]) settings.agent = $('net-agent').value;
   const room = $('net-room').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   saveSettings(settings);
   return { transport: settings.netTransport, room };
@@ -739,23 +803,31 @@ function openOnline() {
   $('net-color').value = settings.netColor;
   $('net-transport').value = settings.netTransport;
   $('net-mode').value = settings.mode;
-  const ag = $('net-agent');
-  if (!ag.options.length) for (const id of AGENT_ORDER) ag.add(new Option(`${AGENTS[id].name} (${AGENTS[id].role})`, id));
-  ag.value = AGENTS[settings.agent] ? settings.agent : 'zephyr';
   if (!$('net-room').value) $('net-room').value = roomCode();
   netStatus(net.active ? `In room ${net.room}` : '');
   show('online');
 }
 
-async function hostOnline() {
+// The room opens on the agent select screen. `lobby: false` (automated checks) starts the match right away
+// and people join it with the deathmatch-style picker.
+async function hostOnline({ lobby = true } = {}) {
   const { transport, room } = readOnlineForm();
   if (!room) { netStatus('Pick a room code first', true); return false; }
   const rounds = settings.mode === 'rounds';
   const id = rounds && !supportsMode(settings.map, 'rounds') ? 'divide' : settings.map;
+  const mj = () => (mapInfo(id)?.file ? null : mapJSON(id));
+  if (lobby) {
+    try { await preloadMap(id); } catch (err) { netStatus(err.message, true); return false; }
+    if (running) { running = false; game.state = 'idle'; }
+    try {
+      await net.host({ transport, room, profile: netProfile(), mapJSON: mj(), lobby: new Lobby({ mode: settings.mode, map: id, mapName: MAPS[id] || id, botCount: settings.botCount }) });
+    } catch (err) { netStatus(err.message, true); net.close(); return false; }
+    return true;
+  }
   const ok = await startMatch({ online: true, mode: settings.mode, map: id, noResume: true });
   if (!ok) return false;
   try {
-    await net.host({ transport, room, profile: netProfile(), mapJSON: mapInfo(id)?.file ? null : mapJSON(id) });
+    await net.host({ transport, room, profile: netProfile(), mapJSON: mj() });
   } catch (err) {
     netStatus(err.message, true);
     toMenu();
@@ -766,7 +838,9 @@ async function hostOnline() {
   return true;
 }
 
-async function joinOnline() {
+async function joinOnline({ agent = null } = {}) {
+  autoAgent = AGENTS[agent] ? agent : null;
+  joining = null;
   const { transport, room } = readOnlineForm();
   if (!room) { netStatus('Enter the host\'s room code', true); return; }
   if (running) toMenu();
@@ -787,11 +861,12 @@ async function joinedMatch(w) {
   const rounds = w.mode === 'rounds';
   const flip = rounds && w.team === 1; // locally, our team is always team 0
   const ok = await startMatch({
-    online: true, mode: rounds ? 'rounds' : 'dm', map: w.map, botCount: 0, killLimit: w.opts.killLimit, timeLimit: w.opts.timeLimit, noResume: true,
+    online: true, mode: rounds ? 'rounds' : 'dm', map: w.map, botCount: 0, agent: AGENTS[w.agent] ? w.agent : settings.agent, killLimit: w.opts.killLimit, timeLimit: w.opts.timeLimit, noResume: true,
     netRounds: rounds, flip, startSide: rounds ? (flip ? (w.ss === 'atk' ? 'def' : 'atk') : w.ss) : undefined, credits: w.credits, net,
   });
   if (!ok) { net.close(); return; }
   net.attachClient(w);
+  joining = null;
   updateNetBadge();
   $('pause-hint').textContent = 'Joined. Click Resume to play.';
 }
