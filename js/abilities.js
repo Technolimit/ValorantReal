@@ -287,7 +287,7 @@ export const AGENTS = {
           const o = kit.owner, pos = this.preview(kit);
           if (!pos) return false;
           o.game.emit('ability', { who: o, type: 'step', pos });
-          later(kit, 1.0, () => o.game.teleportNear(o, pos));
+          later(kit, 0.5, () => o.game.teleportNear(o, pos));
         },
       },
       q: {
