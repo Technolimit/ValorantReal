@@ -369,6 +369,46 @@ const checks = [
     const stillHeld = p.kit.armed?.k === 'q' && p.kit.charges.q === 1;
     return { pass: Object.values(out).every(Boolean) && held && stillHeld, placed: out, flareHeldInBuy: held, flareNotThrownInBuy: stillHeld };
   }],
+  ['Nightwalk: untouchable while the shade forms, arrives after 4 s; shooting the shade cancels it', async () => {
+    const g = await __start({ agent: 'umbra' });
+    const p = g.player, b = g.bots[0], k = p.kit;
+    if (!__place(g, p, 12)) return { error: 'no open ground' };
+    const start = [...p.pos], dest = __ahead(p, 8); dest[1] = p.pos[1];
+    k.ultPoints = k.ultCost; k.chooseShadow(dest);
+    g.damage(p, b, 50, { part: 'body', def: { id: 'vandal', name: 'Vandal' }, dist: 5, point: p.eye() });
+    const hpDuring = p.hp;
+    __tick(g, 3.5);
+    const notYet = Math.hypot(p.pos[0] - dest[0], p.pos[2] - dest[2]) > 1;
+    __tick(g, 0.7);
+    const arrived = Math.hypot(p.pos[0] - dest[0], p.pos[2] - dest[2]) < 1 && !k.shadow;
+    // Again, but an enemy shoots the shade.
+    p.pos = [...start]; p.prevPos = [...start];
+    k.chooseShadow(dest); g.tick();
+    b.pos = __ahead(p, 14); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos];
+    __aim(b, [dest[0], dest[1] + 1, dest[2]]);
+    g.fireBullets(b, b.gun, [[-Math.sin(b.yaw) * Math.cos(b.pitch), Math.sin(b.pitch), -Math.cos(b.yaw) * Math.cos(b.pitch)]]);
+    __tick(g, 4.5);
+    const stayed = Math.hypot(p.pos[0] - start[0], p.pos[2] - start[2]) < 0.5 && !k.shadow && !(p.st.intangibleUntil > g.time);
+    return { pass: hpDuring === 100 && notYet && arrived && stayed, hpWhileChannelling: hpDuring, notThereAt3_5s: notYet, arrivedAt4_2s: arrived, shotShadeCancels: stayed };
+  }],
+  ['Riftwalk right click leaves the rift where you stand; Mindread needs an enemy body', async () => {
+    const g = await __start({ agent: 'mirage' });
+    const p = g.player;
+    if (!__place(g, p, 10)) return { error: 'no open ground' };
+    p.kit.agent.abilities.e.use(p.kit, 'right');
+    const gt = p.kit.gate, at = [...gt.pos];
+    __tick(g, 1);
+    const still = Math.hypot(gt.pos[0] - at[0], gt.pos[2] - at[2]) < 1e-6;
+    const g2 = await __start({ agent: 'lattice' });
+    const q = g2.player, b = g2.bots[0], k = q.kit;
+    if (!__place(g2, q, 10)) return { error: 'no open ground' };
+    const without = k.agent.abilities.x.use(k) !== false;
+    b.pos = __ahead(q, 5); b.pos[1] = q.pos[1]; b.prevPos = [...b.pos];
+    g2.kill(b, q, { part: 'body', def: { id: 'x', name: 'x' } }); b.respawnAt = Infinity;
+    __aim(q, [b.deathPos[0], b.deathPos[1] + 0.4, b.deathPos[2]]);
+    const withBody = k.agent.abilities.x.use(k) !== false;
+    return { pass: still && !without && withBody, riftStaysPut: still, mindreadWithoutBody: without, mindreadOnBody: withBody };
+  }],
   ['Bot 5v5 (6 min): no errors, bot flashes hit enemies more than their own side', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'fight' });
     const s = { flashes: 0, self: 0, ally: 0, enemy: 0, errors: 0, rounds: 0 };

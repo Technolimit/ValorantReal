@@ -871,6 +871,11 @@ export class Renderer {
       const sil = new THREE.Mesh(new THREE.BoxGeometry(0.46, 1.8, 0.3), new THREE.MeshStandardMaterial({ color: 0x5a6cff, emissive: 0x2a3399, emissiveIntensity: 0.8, transparent: true, opacity: 0.75 }));
       sil.position.y = 0.95; g.add(sil);
       light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), mat(0xffffff, 0x8f9bff)); light.position.y = 1.75; g.add(light);
+    } else if (d.kind === 'shade') {
+      // Nightwalk: a dark, smoky figure where Umbra is about to appear
+      const sil = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.2, 4, 10), new THREE.MeshStandardMaterial({ color: 0x1a1030, emissive: 0x4a2a8f, emissiveIntensity: 0.9, transparent: true, opacity: 0.8 }));
+      sil.position.y = 0.95; g.add(sil);
+      light = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), mat(0xffffff, 0xa67bff)); light.position.y = 1.6; g.add(light);
     } else if (d.kind === 'gate') {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.06, 8, 20), mat(0x2a2f6e, 0x5a6cff)); ring.rotation.x = Math.PI / 2; ring.position.y = 0.1;
       light = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), mat(0xffffff, 0x5a6cff)); light.position.y = 0.2;
@@ -943,6 +948,7 @@ export class Renderer {
       if (d.kind === 'wire') { g.position.set(...d.pos); g.visible = true; }
       if (d.kind === 'cam') { const ow = d.owner; g.rotation.set(0, ow.yaw, 0); g.visible = !(ow.kit?.view === d); }
       if (d.kind === 'tiger' || d.kind === 'sdrone' || d.kind === 'owl') g.visible = !(d.owner.kit?.pilot === d);
+      if (d.kind === 'shade') g.visible = d.owner !== this.game.player; // your view is already inside it
       if (d.kind === 'sdrone' || d.kind === 'owl') g.rotation.set(0, Math.atan2(-d.dir[0], -d.dir[2]), 0);
       if (g.userData.spin) for (const m of g.userData.spin) m.rotation.y += 0.03;
       if (d.kind === 'leer') { const e = this.camera.position; g.lookAt(e.x, e.y, e.z); }

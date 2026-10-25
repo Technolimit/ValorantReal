@@ -19,6 +19,7 @@ export const SHOOTABLE = {
   cam: { hp: 15, y: 0, r: 0.22 }, wire: { hp: 20, y: 0, r: 0.22 }, boombot: { hp: 100, y: 0.25, r: 0.35 },
   tiger: { hp: 100, y: 0.5, r: 0.5 }, decoy: { hp: 1, y: 1, r: 0.45 }, zknife: { hp: 1, y: 0, r: 0.22 },
   prowler: { hp: 1, y: 0.4, r: 0.35 }, haunt: { hp: 1, y: 0.3, r: 0.3 }, owl: { hp: 1, y: 0, r: 0.3 },
+  gate: { hp: 1, y: 0.15, r: 0.3 }, shade: { hp: 1, y: 1, r: 0.5 }, // Riftwalk's rift, Nightwalk's shade
   lockdown: { hp: 150, y: 0.5, r: 0.5 }, // the device, while it charges
   cove: { hp: 500 }, // Lagoon's water dome: stops every bullet until it breaks
 };
@@ -600,6 +601,7 @@ export class Game {
         }
       } else if (d.kind === 'decoy' || d.kind === 'gate' || d.kind === 'tiger' || d.kind === 'prowler') {
         // Ground runners. Steered ones follow the owner's aim.
+        if (d.still) continue; // a rift left in place
         if (d.steer && d.owner.alive) { const yaw = d.owner.yaw; d.dir = [-Math.sin(yaw), 0, -Math.cos(yaw)]; }
         let sp = d.kind === 'gate' ? 5 : d.kind === 'decoy' ? 6 : d.kind === 'tiger' ? 8 : 9;
         if (d.kind === 'prowler') {

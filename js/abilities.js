@@ -82,6 +82,7 @@ function landing(o, range) {
 // player is holding it; recomputed for bots and replays, which cast without holding.
 const target = (kit, a) => (kit.armed && kit.previewPos) || a.preview(kit);
 const later = (kit, delay, fn) => kit.timers.push({ at: kit.now + delay, fn });
+const SHADOW_TIME = 4; // Nightwalk: how long the shade stands before you arrive
 const mine = (kit, delay, fn) => kit.timers.push({ at: kit.now + delay, fn, self: true });
 // Flight time for a thrown ability at `speed` m/s (through an optional bend point), never instant.
 function flight(from, to, speed, via) {
@@ -147,11 +148,11 @@ function lookAt(kit, kind, maxDeg = 9) {
 }
 
 // The teammate (alive, or a body for revives) closest to the crosshair within range and in sight.
-function allyInView(kit, { dead = false, range = 20, maxDeg = 12 } = {}) {
+function allyInView(kit, { dead = false, range = 20, maxDeg = 12, enemy = false } = {}) { // enemy: an enemy instead
   const o = kit.owner, g = o.game, e = o.eye(), f = dirFromAngles(o.yaw, o.pitch);
   let best = null, bestCos = Math.cos(maxDeg * DEG);
   for (const c of g.combatants) {
-    if (c === o || g.isEnemy(o, c) || c.alive === dead) continue;
+    if (c === o || g.isEnemy(o, c) !== enemy || c.alive === dead) continue;
     const t = dead ? (c.deathPos ? [c.deathPos[0], c.deathPos[1] + 0.4, c.deathPos[2]] : null) : [c.pos[0], c.pos[1] + 1.1, c.pos[2]];
     if (!t) continue;
     const dx = t[0] - e[0], dy = t[1] - e[1], dz = t[2] - e[2], dist = Math.hypot(dx, dy, dz);
@@ -346,7 +347,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Nightwalk', desc: 'Open the map and click anywhere. Your view travels there as a shade for 3 s while your body stays behind, exposed; if your body takes damage it is cancelled. Then you teleport.', points: 7,
+        name: 'Nightwalk', desc: 'Open the map and click anywhere. You fade out (untouchable) while a shade of you forms there; after 4 s you step out of it. Enemies who shoot the shade first cancel it and you stay where you were.', points: 7,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -817,10 +818,12 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Riftwalk', desc: 'Hold the rift, left click to send it crawling forward along the ground. Press E again any time in the next 30 s to teleport to it.', charges: 1, cooldown: 30,
-        use(kit) {
-          const o = kit.owner, f = fwd2(o.yaw);
-          kit.gate = o.game.addDevice({ kind: 'gate', owner: o, pos: [o.pos[0] + f[0] * 0.8, o.pos[1], o.pos[2] + f[1] * 0.8], dir: [f[0], 0, f[1]], life: 30 });
+        name: 'Riftwalk', desc: 'Hold the rift: left click sends it crawling forward along the ground, right click leaves it where you stand. Press E again any time in the next 30 s to teleport to it. Enemies can shoot it.', charges: 1, cooldown: 30,
+        armHint: 'LEFT CLICK: SEND IT · RIGHT CLICK: LEAVE IT HERE',
+        use(kit, mode) {
+          const o = kit.owner, f = fwd2(o.yaw), still = mode === 'right';
+          const pos = still ? [...o.pos] : [o.pos[0] + f[0] * 0.8, o.pos[1], o.pos[2] + f[1] * 0.8];
+          kit.gate = o.game.addDevice({ kind: 'gate', owner: o, pos, dir: [f[0], 0, f[1]], life: 30, still });
         },
         reuse(kit) {
           const gt = kit.gate;
@@ -954,9 +957,9 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Mindread', desc: 'If you got a kill in the last 20 s, read the victim’s mind: every enemy is revealed twice, 3 s apart.', points: 6,
+        name: 'Mindread', desc: 'Look at an enemy’s body (12 m) and press X to read their mind: every living enemy is revealed twice, 3 s apart.', points: 6,
         use(kit) {
-          if (kit.now - (kit.lastKillAt ?? -99) > 20) return false;
+          if (!allyInView(kit, { dead: true, enemy: true, range: 12, maxDeg: 18 })) return false;
           const g = kit.owner.game;
           for (const t of [0.5, 3.5]) later(kit, t, () => g.revealAll(kit.owner, 2));
           g.emit('ability', { who: kit.owner, type: 'ult' });
@@ -1714,10 +1717,12 @@ export class Kit {
       // Frozen while picking a spot or channelling. A piloted drone takes the movement keys instead.
       this.pilotInput = { fwd: inp.fwd, side: inp.side, jumpHeld: inp.jumpHeld, crouch: inp.crouch };
       inp.fwd = inp.side = 0; inp.jump = false;
-      if (this.shadow && this.shadow.phase === 'channel' && now >= this.shadow.until) {
-        g.teleport(o, this.shadow.dest);
-        this.shadow = null;
-        g.emit('shadowEnd', { who: o, arrived: true });
+      const sh = this.shadow;
+      if (sh && sh.phase === 'channel' && sh.shade.removed && now < sh.until) this.endShadow(false); // the shade was shot
+      else if (sh && sh.phase === 'channel' && now >= sh.until) {
+        sh.shade.removed = true;
+        this.endShadow(true);
+        g.teleport(o, sh.dest);
       }
     }
   }
@@ -1726,7 +1731,11 @@ export class Kit {
   chooseShadow(dest) {
     const o = this.owner, g = o.game;
     if (!g.canStand(o, dest)) return false;
-    this.shadow = { phase: 'channel', dest, until: this.now + 3 };
+    // You fade out where you stand (can't be seen or hurt) while a shade forms at the destination. Shooting
+    // the shade (enemies) cancels it.
+    const shade = g.addDevice({ kind: 'shade', owner: o, pos: [...dest], life: SHADOW_TIME + 0.5 });
+    this.shadow = { phase: 'channel', dest, until: this.now + SHADOW_TIME, shade };
+    o.st.hiddenUntil = o.st.intangibleUntil = this.now + SHADOW_TIME;
     this.ultPoints = 0;
     this.lastUse.x = this.now;
     g.emit('ability', { who: o, type: 'ult' });
@@ -1734,13 +1743,15 @@ export class Kit {
     return true;
   }
 
-  // Damage while channelling as a shade cancels the teleport.
+  endShadow(arrived) {
+    const o = this.owner;
+    this.shadow = null;
+    o.st.hiddenUntil = o.st.intangibleUntil = 0;
+    o.game.emit('shadowEnd', { who: o, arrived, cancelled: !arrived });
+  }
+
   onDamaged() {
     if (this.pilot && this.pilot.kind === 'owl') { this.pilot.removed = true; this.pilot = null; } // body hit: drone drops
-    if (this.shadow && this.shadow.phase === 'channel') {
-      this.shadow = null;
-      this.owner.game.emit('shadowEnd', { who: this.owner, cancelled: true });
-    }
   }
 
   // Agents that act from the grave (Thistle): smokes from the map and her ultimate.
