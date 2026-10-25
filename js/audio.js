@@ -174,6 +174,12 @@ const GUN_SOUNDS = {
     spin: { f0: 55, f1: 110, gain: 0.06 },
   },
 };
+const FALLOFF = {
+  gun: { model: 'inverse', ref: 5, roll: 1.0, max: 150 },
+  suppressed: { model: 'inverse', ref: 3, roll: 1.8, max: 80 },
+  step: { model: 'linear', ref: 2, max: 35 },
+  other: { model: 'inverse', ref: 4, roll: 1.1, max: 120 },
+};
 GUN_SOUNDS.headhunter = GUN_SOUNDS.sheriff;
 GUN_SOUNDS.tourdeforce = GUN_SOUNDS.operator;
 // Anything not listed sounds like the stock gun of its model.
@@ -183,6 +189,8 @@ export class Sound {
   constructor() {
     this.ctx = null;
     this.volume = 0.6;
+    this.clips = new Map(); // your own uploaded sounds, 'vandal:fire' -> AudioBuffer (see customsounds.js)
+    this.clipData = new Map(); // ...and their file bytes, kept until there's an AudioContext to decode them
   }
 
   // ctx: an AudioContext to use instead of a new one (tools/render-guns.mjs passes an OfflineAudioContext).
@@ -214,6 +222,32 @@ export class Sound {
     this.verbOwn = ctx.createConvolver(); this.verbOwn.buffer = ir; this.verbOwn.connect(this.master);
     this.verbWorld = ctx.createConvolver(); this.verbWorld.buffer = ir; this.verbWorld.connect(this.world);
     this.listenerPos = [0, 0, 0];
+    for (const [key, data] of this.clipData) this.decodeClip(key, data).catch(() => {});
+  }
+
+  // Your own sound for one gun slot ('vandal:fire', 'vandal:reload', 'vandal:equip'). null puts the default back.
+  setClip(key, data) {
+    this.clips.delete(key);
+    this.clipData.delete(key);
+    if (!data) return Promise.resolve();
+    this.clipData.set(key, data);
+    return this.ctx ? this.decodeClip(key, data) : Promise.resolve();
+  }
+
+  decodeClip(key, data) {
+    // decodeAudioData detaches the buffer it is given, so keep the original for later contexts.
+    return this.ctx.decodeAudioData(data.slice(0)).then((buf) => {
+      if (this.clipData.get(key) === data) this.clips.set(key, buf);
+      return buf;
+    });
+  }
+
+  playClip(buf, dest, at = 0) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(dest);
+    src.start(this.ctx.currentTime + at);
+    return src;
   }
 
   // Stereo decaying noise that darkens as it fades (highs die first, like a real room).
@@ -262,15 +296,19 @@ export class Sound {
     this.muffle.frequency.setTargetAtTime(on ? 350 : 22000, t, on ? 0.05 : 0.3);
   }
 
+  // How loudness falls off with distance, per kind of sound. Inverse: full volume out to `ref` metres, then
+  // ref / (ref + roll * (d - ref)). Linear: fades to silence at `max` metres. Gunshots carry across the map,
+  // suppressed ones die out much sooner, footsteps are gone past ~35 m.
   // Output node: straight to master for your own sounds, through a panner for everyone else's.
-  out(pos) {
+  out(pos, kind = 'other') {
     if (!pos) return this.master;
+    const f = FALLOFF[kind] || FALLOFF.other;
     const p = this.ctx.createPanner();
     p.panningModel = 'HRTF';
-    p.distanceModel = 'inverse';
-    p.refDistance = 4;
-    p.rolloffFactor = 1.1;
-    p.maxDistance = 120;
+    p.distanceModel = f.model;
+    p.refDistance = f.ref;
+    p.rolloffFactor = f.model === 'linear' ? 1 : f.roll;
+    p.maxDistance = f.max;
     if (p.positionX) { p.positionX.value = pos[0]; p.positionY.value = pos[1]; p.positionZ.value = pos[2]; }
     else p.setPosition(pos[0], pos[1], pos[2]);
     p.connect(this.world);
@@ -311,15 +349,27 @@ export class Sound {
     o.stop(t + decay + 0.05);
   }
 
+  // Distance gain for a kind of sound, the same curve the panner applies (used for the reverb send, which
+  // bypasses the panner).
+  distGain(pos, kind) {
+    const f = FALLOFF[kind] || FALLOFF.other, l = this.listenerPos;
+    const d = Math.max(f.ref, Math.hypot(pos[0] - l[0], pos[1] - l[1], pos[2] - l[2]));
+    if (f.model === 'linear') return Math.max(0, 1 - (d - f.ref) / (f.max - f.ref));
+    return f.ref / (f.ref + f.roll * (d - f.ref));
+  }
+
   // gun (optional): the Gun firing, which keys the Ares / Odin spin-up whir per gun.
   gunshot(def, pos, gun) {
     if (!this.ctx) return;
     const s = GUN_SOUNDS[def.id] || GUN_SOUNDS[MODEL_SOUND[def.model]];
-    if (!s) return;
+    const clip = this.clips.get(`${def.id}:fire`);
+    if (!s && !clip) return;
     const c = this.ctx;
-    let dest = this.out(pos), verb = this.verbOwn, wet = s.verb;
+    const kind = def.suppressed ? 'suppressed' : 'gun';
+    let dest = this.out(pos, kind), verb = this.verbOwn, wet = s ? s.verb : 0.15;
     if (pos) {
-      // Far shots lose their top end and sit further back in the reverb.
+      // Far shots lose their top end and sit further back in the reverb: the tail fades with distance too,
+      // only more slowly than the direct sound (it used to stay full volume at any range).
       const l = this.listenerPos, dist = Math.hypot(pos[0] - l[0], pos[1] - l[1], pos[2] - l[2]);
       const far = c.createBiquadFilter();
       far.type = 'lowpass';
@@ -327,7 +377,7 @@ export class Sound {
       far.connect(dest);
       dest = far;
       verb = this.verbWorld;
-      wet *= 1 + dist / 25;
+      wet *= 1.6 * Math.sqrt(this.distGain(pos, kind));
     }
     const send = c.createGain();
     send.gain.value = wet;
@@ -335,6 +385,11 @@ export class Sound {
     const mix = c.createGain();
     mix.connect(dest);
     mix.connect(send);
+    if (clip) {
+      mix.gain.value = pos ? 1.2 : 0.6;
+      this.playClip(clip, mix);
+      return;
+    }
     const v = 1 + (Math.random() - 0.5) * 0.06; // a little variation per shot so sprays don't sound looped
     const g = s.gain * (pos ? 1.6 : 0.55);
     const L = (o) => this.noiseHit({ dest: mix, ...o, gain: o.gain * g });
@@ -378,14 +433,14 @@ export class Sound {
 
   footstep(pos, own) {
     if (!this.ctx) return;
-    const dest = this.out(pos);
+    const dest = this.out(pos, 'step');
     this.noiseHit({ dest, lp: 700 + Math.random() * 300, hp: 120, decay: 0.07, gain: own ? 0.12 : 0.55 });
     this.tone({ dest, freq: 90, end: 50, decay: 0.05, gain: own ? 0.05 : 0.25 });
   }
 
   land(pos, own) {
     if (!this.ctx) return;
-    const dest = this.out(pos);
+    const dest = this.out(pos, 'step');
     this.noiseHit({ dest, lp: 600, decay: 0.12, gain: own ? 0.18 : 0.6 });
   }
 
@@ -427,7 +482,10 @@ export class Sound {
   }
 
   // steps: [[share of duration, 'click' | 'thunk'], ...] from reloadanim.js
-  reload(duration, steps = [[0.1, 'click'], [0.5, 'thunk'], [0.85, 'click']]) {
+  // id: the gun, for your own uploaded reload sound (played once at the start instead of the clicks).
+  reload(duration, steps = [[0.1, 'click'], [0.5, 'thunk'], [0.85, 'click']], id) {
+    const clip = this.ctx && this.clips.get(`${id}:reload`);
+    if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
     for (const [f, kind] of steps) {
       const at = duration * f;
       if (kind === 'thunk') this.thunk(at);
@@ -441,8 +499,10 @@ export class Sound {
     this.tone({ dest: this.master, at, freq: 140, end: 70, decay: 0.08, gain: 0.25 });
   }
 
-  equip() {
+  equip(id) {
     if (!this.ctx) return;
+    const clip = this.clips.get(`${id}:equip`);
+    if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
     this.noiseHit({ dest: this.master, lp: 1500, hp: 400, decay: 0.08, gain: 0.12 });
     this.click(0.1, 0.18);
   }
