@@ -3,6 +3,7 @@ import { PLAYER, TAG, HITBOX } from './config.js';
 import { rayAABB } from './world.js';
 import { WEAPONS } from './weapons.js';
 import { Gun } from './gun.js';
+import { MELEE_ORDER } from './melee.js';
 import { applyDash, applyGlide, applyForced } from './abilities.js';
 
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -18,6 +19,8 @@ export class Combatant {
     this.game = game;
     this.name = name;
     this.isBot = isBot;
+    // Cosmetic model for the knife slot (melee.js). Bots carry a random one; players send theirs.
+    this.meleeType = isBot ? MELEE_ORDER[Math.floor(Math.random() * MELEE_ORDER.length)] : 'knife';
     this.color = color;
     this.pos = [0, 0, 0];
     this.prevPos = [0, 0, 0];

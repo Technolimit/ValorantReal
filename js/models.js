@@ -3,6 +3,7 @@
 // one of the skin slots in skins.js: body, trim, metal, grip, glow.
 import * as THREE from '../vendor/three.module.min.js';
 import { SKINS, TEXTURES, onSkinsChanged } from './skins.js';
+import { MELEE, inspectPose } from './melee.js';
 
 const PI = Math.PI;
 
@@ -77,18 +78,22 @@ function kit(g, mats) {
     const m = new THREE.Mesh(worldUV(geo), mats[slot]);
     m.position.set(x, y, z);
     m.rotation.set(rx, ry, rz);
-    if (cur) { m.position.sub(cur.position); cur.add(m); } else g.add(m);
+    if (cur) { m.position.sub(origin(cur)); cur.add(m); } else g.add(m);
     return m;
   };
+  // Where a part group sits in model space (parts can nest; nothing is rotated while building).
+  const origin = (o) => { const v = new THREE.Vector3(); for (; o && o !== g; o = o.parent) v.add(o.position); return v; };
   return {
     parts,
-    part: (name, pivot = [0, 0, 0]) => {
+    // part(name, pivot, parent): `parent` names a part to nest inside (a balisong blade inside the spinning knife).
+    part: (name, pivot = [0, 0, 0], parent = null) => {
       if (!name) { cur = null; return; }
       if (!parts[name]) {
-        const p = new THREE.Group();
+        const p = new THREE.Group(), host = parent ? parts[parent] : null;
         p.position.set(...pivot);
+        if (host) p.position.sub(origin(host));
         p.userData.base = { pos: p.position.clone(), rot: p.rotation.clone() };
-        g.add(p);
+        (host || g).add(p);
         parts[name] = p;
       }
       cur = parts[name];
@@ -109,6 +114,8 @@ function kit(g, mats) {
       geo.rotateY(-PI / 2);
       return put(geo, slot, x, 0, 0);
     },
+    // Ring (finger rings, pommels): radius r, tube thickness t, lying in the x-y plane unless rotated.
+    tor: (r, t, slot, x, y, z, rx = 0, ry = 0, rz = 0) => put(new THREE.TorusGeometry(r, t, 8, 20), slot, x, y, z, rx, ry, rz),
     // A row of small blocks (vents, rail teeth, fluting).
     teeth: (n, z0, z1, w, h, d, slot, x, y) => {
       for (let i = 0; i < n; i++) put(new THREE.BoxGeometry(w, h, d), slot, x, y, z0 + (z1 - z0) * (n === 1 ? 0.5 : i / (n - 1)));
@@ -194,6 +201,84 @@ const DESIGNS = {
     k.teeth(5, 0.0, 0.08, 0.029, 0.029, 0.004, 'grip', 0, 0);
     k.cyl(0.016, 0.02, 'body', 0, 0, 0.1, 10);
     return { muzzle: [0, 0, -0.24], sightY: 0 };
+  },
+
+  // ---- melee types (js/melee.js): the hand grips at the origin, the blade points to -z ----
+  axe(k) {
+    k.cyl(0.011, 0.36, 'trim', 0, 0, -0.1, 10);
+    k.cyl(0.0135, 0.1, 'grip', 0, 0, 0.03, 10);
+    k.teeth(4, -0.005, 0.065, 0.029, 0.029, 0.004, 'trim', 0, 0);
+    k.cyl(0.016, 0.016, 'body', 0, 0, 0.088, 10);
+    k.box(0.024, 0.044, 0.05, 'body', 0, 0.002, -0.262);
+    k.box(0.018, 0.028, 0.032, 'trim', 0, -0.034, -0.262);
+    k.prof([[-0.24, 0.015], [-0.243, 0.06], [-0.208, 0.102], [-0.25, 0.114], [-0.3, 0.114], [-0.346, 0.098], [-0.292, 0.06], [-0.285, 0.015]], 0.008, 'metal', 0, 0.001);
+    k.prof([[-0.206, 0.099], [-0.25, 0.117], [-0.3, 0.117], [-0.348, 0.1], [-0.342, 0.094], [-0.3, 0.109], [-0.25, 0.109], [-0.212, 0.095]], 0.0088, 'glow', 0, 0.0005);
+    k.box(0.026, 0.006, 0.054, 'glow', 0, 0.026, -0.262);
+    return { muzzle: [0, 0.07, -0.3], sightY: 0 };
+  },
+
+  katana(k) {
+    k.prof([[-0.045, 0.012], [-0.3, 0.017], [-0.55, 0.022], [-0.68, 0.025], [-0.725, 0.014], [-0.705, -0.003], [-0.55, -0.006], [-0.3, -0.01], [-0.045, -0.012]], 0.0065, 'metal', 0, 0.0012);
+    k.prof([[-0.06, -0.006], [-0.3, -0.004], [-0.55, 0.0], [-0.69, 0.006], [-0.718, 0.012], [-0.703, -0.002], [-0.55, -0.0055], [-0.3, -0.0095], [-0.06, -0.0115]], 0.007, 'glow', 0, 0.0004);
+    k.box(0.012, 0.03, 0.022, 'metal', 0, 0, -0.04);
+    k.cyl(0.036, 0.008, 'body', 0, 0, -0.026, 8);
+    k.cyl(0.0145, 0.2, 'grip', 0, 0, 0.075, 8);
+    for (let i = 0; i < 6; i++) k.box(0.031, 0.031, 0.008, 'trim', 0, 0, -0.008 + i * 0.033, 0, 0, PI / 4);
+    k.cyl(0.017, 0.02, 'body', 0, 0, 0.18, 8);
+    return { muzzle: [0, 0, -0.72], sightY: 0 };
+  },
+
+  karambit(k) {
+    k.prof([[-0.015, 0.01], [-0.07, 0.013], [-0.12, -0.004], [-0.155, -0.04], [-0.168, -0.074], [-0.142, -0.05], [-0.11, -0.026], [-0.06, -0.012], [-0.015, -0.01]], 0.006, 'metal', 0, 0.001);
+    k.prof([[-0.06, -0.012], [-0.11, -0.026], [-0.142, -0.05], [-0.166, -0.072], [-0.138, -0.044], [-0.106, -0.02], [-0.06, -0.0075]], 0.0068, 'glow', 0, 0.0004);
+    k.box(0.017, 0.028, 0.085, 'grip', 0, 0, 0.032);
+    k.box(0.019, 0.01, 0.07, 'trim', 0, 0.012, 0.03);
+    k.tor(0.018, 0.0055, 'body', 0, 0, 0.095, 0, PI / 2, 0);
+    k.tor(0.0185, 0.0018, 'glow', 0, 0, 0.095, 0, PI / 2, 0);
+    return { muzzle: [0, -0.06, -0.16], sightY: 0 };
+  },
+
+  // Balisong: the blade and the free ("bite") handle each turn on the pivot pin, so inspects can flip them.
+  balisong(k) {
+    const pin = -0.012;
+    k.box(0.0075, 0.022, 0.125, 'grip', -0.0055, 0, 0.05);
+    k.box(0.0078, 0.008, 0.11, 'trim', -0.0058, 0, 0.05);
+    k.box(0.016, 0.008, 0.008, 'glow', 0, 0.006, 0.113);
+    k.part('h2', [0, 0, pin], 'w');
+    k.box(0.0075, 0.022, 0.125, 'grip', 0.0055, 0, 0.05);
+    k.box(0.0078, 0.008, 0.11, 'trim', 0.0058, 0, 0.05);
+    k.part('blade', [0, 0, pin], 'w');
+    k.prof([[-0.005, 0.009], [-0.1, 0.011], [-0.142, 0.0], [-0.12, -0.008], [-0.005, -0.009]], 0.0035, 'metal', 0, 0.0008);
+    k.prof([[-0.03, -0.0095], [-0.12, -0.0085], [-0.14, -0.001], [-0.118, -0.005], [-0.03, -0.006]], 0.0042, 'glow', 0, 0.0003);
+    k.cyl(0.004, 0.02, 'metal', 0, 0, pin, 8, 0, 0, PI / 2);
+    k.part('w');
+    return { muzzle: [0, 0, -0.15], sightY: 0 };
+  },
+
+  kunai(k) {
+    k.prof([[-0.01, 0.012], [-0.055, 0.021], [-0.14, 0.0], [-0.055, -0.021], [-0.01, -0.012]], 0.006, 'metal', 0, 0.0012);
+    k.box(0.0068, 0.003, 0.11, 'glow', 0, 0, -0.065);
+    k.cyl(0.0085, 0.085, 'grip', 0, 0, 0.035, 8);
+    k.teeth(6, -0.002, 0.07, 0.021, 0.021, 0.004, 'trim', 0, 0);
+    k.tor(0.015, 0.004, 'body', 0, 0, 0.093, PI / 2, 0, 0);
+    k.tor(0.0155, 0.0015, 'glow', 0, 0, 0.093, PI / 2, 0, 0);
+    return { muzzle: [0, 0, -0.14], sightY: 0 };
+  },
+
+  // Arc Blade: the beam is its own part so it can be dimmed and relit (scaled along its length).
+  arc(k) {
+    k.cyl(0.016, 0.13, 'body', 0, 0, 0.045, 12);
+    k.teeth(5, 0.0, 0.09, 0.035, 0.008, 0.006, 'grip', 0, 0);
+    k.cyl(0.019, 0.016, 'trim', 0, 0, 0.115, 12);
+    k.box(0.05, 0.014, 0.022, 'trim', 0, 0, -0.03);
+    k.box(0.008, 0.026, 0.02, 'glow', 0.026, 0.006, -0.036);
+    k.box(0.008, 0.026, 0.02, 'glow', -0.026, 0.006, -0.036);
+    k.cyl(0.011, 0.012, 'metal', 0, 0, -0.045, 12);
+    k.part('beam', [0, 0, -0.045], 'w');
+    k.box(0.006, 0.026, 0.42, 'glow', 0, 0, -0.255);
+    k.box(0.0035, 0.012, 0.43, 'lens', 0, 0.0, -0.26);
+    k.part('w');
+    return { muzzle: [0, 0, -0.45], sightY: 0 };
   },
 
   // Edgestorm: a fan of throwing blades held in the hand; each is its own part so thrown ones disappear.
@@ -679,9 +764,12 @@ export function gunModel(weaponId, skinId = 'standard', { noHands = false } = {}
   const g = new THREE.Group();
   const mats = skinMaterials(skinId);
   const k = kit(g, mats);
+  const melee = MELEE[weaponId];
+  if (melee) k.part('w', melee.pivot); // the whole weapon, so inspects can spin it in the hand
   const d = (DESIGNS[weaponId] || DESIGNS.classic)(k);
+  k.part(null);
   // Hands
-  if (noHands) { /* a gun lying on the floor */ } else if (weaponId !== 'knife') {
+  if (noHands) { /* a gun lying on the floor */ } else if (!melee) {
     k.box(0.072, 0.072, 0.3, 'sleeve', 0.035, -0.09, 0.22, 0.3);
     k.box(0.05, 0.05, 0.07, 'glove', 0.01, -0.04, 0.045, -0.2);
   } else {
@@ -697,6 +785,31 @@ export function gunModel(weaponId, skinId = 'standard', { noHands = false } = {}
   g.userData.hands = offHands(g, k.parts, mats);
   if (k.parts.shell) k.parts.shell.visible = false;
   return g;
+}
+
+// Give a model its own glow material, so an inspect can pulse it without lighting up everyone's copy.
+// Returns the material and its painted intensity.
+export function ownGlow(model, skinId) {
+  const shared = skinMaterials(skinId).glow, mat = shared.clone();
+  model.traverse(o => { if (o.material === shared) o.material = mat; });
+  return { mat, base: shared.emissiveIntensity };
+}
+
+// Pose a melee model's parts (and glow) for an inspect at time t; with no inspect, back to rest.
+export function poseMeleeParts(model, ins, t, glow) {
+  const parts = model.userData.parts, p = ins ? inspectPose(ins, t) : null;
+  for (const [name, part] of Object.entries(parts)) {
+    const v = p?.parts[name], b = part.userData.base;
+    part.rotation.order = 'ZYX'; // spins about the blade axis apply last, so twirls stay in the plane they're shown in
+    part.position.set(b.pos.x + (v?.[0] || 0), b.pos.y + (v?.[1] || 0), b.pos.z + (v?.[2] || 0));
+    part.rotation.set(b.rot.x + (v?.[3] || 0), b.rot.y + (v?.[4] || 0), b.rot.z + (v?.[5] || 0));
+    part.scale.set(1, 1, v?.[6] ?? 1);
+  }
+  if (glow) {
+    const k = p ? p.glow : 1;
+    glow.mat.emissiveIntensity = glow.base * k + Math.max(0, k - 1) * 0.35; // a little light even on skins with no glow
+  }
+  return p;
 }
 
 // Soft studio reflections so metallic and glossy skins read as metal rather than flat dark grey.
@@ -753,7 +866,10 @@ export class GunPreview {
 
   show(weaponId, skinId) {
     this.pivot.clear();
+    this.anim = null;
     const m = gunModel(weaponId, skinId);
+    this.model = m;
+    this.glow = MELEE[weaponId] ? ownGlow(m, skinId) : null;
     // Drop the hands for the showcase.
     m.children.filter(c => c.material && (c.material === skinMaterials(skinId).sleeve || c.material === skinMaterials(skinId).glove)).forEach(c => m.remove(c));
     const box = new THREE.Box3().setFromObject(m);
@@ -761,6 +877,11 @@ export class GunPreview {
     m.position.sub(c);
     this.pivot.add(m);
     this.size = size;
+  }
+
+  // Play one of a melee type's inspects on the showcase model (parts, glow and a gentle turn).
+  inspect(ins) {
+    this.anim = { ins, start: performance.now() };
   }
 
   start() {
@@ -777,6 +898,12 @@ export class GunPreview {
       this.cam.aspect = w / Math.max(1, h); this.cam.updateProjectionMatrix();
       // Side-on showcase with a slow sway; dragging turns it freely.
       this.pivot.rotation.set(this.pitch, this.yaw + Math.sin(this.t * 0.6) * 0.45, 0, 'YXZ');
+      if (this.model && this.glow) {
+        const a = this.anim, at = a && (t - a.start) / 1000;
+        if (a && at > a.ins.dur) this.anim = null;
+        const p = poseMeleeParts(this.model, this.anim?.ins, at, this.glow);
+        if (p) { this.pivot.rotation.x += p.pose[3] * 0.4; this.pivot.rotation.z += p.pose[5] * 0.4; }
+      }
       // Fit the gun's length across ~75% of the width (and its height in the frame).
       const s = this.size || new THREE.Vector3(0.3, 0.1, 0.8);
       const tv = Math.tan((this.cam.fov * PI) / 360), th = tv * this.cam.aspect;
