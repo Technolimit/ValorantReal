@@ -160,6 +160,31 @@ await check('Online: joining mid-match opens the deathmatch-style picker with th
   return { pass: zephyr && free && kit === botAgent && !r.dup, zephyrLocked: zephyr, botAgent, kit, teams: r.t };
 });
 
+// ---- a slow PC: someone who takes longer than TIMEOUT to load the match after the pick stays in it ----
+for (const p of [H, C, D, E]) await p.close();
+const SH = await open(), SC = await open();
+const slowForm = (o) => {
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+  set('net-transport', 'local'); set('net-join-transport', 'local'); set('net-room', 'SLOW'); set('net-code', 'SLOW'); set('net-mode', 'dm'); set('net-name', o.name);
+  Object.assign(window.__game.settings, { botCount: 1, botMode: 'static', map: 'arena' });
+};
+await SH.evaluate(slowForm, { name: 'Host' }); await SC.evaluate(slowForm, { name: 'Slow' });
+await check('Online: a player whose match takes 20 s to load after the pick is not dropped', async () => {
+  await SH.evaluate(() => window.__game.hostOnline());
+  await SC.evaluate(() => window.__game.joinOnline());
+  await SC.waitForFunction(() => window.__game.net.role === 'lobby', null, { timeout: 15000 });
+  // Over the internet the joiner's last pick-screen heartbeat is often still on its way when the match starts;
+  // send one after the welcome so that always happens here, then take 20 s to load.
+  await SC.evaluate(() => { const n = window.__game.net, welcome = n.cb.onWelcome; n.cb.onWelcome = (w) => { n.t.send({ k: 'lhb' }, n.hostId); setTimeout(() => welcome(w), 20000); }; });
+  await SH.evaluate(() => window.__game.net.lobbyLock('zephyr')); await SC.evaluate(() => window.__game.net.lobbyLock('cinder'));
+  await SH.evaluate(() => window.__game.net.lobbyStart());
+  await SC.waitForFunction(() => window.__game.net.role === 'client', null, { timeout: 30000 });
+  await SH.waitForTimeout(24000);
+  const onHost = await SH.evaluate(() => window.__game.game.combatants.filter(c => c.remote).map(c => c.name));
+  const role = await SC.evaluate(() => window.__game.net.role);
+  return { pass: onHost.includes('Slow') && role === 'client', onHost, role };
+});
+
 if (errors.length) { failed++; console.log('Page errors:', errors.slice(0, 5)); }
 await browser.close();
 server.close();

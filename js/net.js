@@ -26,9 +26,13 @@ import { sanitizeSkin, registerSkin, SKINS } from './skins.js';
 import { MELEE, meleeId } from './melee.js';
 import { takenAgents } from './agentselect.js';
 
-// TIMEOUT: silence that counts as gone. LOAD_TIMEOUT: a joiner's first message can take this long, since it
-// downloads and builds the map after the welcome and sends nothing meanwhile.
-const SNAP_HZ = 20, STATE_HZ = 30, TIMEOUT = 8, LOAD_TIMEOUT = 60, PEER_PREFIX = 'tapfire-';
+// TIMEOUT: silence that counts as gone (a closed connection or a 'bye' is noticed at once; this is for a crashed
+// tab or a dead network, and has to ride out a few seconds of wifi trouble). LOAD_TIMEOUT: a joiner's first
+// match message can take this long, since it downloads and builds the map after the welcome.
+const SNAP_HZ = 20, STATE_HZ = 30, TIMEOUT = 15, LOAD_TIMEOUT = 60, PEER_PREFIX = 'tapfire-';
+// What a client only sends once its copy of the match is running (anything else may be left over from the
+// pick screen, like its last 'lhb', and says nothing about whether it has finished loading).
+const IN_MATCH = new Set(['st', 'hb', 'in', 'fx', 'hit', 'drop', 'uhit', 'take', 'buy']);
 const PEERJS_URL = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const newId = () => Math.random().toString(36).slice(2, 10);
@@ -470,8 +474,13 @@ export class NetSession {
       return;
     }
     const p = this.peers.get(id);
-    if (!p) return;
-    p.seen = g.time; p.seenWall = performance.now(); p.loaded = true;
+    if (!p) {
+      // Someone we already dropped is still playing: tell them, instead of leaving them in a match nobody sees.
+      if (IN_MATCH.has(m.k)) this.t.send({ k: 'dropped' }, id);
+      return;
+    }
+    p.seen = g.time; p.seenWall = performance.now();
+    if (IN_MATCH.has(m.k)) p.loaded = true;
     const c = p.c;
     if (m.k === 'st') {
       if (m.life !== p.life || !c.alive) return; // stale: sent before the client heard about its respawn
@@ -833,6 +842,9 @@ export class NetSession {
       g.netRole = 'client-ended';
       g.end();
       this.cb.onEnd();
+    } else if (m.k === 'dropped' && m.to === this.nid) {
+      this.close();
+      this.cb.onLeft('The host lost contact with you and dropped you from the match. Join again to get back in.');
     } else if (m.k === 'bye') this.hostGone();
   }
 
