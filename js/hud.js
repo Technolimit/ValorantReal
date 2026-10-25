@@ -5,6 +5,7 @@ import { PLAYER, TICK_RATE } from './config.js';
 import { patternPreview } from './gun.js';
 import { MELEE } from './melee.js';
 import { KillBanner, bannerColors } from './killbanner.js';
+import { keyLabel } from './keybinds.js';
 import { AGENTS, SMOKE, BLADES, BEAMS, insideSlab, bloomTargets, BLOOM, PICKUPS } from './abilities.js';
 
 const DEG = Math.PI / 180;
@@ -172,7 +173,8 @@ export class Hud {
     // ...or at your own placed utility you can pick back up.
     const mine = p.alive && p.kit ? p.kit.pickupInView() : null;
     const mineName = mine && (PICKUPS[mine.kind].star ? 'Star' : p.kit.agent.abilities[PICKUPS[mine.kind].k].name);
-    const ph = mine ? `<kbd>F</kbd>Pick up ${esc(mineName)}` : look ? `<kbd>F</kbd>${p.inv[look.gun.def.slot] ? 'Swap for' : 'Pick up'} ${esc(look.gun.def.name)}` : '';
+    const fk = keyLabel(s.binds.use);
+    const ph = mine ? `<kbd>${fk}</kbd>Pick up ${esc(mineName)}` : look ? `<kbd>${fk}</kbd>${p.inv[look.gun.def.slot] ? 'Swap for' : 'Pick up'} ${esc(look.gun.def.name)}` : '';
     if (this.pickKey !== ph) { this.pickKey = ph; $('pickhint').innerHTML = ph; $('pickhint').hidden = !ph; }
     // While spectating, the ability bar shows the spectated teammate's agent and charges.
     const abWho = sv.kit ? sv : p;

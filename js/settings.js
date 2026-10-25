@@ -1,4 +1,5 @@
 // Player settings, saved in localStorage.
+import { DEFAULT_BINDS } from './keybinds.js';
 
 const KEY = 'tapfire-settings-v1';
 
@@ -10,6 +11,7 @@ export const DEFAULTS = {
   walkMode: 'hold',
   crouchMode: 'hold',
   wheel: 'weapons', // 'weapons' | 'jump'
+  binds: DEFAULT_BINDS, // action -> KeyboardEvent.code (see keybinds.js)
   volume: 0.6,
   showImpacts: true,
   impactSeconds: 6,
@@ -44,15 +46,17 @@ export const DEFAULTS = {
   // online
   netName: 'Player',
   netColor: '#6aa7ff',
-  netTransport: 'local', // 'local' (BroadcastChannel) | 'peer' (PeerJS)
+  netTransport: 'peer', // 'peer' (PeerJS, internet) | 'local' (BroadcastChannel, this browser)
+  netServer: '', // name of the server you create ('' = "<your name>'s server")
+  netMax: 10, // max players on the server you create
 };
 
 export function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || '{}');
-    return { ...DEFAULTS, ...s, loadout: { ...DEFAULTS.loadout, ...(s.loadout || {}) }, skins: { ...(s.skins || {}) } };
+    return { ...DEFAULTS, ...s, loadout: { ...DEFAULTS.loadout, ...(s.loadout || {}) }, skins: { ...(s.skins || {}) }, binds: { ...DEFAULT_BINDS, ...(s.binds || {}) } };
   } catch {
-    return { ...DEFAULTS, loadout: { ...DEFAULTS.loadout }, skins: {} };
+    return { ...DEFAULTS, loadout: { ...DEFAULTS.loadout }, skins: {}, binds: { ...DEFAULT_BINDS } };
   }
 }
 
