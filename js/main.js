@@ -1,0 +1,1040 @@
+// Entry point: input, menus, settings UI and the fixed-tick game loop.
+import { Game } from './game.js';
+import { Renderer } from './render.js';
+import { Sound } from './audio.js';
+import { Hud } from './hud.js';
+import { loadSettings, saveSettings, DEFAULTS } from './settings.js';
+import { DT, YAW_PER_COUNT } from './config.js';
+import { WEAPONS, BUY_GROUPS } from './weapons.js';
+import { SKINS, SKIN_ORDER, skinFor, swatch, isCustom, saveCustomSkin, deleteCustomSkin, skinCode, parseSkinCode, sanitizeSkin, registerSkin, PATTERNS } from './skins.js';
+import { GunPreview } from './models.js';
+import { RELOAD_STYLE, RELOAD_SOUNDS } from './reloadanim.js';
+import { AGENTS, AGENT_ORDER, Kit } from './abilities.js';
+import { ROUND } from './rounds.js';
+import { Minimap } from './minimap.js';
+import { RoundHud } from './roundhud.js';
+import { MAPS, loadMapIndex, preloadMap, mapList, mapInfo, mapJSON, addMap, removeCustomMap, supportsMode } from './map.js';
+import { NetSession, roomCode } from './net.js';
+
+const DEG = Math.PI / 180;
+const $ = (id) => document.getElementById(id);
+
+const settings = loadSettings();
+// Maps come from maps/index.json; the default one must be loaded before the game can be built.
+try {
+  await loadMapIndex();
+  await preloadMap('arena');
+} catch (err) {
+  document.body.insertAdjacentHTML('beforeend', `<div class="overlay"><div class="panel"><h2>Couldn't load the maps</h2><p class="note">${String(err.message).replace(/</g, '&lt;')}</p><p class="note">Serve this folder over HTTP (for example <code>npx serve</code> or <code>python3 -m http.server</code>) instead of opening index.html from disk, since browsers block fetch and modules on file:// pages.</p></div></div>`);
+  throw err;
+}
+if (!mapInfo(settings.map)) settings.map = 'arena';
+const game = new Game();
+const canvas = $('view');
+const renderer = new Renderer(canvas, game, settings);
+const sound = new Sound();
+sound.setVolume(settings.volume);
+const hud = new Hud(game, renderer, settings);
+const rhud = new RoundHud(game);
+const minimap = new Minimap(game);
+renderer.spectate = () => rhud.spectateTarget();
+const net = new NetSession(game, {
+  onStatus: (msg) => netStatus(msg),
+  onWelcome: (w) => joinedMatch(w),
+  onEnd: () => {},
+  onLeft: (why) => { if (running) { running = false; game.state = 'idle'; } netStatus(why, true); updateMenuLoadout(); show('online'); },
+  onRoster: () => updateNetBadge(),
+});
+
+let running = false;
+let paused = true;
+let locked = false;
+let acc = 0;
+let last = performance.now();
+let walkToggled = false;
+let crouchToggled = false;
+let settingsReturn = 'menu';
+const keys = new Set();
+const mouse = [false, false, false];
+const look = { dx: 0, dy: 0 };
+
+const isPlayer = (who) => who === game.player;
+
+// ---- sound hooks ----
+game.on('shot', ({ who, gun }) => sound.gunshot(gun.def, isPlayer(who) ? null : who.eye()));
+game.on('footstep', ({ who }) => sound.footstep(isPlayer(who) ? null : who.pos, isPlayer(who)));
+game.on('land', ({ who }) => sound.land(isPlayer(who) ? null : who.pos, isPlayer(who)));
+game.on('hit', ({ attacker, target, part, killed, dot }) => {
+  if (isPlayer(attacker) && !isPlayer(target) && (!dot || killed)) sound.hitConfirm(part, killed);
+  if (isPlayer(target)) sound.hurt(part === 'head');
+});
+game.on('reload', ({ who, gun }) => { if (isPlayer(who)) sound.reload(gun.reloadDur, RELOAD_SOUNDS[RELOAD_STYLE[gun.def.id]]); });
+game.on('reloadRound', ({ who }) => { if (isPlayer(who)) { sound.click(0, 0.3); sound.thunk(0.03); } });
+game.on('dry', ({ who }) => { if (isPlayer(who)) sound.click(0, 0.3); });
+game.on('equip', ({ who }) => { if (isPlayer(who)) sound.equip(); });
+game.on('swing', ({ who, heavy }) => { if (isPlayer(who)) sound.swing(heavy); });
+game.on('ability', ({ who, type }) => { if (isPlayer(who)) sound.ability(type); });
+game.on('smoke', ({ pos, kind }) => { if (kind !== 'fire') sound.smoke(pos); });
+game.on('flash', ({ pos }) => sound.flashbang(pos));
+game.on('pulse', ({ pos, type }) => sound.pulse(type === 'reveal' ? null : pos, type));
+game.on('wall', ({ box }) => sound.thunk(0));
+game.on('teleport', ({ who }) => { if (isPlayer(who)) sound.ability('dash'); });
+game.on('trap', () => sound.pulse(null, 'trap'));
+game.on('lockdown', () => sound.pulse(null, 'lockdown'));
+game.on('turretShot', ({ pos }) => sound.gunshot(WEAPONS.classic, pos));
+game.on('beam', () => { sound.pulse(null, 'lockdown'); sound.flashbang(null); });
+game.on('alarm', ({ pos }) => sound.pulse(pos, 'trap'));
+game.on('tag', () => sound.pulse(null, 'reveal'));
+game.on('abilityArm', ({ who }) => { if (isPlayer(who)) sound.click(0, 0.3); });
+game.on('shadowChannel', () => sound.pulse(null, 'near'));
+game.on('blade', ({ who }) => { if (isPlayer(who)) sound.swing(false); });
+game.on('end', () => showEnd());
+game.on('planted', () => sound.sting('planted'));
+game.on('live', () => sound.sting('start'));
+game.on('roundEnd', (r) => { if (r.reason === 'detonated') sound.sting('detonate'); else if (r.reason === 'defused') sound.sting('defused'); setTimeout(() => sound.sting(r.winTeam === game.player.team ? 'win' : 'loss'), r.reason === 'detonated' ? 900 : 300); });
+let lastBeep = 0;
+function spikeBeeps() {
+  const m = game.mode, sp = m?.spike;
+  if (!sp || sp.state !== 'planted' || m.phase !== 'planted') return;
+  const left = sp.plantedAt + ROUND.spike - game.time;
+  const gap = left > 20 ? 1 : left > 10 ? 0.5 : left > 5 ? 0.25 : 0.12;
+  if (game.time - lastBeep >= gap) { lastBeep = game.time; sound.beep(sp.pos, left < 10); }
+}
+
+// ---- pointer lock ----
+async function lock() {
+  try {
+    await canvas.requestPointerLock({ unadjustedMovement: true });
+  } catch {
+    try { await canvas.requestPointerLock(); } catch { $('pause-hint').textContent = 'Click Resume again to capture the mouse.'; }
+  }
+}
+
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === canvas;
+  if (locked) { $('pause-hint').textContent = ''; return; }
+  if (running && !paused && game.state === 'playing') pause();
+});
+document.addEventListener('pointerlockerror', () => { $('pause-hint').textContent = 'Click Resume again to capture the mouse.'; });
+
+function releaseInputs() {
+  keys.clear();
+  mouse.fill(false);
+}
+
+function pause() {
+  paused = true;
+  releaseInputs();
+  if (hud.buyOpen) toggleBuy(false);
+  $('scoreboard').hidden = true;
+  $('pause-agent').hidden = !!game.mode || net.active;
+  $('restart').hidden = net.active;
+  $('pause-net').hidden = !net.active;
+  if (net.active) $('pause-net').textContent = `Online in room ${net.room}: the match keeps running while you're in this menu.`;
+  show('pause');
+}
+
+function resume() {
+  sound.init();
+  show(null);
+  paused = false;
+  acc = 0;
+  lock();
+}
+
+function show(id) {
+  for (const o of ['menu', 'pause', 'settings', 'skins', 'agents', 'end', 'online', 'maps']) $(o).hidden = o !== id;
+  $('hud').hidden = !running;
+}
+
+// ---- input ----
+const CROUCH_KEYS = ['ControlLeft']; // C is the smoke ability now
+const WALK_KEYS = ['ShiftLeft', 'ShiftRight'];
+const GAME_KEYS = new Set(['KeyM', 'KeyG', 'KeyY', 'KeyF', 'Tab', 'Space', 'F2', 'F3', 'Backquote', 'ControlLeft', 'KeyB', 'KeyW', 'KeyA', 'KeyS', 'KeyD']);
+
+addEventListener('keydown', (e) => {
+  if (!running || paused) return;
+  if (GAME_KEYS.has(e.code) || e.ctrlKey) e.preventDefault();
+  if (e.repeat) return;
+  keys.add(e.code);
+  const p = game.player, inp = p.input;
+  if (e.code === 'KeyB') { toggleBuy(); return; }
+  if (e.code === 'KeyM') { minimap.big = !minimap.big; return; }
+  if (e.code === 'KeyY') { renderer.inspect(); return; }
+  if (e.code === 'KeyG') { if (p.alive) game.dropGun(p, p.slot, true); return; }
+  if (e.code === 'F2') { if (!net.active) openAgents(true); return; } // change agent mid-match (not online: abilities are off)
+  if (e.code === 'Tab') { $('scoreboard').hidden = false; return; }
+  if (e.code === 'F3' || e.code === 'Backquote') { settings.debug = !settings.debug; saveSettings(settings); return; }
+  if (WALK_KEYS.includes(e.code) && settings.walkMode === 'toggle') walkToggled = !walkToggled;
+  if (CROUCH_KEYS.includes(e.code) && settings.crouchMode === 'toggle') crouchToggled = !crouchToggled;
+  if (!p.alive) {
+    // Some agents can still act while dead (Thistle's smokes and her ultimate).
+    if (p.kit?.agent.deadCast && game.mode) { if (e.code === 'KeyE') inp.abE = true; if (e.code === 'KeyX') inp.abX = true; }
+    return;
+  }
+  if (e.code === 'Space') inp.jump = true;
+  if (e.code === 'KeyR') inp.reload = true;
+  if (e.code === 'Digit1') p.equip('primary', game.time);
+  if (e.code === 'Digit2') p.equip('secondary', game.time);
+  if (e.code === 'Digit3') p.equip('melee', game.time);
+  // Agent abilities
+  if (e.code === 'KeyQ') inp.abQ = true;
+  if (e.code === 'KeyE') inp.abE = true;
+  if (e.code === 'KeyC') inp.abC = true;
+  if (e.code === 'KeyX') inp.abX = true;
+});
+
+addEventListener('keyup', (e) => {
+  keys.delete(e.code);
+  if (e.code === 'Tab') $('scoreboard').hidden = true;
+});
+
+addEventListener('blur', releaseInputs);
+
+document.addEventListener('mousedown', (e) => {
+  if (!locked || paused) return;
+  if (hud.buyOpen) { clickBuy(e.button); return; }
+  if (!game.player.alive && game.mode && !hud.mapOpen) { if (e.button === 0) rhud.nextSpectate(); return; }
+  if (hud.mapOpen) {
+    const p = game.player;
+    if (e.button === 0) hud.pickShadow(p);
+    if (e.button === 2 && p.kit?.mapPick) { if (p.kit.mapPick.picks?.length) p.kit.mapConfirm(); else p.kit.mapCancel(); }
+    return;
+  }
+  mouse[e.button] = true;
+  const p = game.player;
+  if (!p.alive) return;
+  if (e.button === 0) p.input.firePressed = true;
+  if (e.button === 2) p.input.altPressed = true;
+});
+document.addEventListener('mouseup', (e) => { mouse[e.button] = false; });
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+document.addEventListener('mousemove', (e) => {
+  if (!locked || paused) return;
+  if (hud.buyOpen) {
+    hud.cursor.x = Math.min(innerWidth - 2, Math.max(0, hud.cursor.x + e.movementX));
+    hud.cursor.y = Math.min(innerHeight - 2, Math.max(0, hud.cursor.y + e.movementY));
+    return;
+  }
+  if (hud.mapOpen) {
+    hud.mapCursor.x = Math.min(innerWidth - 2, Math.max(0, hud.mapCursor.x + e.movementX));
+    hud.mapCursor.y = Math.min(innerHeight - 2, Math.max(0, hud.mapCursor.y + e.movementY));
+    return;
+  }
+  const p = game.player;
+  if (!p || !p.alive) return;
+  const gun = p.gun;
+  const zoom = gun.adsT > 0.5 ? gun.targetZoom() : 1;
+  // Same scale as Valorant: 0.07 degrees per count times sensitivity; zoomed views scale by 1/zoom.
+  let deg = YAW_PER_COUNT * settings.sensitivity;
+  if (zoom > 1) deg *= settings.zoomSensMult / zoom;
+  p.yaw -= e.movementX * deg * DEG;
+  p.pitch -= e.movementY * deg * DEG * (settings.invertY ? -1 : 1);
+  p.pitch = Math.max(-89 * DEG, Math.min(89 * DEG, p.pitch));
+  look.dx += e.movementX;
+  look.dy += e.movementY;
+});
+
+addEventListener('wheel', (e) => {
+  if (!locked || paused || hud.buyOpen) return;
+  const p = game.player;
+  if (!p.alive) return;
+  if (settings.wheel === 'jump') { p.input.jump = true; return; }
+  const order = ['primary', 'secondary', 'melee'].filter(s => p.inv[s]);
+  const i = order.indexOf(p.slot);
+  p.equip(order[(i + (e.deltaY > 0 ? 1 : -1) + order.length) % order.length], game.time);
+}, { passive: true });
+
+function playerInput() {
+  const p = game.player, i = p.input;
+  const k = (c) => keys.has(c);
+  if (!p.alive) { i.fwd = i.side = 0; i.fire = i.alt = false; return; }
+  i.fwd = (k('KeyW') ? 1 : 0) - (k('KeyS') ? 1 : 0);
+  i.side = (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0);
+  i.walk = settings.walkMode === 'toggle' ? walkToggled : WALK_KEYS.some(k);
+  i.crouch = settings.crouchMode === 'toggle' ? crouchToggled : CROUCH_KEYS.some(k);
+  i.jumpHeld = k('Space');
+  i.use = k('KeyF'); // plant / defuse
+  i.abCHeld = k('KeyC'); i.abQHeld = k('KeyQ'); i.abEHeld = k('KeyE'); // steerable abilities
+  i.fire = mouse[0] && !hud.buyOpen;
+  i.alt = mouse[2] && !hud.buyOpen;
+}
+
+// ---- buy menu (virtual cursor so the mouse stays captured) ----
+function toggleBuy(open = !hud.buyOpen) {
+  hud.buyOpen = open;
+  if (game.mode) { rhud.toggleShop(open); $('buy').hidden = true; }
+  else $('buy').hidden = !open;
+  $('cursor').hidden = !open;
+  hud.cursor = { x: innerWidth / 2, y: innerHeight / 2 };
+  hud.markLoadout(settings.loadout);
+  mouse.fill(false);
+}
+
+function clickBuy(button = 0) {
+  if (game.mode) {
+    const el = document.elementFromPoint(hud.cursor.x, hud.cursor.y)?.closest('.scard, #shop-close');
+    if (!el) return;
+    if (el.id === 'shop-close') { toggleBuy(false); return; }
+    const err = rhud.shopClick(el, button);
+    if (err) hud.center(`<small>${err.toUpperCase()}</small>`);
+    else sound.click(0, 0.25);
+    return;
+  }
+  if (button !== 0) return;
+  const el = document.elementFromPoint(hud.cursor.x, hud.cursor.y)?.closest('.card, #buy-close');
+  if (!el) return;
+  if (el.id === 'buy-close') { toggleBuy(false); return; }
+  const w = WEAPONS[el.dataset.id];
+  settings.loadout[w.slot] = w.id;
+  saveSettings(settings);
+  const p = game.player;
+  p.loadout = { ...settings.loadout };
+  if (p.alive) {
+    p.give(w.id);
+    p.equip(w.slot, game.time, true);
+  }
+  hud.markLoadout(settings.loadout);
+}
+
+// ---- match flow ----
+async function startMatch(extra = {}) {
+  sound.init();
+  if (!extra.online && net.active) net.close();
+  const mapId = extra.map || settings.map;
+  try {
+    await preloadMap(settings.mode === 'rounds' && !extra.online && !supportsMode(mapId, 'rounds') ? 'divide' : mapId);
+  } catch (err) {
+    hud.center(`<small>${String(err.message).toUpperCase()}</small>`);
+    return false;
+  }
+  game.start({
+    botCount: settings.botCount,
+    difficulty: settings.difficulty,
+    botMode: settings.botMode,
+    botWeapons: settings.botWeapons,
+    killLimit: settings.killLimit,
+    timeLimit: settings.timeMinutes * 60,
+    loadout: { ...settings.loadout },
+    agent: settings.agent,
+    mode: settings.mode,
+    map: mapId,
+    side: settings.side,
+    ...extra,
+  });
+  if (hud.buyOpen) toggleBuy(false);
+  game.player.adsHold = settings.adsMode === 'hold';
+  renderer.clearDecals();
+  $('killfeed').innerHTML = '';
+  $('death').hidden = true;
+  walkToggled = crouchToggled = false;
+  running = true;
+  updateNetBadge();
+  if (extra.noResume) pause(); else resume();
+  return true;
+}
+
+function showEnd() {
+  paused = true;
+  releaseInputs();
+  if (document.pointerLockElement) document.exitPointerLock();
+  const p = game.player, st = p.stats;
+  const hits = st.head + st.body + st.legs;
+  const pct = (n) => (hits ? Math.round(n / hits * 100) : 0) + '%';
+  if (game.mode) {
+    const [a, b] = game.mode.score;
+    $('end-title').innerHTML = `${a > b ? 'Victory' : 'Defeat'} · ${a} – ${b}`;
+  } else {
+    const winner = [...game.combatants].sort((a, b) => b.stats.kills - a.stats.kills)[0];
+    $('end-title').textContent = winner === p ? 'You win' : `${winner.name} wins`;
+  }
+  $('end-stats').innerHTML = `
+    <div><b>${st.kills}</b><span>Kills</span></div><div><b>${st.deaths}</b><span>Deaths</span></div>
+    <div><b>${st.shots ? Math.round(st.hits / st.shots * 100) : 0}%</b><span>Accuracy</span></div>
+    <div><b>${pct(st.head)}</b><span>Head</span></div><div><b>${pct(st.body)}</b><span>Body</span></div><div><b>${pct(st.legs)}</b><span>Legs</span></div>`;
+  hud.renderScoreboard($('end-table'));
+  $('again').hidden = net.active;
+  show('end');
+}
+
+// ---- settings UI ----
+const SCHEMA = [
+  ['Mouse', [
+    ['sensitivity', 'Sensitivity (Valorant scale)', 'number', { min: 0.01, max: 10, step: 0.001 }],
+    ['zoomSensMult', 'Scoped / ADS sensitivity multiplier', 'number', { min: 0.1, max: 3, step: 0.01 }],
+    ['invertY', 'Invert Y', 'checkbox'],
+  ]],
+  ['Controls', [
+    ['adsMode', 'Aim down sights', 'select', { hold: 'Hold', toggle: 'Toggle' }],
+    ['walkMode', 'Walk', 'select', { hold: 'Hold', toggle: 'Toggle' }],
+    ['crouchMode', 'Crouch', 'select', { hold: 'Hold', toggle: 'Toggle' }],
+    ['wheel', 'Mouse wheel', 'select', { weapons: 'Switch weapon', jump: 'Jump' }],
+  ]],
+  ['Gunplay', [
+    ['recoilFeel', 'Physical recoil (camera & gun kick)', 'range', { min: 0, max: 2, step: 0.1 }],
+    ['sprayTrainer', 'Spray pattern overlay', 'checkbox'],
+  ]],
+  ['Crosshair', [
+    ['chColor', 'Color', 'color'],
+    ['chOutline', 'Outline', 'checkbox'],
+    ['chDot', 'Center dot', 'checkbox'],
+    ['chLength', 'Line length', 'range', { min: 0, max: 20, step: 1 }],
+    ['chThickness', 'Line thickness', 'range', { min: 1, max: 6, step: 1 }],
+    ['chGap', 'Gap', 'range', { min: 0, max: 20, step: 1 }],
+    ['chError', 'Show spread', 'select', { off: 'Off', firing: 'Movement + firing error' }],
+  ]],
+  ['Match (applies next match)', [
+    ['mode', 'Mode', 'select', { dm: 'Deathmatch', rounds: '5v5 Rounds' }],
+    ['map', 'Deathmatch map', 'select', MAPS],
+    ['side', '5v5 starting side', 'select', { random: 'Random', atk: 'Attack', def: 'Defense' }],
+    ['botCount', 'Bots (deathmatch)', 'range', { min: 1, max: 10, step: 1 }],
+    ['difficulty', 'Bot difficulty', 'select', { easy: 'Easy', normal: 'Normal', hard: 'Hard', pro: 'Pro' }],
+    ['botMode', 'Bot behaviour', 'select', { fight: 'Fight back', passive: 'Move, never shoot', static: 'Stand still' }],
+    ['botWeapons', 'Bot weapons', 'select', { rifles: 'Vandal / Phantom', match: 'Same as mine', random: 'Random' }],
+    ['killLimit', 'Kill limit', 'number', { min: 1, max: 200, step: 1 }],
+    ['timeMinutes', 'Time limit (minutes)', 'number', { min: 1, max: 60, step: 1 }],
+  ]],
+  ['Video & audio', [
+    ['volume', 'Volume', 'range', { min: 0, max: 1, step: 0.05 }],
+    ['shadows', 'Shadows', 'checkbox'],
+    ['renderScale', 'Render scale', 'select', { 0.5: '50%', 0.75: '75%', 1: '100%' }],
+    ['showImpacts', 'Bullet holes', 'checkbox'],
+    ['impactSeconds', 'Bullet holes last (s)', 'range', { min: 1, max: 30, step: 1 }],
+    ['damageNumbers', 'Damage numbers', 'checkbox'],
+    ['debug', 'Debug readout (F3 or `)', 'checkbox'],
+  ]],
+];
+
+function buildSettings() {
+  const root = $('settings-form');
+  root.innerHTML = '';
+  for (const [title, fields] of SCHEMA) {
+    const sec = document.createElement('section');
+    sec.innerHTML = `<h3>${title}</h3>`;
+    for (const [key, label, type, opt] of fields) {
+      const row = document.createElement('label');
+      row.className = 'row';
+      row.innerHTML = `<span>${label}</span>`;
+      let input;
+      if (type === 'select') {
+        input = document.createElement('select');
+        for (const [v, t] of Object.entries(opt)) input.add(new Option(t, v));
+        input.value = String(settings[key]);
+      } else {
+        input = document.createElement('input');
+        input.type = type;
+        if (opt) Object.assign(input, opt);
+        if (type === 'checkbox') input.checked = !!settings[key];
+        else input.value = settings[key];
+      }
+      const out = document.createElement('output');
+      const showVal = () => { out.textContent = type === 'range' ? input.value : ''; };
+      showVal();
+      input.addEventListener('input', () => {
+        let v = type === 'checkbox' ? input.checked : input.value;
+        if (type === 'number' || type === 'range') { v = parseFloat(v); if (!Number.isFinite(v)) return; }
+        if (key === 'renderScale') v = parseFloat(v);
+        settings[key] = v;
+        showVal();
+        applySettings(key);
+        saveSettings(settings);
+      });
+      row.append(input, out);
+      sec.appendChild(row);
+    }
+    root.appendChild(sec);
+  }
+}
+
+function applySettings(key) {
+  if (key === 'volume') sound.setVolume(settings.volume);
+  if (key === 'shadows') renderer.setShadows(settings.shadows);
+  if (key === 'renderScale') renderer.resize();
+  if (key === 'adsMode' && game.player) game.player.adsHold = settings.adsMode === 'hold';
+  if (key === 'showImpacts' && !settings.showImpacts) renderer.clearDecals();
+}
+
+function openSettings(from) {
+  settingsReturn = from;
+  buildSettings();
+  show('settings');
+}
+
+// ---- skins menu ----
+let skinsReturn = 'menu';
+let skinWeapon = null;
+let preview = null;
+
+function openSkins(from) {
+  skinsReturn = from;
+  skinWeapon = skinWeapon || (game.player?.gun?.def?.id && WEAPONS[game.player.gun.def.id]?.recoil ? game.player.gun.def.id : settings.loadout.primary || 'vandal');
+  show('skins');
+  if (!preview) preview = new GunPreview($('skin-preview'));
+  buildSkinWeapons();
+  selectSkinWeapon(skinWeapon);
+  preview.start();
+}
+
+function closeSkins() {
+  if (editing) closeEditor();
+  skinStatus('');
+  preview?.stop();
+  show(skinsReturn);
+}
+
+function buildSkinWeapons() {
+  const nav = $('skin-weapons');
+  nav.innerHTML = '';
+  const groups = [...BUY_GROUPS, ['Melee', ['knife']]];
+  for (const [title, ids] of groups) {
+    const h = document.createElement('h3');
+    h.textContent = title;
+    nav.appendChild(h);
+    for (const id of ids) {
+      const b = document.createElement('button');
+      b.dataset.id = id;
+      b.innerHTML = `<span>${WEAPONS[id].name}</span><small>${escHtml(SKINS[skinFor(settings, id)].name)}</small>`;
+      b.onclick = () => selectSkinWeapon(id);
+      nav.appendChild(b);
+    }
+  }
+}
+
+function selectSkinWeapon(id) {
+  skinWeapon = id;
+  for (const b of $('skin-weapons').querySelectorAll('button')) b.classList.toggle('sel', b.dataset.id === id);
+  const grid = $('skin-grid');
+  grid.innerHTML = '';
+  const cur = skinFor(settings, id);
+  for (const sid of SKIN_ORDER) {
+    const s = SKINS[sid];
+    const card = document.createElement('button');
+    card.className = 'skin-card' + (sid === cur ? ' sel' : '');
+    card.innerHTML = `<span class="sw">${swatch(sid).map(c => `<i style="background:${c}"></i>`).join('')}</span><b>${escHtml(s.name)}</b><small class="${isCustom(sid) ? 'custom' : ''}">${escHtml(s.tier)}</small>`;
+    card.onclick = () => applySkin(id, sid);
+    card.onmouseenter = () => showSkin(id, sid);
+    card.onmouseleave = () => showSkin(id, skinFor(settings, id));
+    grid.appendChild(card);
+  }
+  showSkin(id, cur);
+  $('skin-edit').hidden = $('skin-delete').hidden = !isCustom(cur);
+}
+
+function showSkin(id, sid) {
+  preview.show(id, sid);
+  $('skin-title').textContent = `${SKINS[sid].name} ${WEAPONS[id].name}`;
+  $('skin-sub').textContent = SKINS[sid].blurb;
+}
+
+function applySkin(id, sid) {
+  if (sid === 'standard') delete settings.skins[id]; else settings.skins[id] = sid;
+  saveSettings(settings);
+  buildSkinWeapons();
+  selectSkinWeapon(id);
+}
+
+$('menu-skins').onclick = () => openSkins('menu');
+$('pause-skins').onclick = () => openSkins('pause');
+$('pause-agent').onclick = () => openAgents(true);
+$('skins-back').onclick = closeSkins;
+$('skin-all').onclick = () => {
+  const sid = skinFor(settings, skinWeapon);
+  for (const id of Object.keys(WEAPONS)) { if (sid === 'standard') delete settings.skins[id]; else settings.skins[id] = sid; }
+  saveSettings(settings);
+  buildSkinWeapons();
+  selectSkinWeapon(skinWeapon);
+};
+$('skin-reset').onclick = () => {
+  settings.skins = {};
+  saveSettings(settings);
+  buildSkinWeapons();
+  selectSkinWeapon(skinWeapon);
+};
+addEventListener('keydown', (e) => { if (e.code === 'Escape' && !$('skins').hidden) closeSkins(); });
+
+// ---- agent select ----
+let pickedAgent = settings.agent;
+
+// Original emblems, one per agent, drawn as simple SVG marks in the agent's colour.
+function emblem(type, color) {
+  const paths = {
+    wind: '<path d="M14 40c18-14 46-14 70 2" /><path d="M8 58c24-12 54-10 80 6" /><path d="M20 76c16-8 36-7 52 3" /><circle cx="84" cy="34" r="5" />',
+    flame: '<path d="M50 10c6 18 26 26 26 50a26 26 0 0 1-52 0c0-14 8-20 12-30 2 10 8 14 12 14-4-10-4-22 2-34z" /><path d="M50 56c4 6 10 10 10 18a10 10 0 0 1-20 0c0-6 6-10 10-18z" />',
+    moon: '<path d="M62 14a36 36 0 1 0 22 58 30 30 0 1 1-22-58z" /><path d="M74 26l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" />',
+    eye: '<path d="M8 50c22-30 62-30 84 0-22 30-62 30-84 0z" /><circle cx="50" cy="50" r="13" /><path d="M50 8v12M50 80v12" />',
+    shield: '<path d="M50 8l34 12v26c0 22-14 38-34 46-20-8-34-24-34-46V20z" /><path d="M50 26v50M30 44h40" />',
+    blast: '<circle cx="46" cy="56" r="26" /><path d="M64 36l10-12M74 24l8 2M74 24l-2-8" /><path d="M34 52a12 12 0 0 1 12-12" />',
+    strike: '<path d="M50 6v34" /><path d="M36 26l14 14 14-14" /><circle cx="50" cy="66" r="22" /><path d="M50 52v28M36 66h28" />',
+    snake: '<path d="M28 84c-14-16 4-30 22-30s36-14 22-30c-8-9-22-8-28 0" /><circle cx="44" cy="22" r="3" /><path d="M76 24l10-6M76 24l10 4" />',
+    soul: '<path d="M50 12c14 18 26 28 26 46a26 26 0 0 1-52 0c0-18 12-28 26-46z" /><path d="M40 58l10-10 10 10-10 10z" />',
+    quake: '<path d="M8 62h18l8-22 12 40 10-52 10 34 8-14h18" />',
+    bolt: '<path d="M56 6L24 56h22l-6 38 34-52H52z" />',
+    mask: '<path d="M14 30c12-8 60-8 72 0 0 30-14 52-36 58-22-6-36-28-36-58z" /><path d="M30 46l12 4M70 46l-12 4" />',
+    leaf: '<path d="M18 82C18 40 48 14 86 14c0 38-26 68-68 68z" /><path d="M18 82l44-44" />',
+    cam: '<path d="M18 34h48l16-10v52l-16-10H18z" /><circle cx="42" cy="50" r="9" />',
+    claw: '<path d="M22 84c6-30 16-52 30-70M42 86c4-26 12-46 26-62M62 86c2-20 8-36 20-50" />',
+    crystal: '<path d="M50 8l22 22-22 62-22-62z" /><path d="M28 30h44M50 8v84" />',
+    star: '<path d="M50 10l9 27h28l-23 17 9 28-23-17-23 17 9-28-23-17h28z" />',
+    crown: '<path d="M14 76l8-44 18 22 10-30 10 30 18-22 8 44z" /><path d="M14 86h72" />',
+    wave: '<path d="M8 60c14-22 28-22 42 0s28 22 42 0" /><path d="M8 40c14-22 28-22 42 0s28 22 42 0" />',
+    prism: '<path d="M50 10L86 80H14z" /><path d="M4 52h34M62 46l34-10M62 56l34 4M62 66l34 18" />',
+    hex2: '<path d="M50 8l36 21v42L50 92 14 71V29z" /><path d="M50 30l18 10v20L50 70 32 60V40z" />',
+    target: '<circle cx="50" cy="50" r="36" /><circle cx="50" cy="50" r="14" /><path d="M50 4v20M50 76v20M4 50h20M76 50h20" />',
+    butterfly: '<path d="M50 30v52" /><path d="M50 44C38 18 12 16 14 38s20 22 36 12" /><path d="M50 44c12-26 38-28 36-6s-20 22-36 12" /><path d="M50 56c-10 6-24 16-20 26s16 0 20-10M50 56c10 6 24 16 20 26s-16 0-20-10" />',
+    chip: '<rect x="24" y="24" width="52" height="52" rx="6" /><path d="M36 8v16M50 8v16M64 8v16M36 76v16M50 76v16M64 76v16M8 36h16M8 64h16M76 36h16M76 64h16" />',
+  };
+  return `<svg viewBox="0 0 100 100" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">${paths[type] || paths.wind}</svg>`;
+}
+
+let agentsMid = false; // opened during a match (F2 / pause menu): lock-in swaps your agent and resumes
+
+function openAgents(mid = false) {
+  if (mid && game.mode) { hud.center('<small>AGENTS ARE LOCKED IN FOR 5V5</small>'); return; } // no swapping in rounds
+  agentsMid = mid && running && game.state === 'playing';
+  if (agentsMid) {
+    paused = true; // set first so losing the pointer lock doesn't open the pause menu
+    releaseInputs();
+    if (hud.buyOpen) toggleBuy(false);
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+  show('agents');
+  const grid = $('agent-grid');
+  grid.innerHTML = '';
+  for (const id of AGENT_ORDER) {
+    const a = AGENTS[id];
+    const b = document.createElement('button');
+    b.className = 'agent-card';
+    b.dataset.id = id;
+    b.style.setProperty('--ac', a.color);
+    b.innerHTML = `${emblem(a.emblem, a.color)}<b>${a.name}</b><small>${a.role}</small>`;
+    b.onclick = () => selectAgent(id);
+    b.ondblclick = () => { selectAgent(id); lockIn(); };
+    grid.appendChild(b);
+  }
+  selectAgent(AGENTS[pickedAgent] ? pickedAgent : 'zephyr');
+}
+
+function selectAgent(id) {
+  pickedAgent = id;
+  const a = AGENTS[id];
+  for (const c of $('agent-grid').children) c.classList.toggle('sel', c.dataset.id === id);
+  const d = $('agent-detail');
+  d.style.setProperty('--ac', a.color);
+  const row = (key, ab, extra) => `<div class="ab-row"><kbd>${key}</kbd><div><b>${ab.name}<em>${extra}</em></b><span>${ab.desc}</span></div></div>`;
+  const ab = a.abilities;
+  const tag = (x) => (x.cooldown ? `${x.charges}× · ${x.cooldown}s` : /soul orb/i.test(x.desc) ? `${x.charges}× · soul orb` : 'toggle');
+  d.innerHTML = `
+    <div class="agent-hero">${emblem(a.emblem, a.color)}<div><h3>${a.name}</h3><div class="role">${a.role}</div></div></div>
+    <p class="agent-blurb">${a.blurb}</p>
+    <div class="ab-list">
+      ${row('C', ab.c, tag(ab.c))}
+      ${row('Q', ab.q, tag(ab.q))}
+      ${row('E', ab.e, tag(ab.e))}
+      ${row('X', ab.x, `${ab.x.points} kills`)}
+      ${a.passive ? row('—', a.passive, 'passive') : ''}
+    </div>
+    <div class="lock"><button id="agent-back">Back</button><button id="agent-lock" class="primary">Lock in</button></div>`;
+  $('agent-back').onclick = () => (agentsMid ? resume() : show('menu'));
+  $('agent-lock').textContent = agentsMid ? 'Swap agent' : 'Lock in';
+  $('agent-lock').onclick = lockIn;
+}
+
+function lockIn() {
+  settings.agent = pickedAgent;
+  saveSettings(settings);
+  updateMenuLoadout();
+  if (agentsMid) { switchAgent(pickedAgent); resume(); }
+  else startMatch();
+}
+
+// Swap the player's agent in the middle of a match: abilities reset, ultimate points carry over.
+function switchAgent(id) {
+  const p = game.player;
+  const pts = p.kit ? p.kit.ultPoints : 0;
+  if (p.kit) p.kit.cleanup();
+  p.kit = new Kit(p, id);
+  p.kit.reset(game.time);
+  p.kit.ultPoints = Math.min(pts, p.kit.ultCost);
+  if (p.alive) p.equip(p.slot, game.time, true);
+  hud.buildAbilities(id);
+  hud.center(`<b>AGENT</b> ${AGENTS[id].name}`);
+}
+
+function updateMenuLoadout() {
+  for (const b of document.querySelectorAll('.mode')) b.classList.toggle('sel', b.dataset.mode === settings.mode);
+  $('menu-agent').textContent = (AGENTS[settings.agent] || AGENTS.zephyr).name;
+  const l = settings.loadout;
+  $('menu-loadout').textContent = `${WEAPONS[l.primary]?.name || 'No primary'} + ${WEAPONS[l.secondary]?.name}`;
+  $('menu-map').textContent = settings.mode === 'rounds' && !supportsMode(settings.map, 'rounds') ? 'Divide (5v5 needs a 5v5 map)' : MAPS[settings.map] || settings.map;
+}
+
+$('play').onclick = () => openAgents();
+for (const b of document.querySelectorAll('.mode')) b.onclick = () => { settings.mode = b.dataset.mode; saveSettings(settings); updateMenuLoadout(); };
+$('menu-settings').onclick = () => openSettings('menu');
+$('resume').onclick = resume;
+$('pause-settings').onclick = () => openSettings('pause');
+$('restart').onclick = () => startMatch();
+const toMenu = () => { net.close(); running = false; game.state = 'idle'; updateNetBadge(); updateMenuLoadout(); show('menu'); };
+$('quit').onclick = toMenu;
+$('settings-back').onclick = () => show(settingsReturn);
+$('settings-reset').onclick = () => {
+  const loadout = settings.loadout;
+  const skins = settings.skins;
+  Object.assign(settings, DEFAULTS, { loadout, skins });
+  saveSettings(settings);
+  for (const k of Object.keys(DEFAULTS)) applySettings(k);
+  hud.chKey = '';
+  buildSettings();
+};
+$('again').onclick = () => startMatch();
+$('end-menu').onclick = toMenu;
+updateMenuLoadout();
+if (!matchMedia('(any-pointer: fine)').matches) $('touch-note').hidden = false;
+
+addEventListener('pagehide', () => net.close());
+addEventListener('beforeunload', (e) => {
+  if (running && game.state === 'playing') { e.preventDefault(); e.returnValue = ''; }
+});
+
+// ---- online (see net.js) ----
+const escHtml = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function netStatus(msg, err = false) {
+  const el = $('online-status');
+  el.textContent = msg;
+  el.classList.toggle('err', err);
+  updateNetBadge();
+}
+
+function updateNetBadge() {
+  const b = $('netbadge');
+  b.hidden = !net.active || !running;
+  if (b.hidden) return;
+  const humans = game.combatants.filter(c => c.nid && !c.isBot).length;
+  b.innerHTML = `${net.role === 'host' ? 'HOSTING' : 'ONLINE'} · ROOM <b>${escHtml(net.room)}</b> · ${humans} player${humans === 1 ? '' : 's'}`;
+}
+
+// What other players need to draw us: name, colour, loadout and skins (custom skin designs included).
+function netProfile() {
+  const skinDefs = {};
+  for (const sid of Object.values(settings.skins)) if (isCustom(sid) && SKINS[sid]) skinDefs[sid] = SKINS[sid];
+  return { name: settings.netName, color: parseInt(settings.netColor.slice(1), 16), loadout: { ...settings.loadout }, skins: { ...settings.skins }, skinDefs };
+}
+
+function readOnlineForm() {
+  settings.netName = $('net-name').value.trim().slice(0, 16) || 'Player';
+  settings.netColor = $('net-color').value;
+  settings.netTransport = $('net-transport').value;
+  const room = $('net-room').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  saveSettings(settings);
+  return { transport: settings.netTransport, room };
+}
+
+function openOnline() {
+  $('net-name').value = settings.netName;
+  $('net-color').value = settings.netColor;
+  $('net-transport').value = settings.netTransport;
+  if (!$('net-room').value) $('net-room').value = roomCode();
+  netStatus(net.active ? `In room ${net.room}` : '');
+  show('online');
+}
+
+async function hostOnline() {
+  const { transport, room } = readOnlineForm();
+  if (!room) { netStatus('Pick a room code first', true); return false; }
+  const id = settings.map;
+  const ok = await startMatch({ online: true, mode: 'dm', map: id, noAbilities: true, noResume: true });
+  if (!ok) return false;
+  try {
+    await net.host({ transport, room, profile: netProfile(), mapJSON: mapInfo(id)?.file ? null : mapJSON(id) });
+  } catch (err) {
+    netStatus(err.message, true);
+    toMenu();
+    show('online');
+    return false;
+  }
+  updateNetBadge();
+  return true;
+}
+
+async function joinOnline() {
+  const { transport, room } = readOnlineForm();
+  if (!room) { netStatus('Enter the host\'s room code', true); return; }
+  if (running) toMenu();
+  try {
+    await net.join({ transport, room, profile: netProfile() });
+  } catch (err) {
+    netStatus(err.message, true);
+    net.close();
+  }
+}
+
+// The host answered: load its map, start a local match with no bots, then hand control to the session.
+async function joinedMatch(w) {
+  try {
+    if (w.mapJSON) addMap(w.mapJSON);
+    else await preloadMap(w.map);
+  } catch (err) { netStatus(`Can't load the host's map: ${err.message}`, true); net.close(); return; }
+  const ok = await startMatch({ online: true, mode: 'dm', map: w.map, botCount: 0, noAbilities: true, killLimit: w.opts.killLimit, timeLimit: w.opts.timeLimit, noResume: true });
+  if (!ok) { net.close(); return; }
+  net.attachClient(w);
+  updateNetBadge();
+  $('pause-hint').textContent = 'Joined. Click Resume to play.';
+}
+
+$('menu-online').onclick = openOnline;
+$('online-back').onclick = () => show(running ? 'pause' : 'menu');
+$('net-newroom').onclick = () => { $('net-room').value = roomCode(); };
+$('net-host').onclick = () => hostOnline();
+$('net-join').onclick = () => joinOnline();
+
+// ---- maps screen ----
+function openMaps() {
+  buildMapList();
+  $('map-status').textContent = '';
+  show('maps');
+}
+
+function buildMapList() {
+  const list = $('map-list');
+  list.innerHTML = '';
+  for (const m of mapList()) {
+    const row = document.createElement('div');
+    row.className = 'map-row' + (m.id === settings.map ? ' sel' : '');
+    row.innerHTML = `<div><b>${escHtml(m.name)}</b><small>${escHtml(m.blurb || '')}</small></div><span class="tag">${m.modes.includes('rounds') ? 'DM · 5v5' : 'DM'}${m.custom ? ' · imported' : ''}</span><span class="inline"></span>`;
+    const btns = row.lastChild;
+    const use = document.createElement('button');
+    use.textContent = m.id === settings.map ? 'Selected' : 'Use';
+    use.onclick = async () => {
+      try { await preloadMap(m.id); } catch (err) { $('map-status').textContent = err.message; return; }
+      settings.map = m.id; saveSettings(settings); updateMenuLoadout(); buildMapList();
+    };
+    btns.appendChild(use);
+    if (m.custom && !m.file) {
+      const del = document.createElement('button');
+      del.textContent = 'Remove';
+      del.onclick = () => { removeCustomMap(m.id); if (settings.map === m.id) settings.map = 'arena'; saveSettings(settings); updateMenuLoadout(); buildMapList(); };
+      btns.appendChild(del);
+    }
+    list.appendChild(row);
+  }
+}
+
+function importMapJSON(json, from) {
+  try {
+    const id = addMap(json, { custom: true, persist: true });
+    settings.map = id; saveSettings(settings); updateMenuLoadout();
+    $('map-status').textContent = `Loaded "${MAPS[id]}" from ${from} and selected it.`;
+    buildMapList();
+  } catch (err) { $('map-status').textContent = `That map didn't load: ${err.message}`; }
+}
+
+$('menu-maps').onclick = openMaps;
+$('maps-back').onclick = () => show('menu');
+$('map-file').onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try { importMapJSON(JSON.parse(await f.text()), f.name); } catch (err) { $('map-status').textContent = `Not valid JSON: ${err.message}`; }
+};
+$('map-url-go').onclick = async () => {
+  const url = $('map-url').value.trim();
+  if (!url) return;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    importMapJSON(await res.json(), new URL(url, location.href).hostname || 'that URL');
+  } catch (err) { $('map-status').textContent = `Couldn't fetch the map: ${err.message}`; }
+};
+
+// ---- custom skin editor ----
+const SLOT_LABELS = { body: 'Body', trim: 'Trim', metal: 'Metal', grip: 'Grip' };
+let editing = null; // { id (null = new), def }
+
+const hexOf = (n) => '#' + (n >>> 0).toString(16).padStart(6, '0');
+
+function skinStatus(msg) { $('skin-status').textContent = msg; }
+
+function openEditor(id = null) {
+  const src = id ? SKINS[id] : SKINS[skinFor(settings, skinWeapon)];
+  editing = { id, def: structuredClone(sanitizeSkin(src)) };
+  if (!id) { editing.def.name = 'My skin'; editing.def.tier = 'Custom'; editing.def.blurb = 'Designed in the skin editor.'; }
+  $('skin-grid').hidden = true;
+  $('skin-actions').hidden = true;
+  const ed = $('skin-editor');
+  ed.hidden = false;
+  const patOpts = (cur) => `<option value="">None</option>` + Object.entries(PATTERNS).map(([k, p]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${p.label}</option>`).join('');
+  const d = editing.def;
+  ed.innerHTML = `
+    <div class="form"><label>Name</label><input data-k="name" maxlength="28" value="${escHtml(d.name)}">
+      <label>Description</label><input data-k="blurb" maxlength="90" value="${escHtml(d.blurb)}"></div>
+    <div class="slots">
+      ${Object.entries(SLOT_LABELS).map(([slot, label]) => `
+        <fieldset><legend>${label}</legend><div class="form">
+          <label>Colour</label><input type="color" data-s="${slot}" data-f="color" value="${hexOf(d[slot].color)}">
+          <label>Roughness</label><input type="range" min="0" max="1" step="0.01" data-s="${slot}" data-f="rough" value="${d[slot].rough}">
+          <label>Metallic</label><input type="range" min="0" max="1" step="0.01" data-s="${slot}" data-f="metal" value="${d[slot].metal}">
+          <label>Pattern</label><select data-s="${slot}" data-f="tex">${patOpts(d[slot].tex)}</select>
+          <label>Pattern ink</label><input type="color" data-s="${slot}" data-f="texColor" value="${d[slot].texColor || '#ffffff'}">
+          <label>Pattern base</label><input type="color" data-s="${slot}" data-f="texBase" value="${d[slot].texBase || hexOf(d[slot].color)}">
+        </div></fieldset>`).join('')}
+      <fieldset><legend>Glow</legend><div class="form">
+        <label>Colour</label><input type="color" data-s="glow" data-f="color" value="${hexOf(d.glow.color)}">
+        <label>Strength</label><input type="range" min="0" max="4" step="0.05" data-s="glow" data-f="intensity" value="${d.glow.intensity}">
+      </div></fieldset>
+    </div>
+    <div class="buttons"><button id="ed-save" class="primary">Save and apply</button><button id="ed-random">Randomize</button><button id="ed-cancel">Cancel</button></div>`;
+  const sync = () => {
+    for (const el of ed.querySelectorAll('[data-k]')) d[el.dataset.k] = el.value;
+    for (const el of ed.querySelectorAll('[data-s]')) {
+      const slot = d[el.dataset.s], f = el.dataset.f;
+      if (f === 'color') slot.color = parseInt(el.value.slice(1), 16);
+      else if (f === 'tex') { if (el.value) slot.tex = el.value; else delete slot.tex; }
+      else if (f === 'texColor' || f === 'texBase') slot[f] = el.value;
+      else slot[f] = parseFloat(el.value);
+    }
+    previewDraft();
+  };
+  ed.oninput = sync;
+  $('ed-save').onclick = () => {
+    sync();
+    const sid = saveCustomSkin(d, editing.id);
+    if (!sid) return;
+    settings.skins[skinWeapon] = sid;
+    saveSettings(settings);
+    closeEditor();
+    skinStatus(`Saved "${SKINS[sid].name}" and put it on the ${WEAPONS[skinWeapon].name}.`);
+  };
+  $('ed-cancel').onclick = closeEditor;
+  $('ed-random').onclick = () => {
+    const rc = () => '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+    const pats = Object.keys(PATTERNS);
+    for (const el of ed.querySelectorAll('[data-s]')) {
+      if (el.type === 'color') el.value = rc();
+      else if (el.type === 'range') el.value = el.dataset.f === 'intensity' ? (Math.random() * 3).toFixed(2) : Math.random().toFixed(2);
+      else if (el.tagName === 'SELECT') el.value = el.dataset.s === 'body' || Math.random() < 0.25 ? pats[Math.floor(Math.random() * pats.length)] : '';
+    }
+    sync();
+  };
+  previewDraft();
+}
+
+// The draft is registered under a throwaway id so the preview can draw it; never saved.
+function previewDraft() {
+  registerSkin('__draft', sanitizeSkin(editing.def), { temporary: true });
+  preview.show(skinWeapon, '__draft');
+  $('skin-title').textContent = `${editing.def.name} ${WEAPONS[skinWeapon].name}`;
+  $('skin-sub').textContent = editing.def.blurb;
+}
+
+function closeEditor() {
+  editing = null;
+  delete SKINS.__draft;
+  $('skin-editor').hidden = true;
+  $('skin-grid').hidden = false;
+  $('skin-actions').hidden = false;
+  buildSkinWeapons();
+  selectSkinWeapon(skinWeapon);
+}
+
+function download(name, text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function adoptSkin(def, how) {
+  if (!def) { skinStatus(`That ${how} isn't a Tapfire skin.`); return; }
+  const sid = saveCustomSkin(def);
+  settings.skins[skinWeapon] = sid;
+  saveSettings(settings);
+  buildSkinWeapons();
+  selectSkinWeapon(skinWeapon);
+  skinStatus(`Added "${SKINS[sid].name}" from a ${how}.`);
+}
+
+$('skin-new').onclick = () => openEditor(null);
+$('skin-edit').onclick = () => openEditor(skinFor(settings, skinWeapon));
+$('skin-delete').onclick = () => {
+  const sid = skinFor(settings, skinWeapon);
+  if (!isCustom(sid) || !confirm(`Delete "${SKINS[sid].name}"? Weapons using it go back to Standard Issue.`)) return;
+  for (const [w, x] of Object.entries(settings.skins)) if (x === sid) delete settings.skins[w];
+  deleteCustomSkin(sid);
+  saveSettings(settings);
+  buildSkinWeapons();
+  selectSkinWeapon(skinWeapon);
+  skinStatus('Deleted.');
+};
+$('skin-share').onclick = async () => {
+  const code = skinCode(skinFor(settings, skinWeapon));
+  try { await navigator.clipboard.writeText(code); skinStatus('Share code copied. Anyone can paste it into their skin menu.'); }
+  catch { prompt('Copy this share code:', code); }
+};
+$('skin-paste').onclick = () => {
+  const code = prompt('Paste a skin share code (TFSKIN1.…):');
+  if (code) adoptSkin(parseSkinCode(code), 'share code');
+};
+$('skin-export').onclick = () => {
+  const sid = skinFor(settings, skinWeapon);
+  download(`${SKINS[sid].name.replace(/[^\w-]+/g, '_')}.tapfire-skin.json`, JSON.stringify({ tapfireSkin: 1, ...SKINS[sid] }, null, 2));
+};
+$('skin-import').onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try { adoptSkin(sanitizeSkin(JSON.parse(await f.text())), 'file'); } catch { skinStatus('That file isn\'t valid JSON.'); }
+};
+
+// ---- loop: simulation at a fixed 128 Hz, rendering interpolated between ticks ----
+// Online, the match keeps running while you're in a menu (and the host's has to, for everyone else).
+const simulating = () => running && (!paused || net.active) && !hooks.frozen;
+function simulate(dt) {
+  acc += dt;
+  let n = 0;
+  while (acc >= DT && n < 64) {
+    playerInput();
+    game.tick();
+    net.tick();
+    acc -= DT;
+    n++;
+  }
+  if (n >= 64) acc = 0;
+}
+// Background tabs get no animation frames; a worker timer keeps an online match ticking there.
+let lastBg = performance.now();
+try {
+  const w = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 20)'], { type: 'text/javascript' })));
+  w.onmessage = () => {
+    const now = performance.now();
+    if (document.hidden && net.active && simulating()) { simulate(Math.min(0.25, (now - lastBg) / 1000)); last = now; }
+    lastBg = now;
+  };
+} catch { /* no workers: hidden tabs just pause */ }
+
+function frame(t) {
+  requestAnimationFrame(frame);
+  let dt = (t - last) / 1000;
+  last = t;
+  if (dt > 0.25) dt = 0.25;
+  if (dt < 0) dt = 0;
+  if (simulating()) simulate(dt);
+  if (running) {
+    renderer.render(Math.min(1, acc / DT), dt, look);
+    hud.specTarget = renderer.specTarget;
+    hud.update(dt, look);
+    spikeBeeps(); rhud.update(dt);
+    minimap.update();
+    sound.setListener(game.player.eye(), game.player.yaw);
+  } else {
+    renderer.renderIdle(t / 1000);
+  }
+  look.dx = look.dy = 0;
+}
+requestAnimationFrame(frame);
+
+// Exposed for automated checks in a headless browser; `frozen` stops the loop from ticking.
+const hooks = { game, renderer, settings, startMatch, playerInput, openAgents, switchAgent, net, hostOnline, joinOnline, frozen: false };
+window.__game = hooks;

@@ -1,0 +1,32 @@
+{
+ "maps": [
+  {
+   "id": "arena",
+   "name": "Range",
+   "file": "arena.json",
+   "modes": [
+    "dm"
+   ],
+   "blurb": "The open training range."
+  },
+  {
+   "id": "foundry",
+   "name": "Foundry",
+   "file": "foundry.json",
+   "modes": [
+    "dm"
+   ],
+   "blurb": "Compact three-lane map, authored in JSON."
+  },
+  {
+   "id": "divide",
+   "name": "Divide",
+   "file": "divide.json",
+   "modes": [
+    "dm",
+    "rounds"
+   ],
+   "blurb": "Full 5v5 map with sites, ropes and barriers."
+  }
+ ]
+}

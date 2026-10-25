@@ -1,0 +1,581 @@
+// 5v5 round mode, following Valorant's rules:
+//   * Attackers carry the spike and must plant it on site A or B; defenders stop them or defuse it.
+//   * Buy phase 30 s (barriers up), round 100 s, spike timer 45 s, plant 4 s, defuse 7 s (progress is kept
+//     once you pass the halfway mark at 3.5 s).
+//   * First to 13 rounds. Sides swap after round 12. At 12-12 the match goes to overtime: win by two,
+//     sides swap every round and everyone gets 5000 credits each overtime round.
+//   * Economy: 800 to start, 9000 cap, +3000 per round win, +1900 / 2400 / 2900 for 1 / 2 / 3+ losses in a
+//     row, +200 per kill, +300 to every attacker for planting, and attackers who survive a round they lost
+//     on time without planting get only 1000. Halftime resets credits to 800 and weapons to the Classic.
+//   * Dead players stay dead until the next round. Survivors keep their weapons and remaining shields.
+//     Unused ability charges carry over; the signature ability (E) refills every round.
+import { WEAPONS } from './weapons.js';
+import { Gun } from './gun.js';
+import { Combatant } from './entity.js';
+import { Bot, BOT_NAMES } from './bot.js';
+import { Kit, AGENTS, AGENT_ORDER } from './abilities.js';
+import { PLAYER, DT } from './config.js';
+
+export const ROUND = { buy: 30, round: 100, spike: 45, plant: 4, defuse: 7, defuseHalf: 3.5, end: 6, toWin: 13, half: 12, firstBuy: 30 };
+export const ECON = { start: 800, max: 9000, win: 3000, loss: [1900, 2400, 2900], kill: 200, plant: 300, save: 1000, ot: 5000 };
+// Regen Shield (patch 9.10): 25 shield that refills from a 50-point reserve after a moment out of combat.
+export const SHIELDS = { light: { name: 'Light Shields', cost: 400, armor: 25 }, regen: { name: 'Regen Shield', cost: 650, armor: 25, pool: 50 }, heavy: { name: 'Heavy Shields', cost: 1000, armor: 50 } };
+export const REGEN = { delay: 5, rate: 6 }; // seconds without taking damage, then shield per second
+import { priceOf, PRICES } from './prices.js';
+// Price, max charges and free charges for one of a combatant's ability slots.
+export const abilityPrice = (c, k) => priceOf(c.kit.id, c.kit.agent.abilities[k], k);
+
+const TEAM_COLORS = [0x4fd1c5, 0xff4655]; // your team, enemy team
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+export class RoundMode {
+  constructor(game, opts) {
+    this.game = game;
+    this.opts = opts;
+    this.kind = 'rounds';
+    this.score = [0, 0];
+    this.round = 0;
+    this.lossStreak = [0, 0];
+    this.phase = 'buy';
+    this.phaseEnd = 0;
+    this.spike = null;
+    this.history = []; // [{ winner team, reason, side }]
+    this.startSide = opts.side === 'random' || !opts.side ? (Math.random() < 0.5 ? 'atk' : 'def') : opts.side;
+  }
+
+  // ---------- setup ----------
+  setup() {
+    const g = this.game;
+    const names = shuffle([...BOT_NAMES]);
+    const agents = shuffle(AGENT_ORDER.filter(a => a !== this.opts.agent));
+    const agentsB = shuffle([...AGENT_ORDER]);
+    const p = g.player;
+    p.team = 0;
+    p.credits = ECON.start;
+    p.agentId = p.kit.id;
+    g.combatants = [p];
+    g.bots = [];
+    for (let i = 0; i < 9; i++) {
+      const team = i < 4 ? 0 : 1;
+      const c = new Combatant(g, { name: names[i], isBot: true, color: TEAM_COLORS[team] });
+      c.team = team;
+      c.credits = ECON.start;
+      // Agents are unique within a team (your team's four never repeat your pick).
+      c.agentId = team === 0 ? agents[i] : agentsB[i - 4];
+      c.kit = new Kit(c, c.agentId);
+      c.loadout = { primary: null, secondary: 'classic' };
+      c.brain = new Bot(c, g, this.opts.difficulty, 'fight');
+      g.combatants.push(c);
+      g.bots.push(c);
+    }
+    for (const c of g.combatants) { c.inv = { primary: null, secondary: new Gun(WEAPONS.classic), melee: new Gun(WEAPONS.knife), ability: null }; c.armor = 0; c.survived = false; }
+    // Abilities start empty except the signature.
+    for (const c of g.combatants) if (c.kit) { c.kit.charges.c = 0; c.kit.charges.q = 0; c.kit.charges.e = 0; c.inv.ability = null; }
+    this.startRound();
+  }
+
+  // Which side a team is on in the current round.
+  sideOf(team) {
+    const r = this.round; // 1-based
+    let swapped;
+    if (r <= ROUND.half) swapped = false;
+    else if (r <= ROUND.half * 2) swapped = true;
+    else swapped = (r - ROUND.half * 2) % 2 === 1; // overtime: swap every round
+    const s0 = swapped ? (this.startSide === 'atk' ? 'def' : 'atk') : this.startSide;
+    return team === 0 ? s0 : (s0 === 'atk' ? 'def' : 'atk');
+  }
+  side(c) { return this.sideOf(c.team); }
+  teamOnSide(side) { return this.sideOf(0) === side ? 0 : 1; }
+  members(side) { return this.game.combatants.filter(c => this.side(c) === side); }
+  alive(side) { return this.members(side).filter(c => c.alive); }
+
+  // ---------- round flow ----------
+  startRound() {
+    const g = this.game, map = g.map, now = g.time;
+    this.round++;
+    const half = this.round === ROUND.half + 1, ot = this.round > ROUND.half * 2;
+    // Clear the world.
+    for (const w of g.walls) g.removeWall(w);
+    g.walls = []; g.smokes = []; g.zones = []; g.devices = []; g.eventide = null; g.drops = [];
+    if (g.contract) g.contract = null;
+    this.emit('roundClear');
+    for (const c of g.combatants) {
+      if (half) { c.credits = ECON.start; c.survived = false; c.inv.primary = null; c.inv.secondary = new Gun(WEAPONS.classic); c.armor = 0; c.inv.ability = null; if (c.kit) { c.kit.charges.c = 0; c.kit.charges.q = 0; c.kit.charges.e = 0; } }
+      if (ot) c.credits = ECON.ot;
+      this.spawn(c, now);
+    }
+    this.boughtThisRound = new Map();
+    // Spike to a random attacker.
+    // The spike starts on the floor just in front of the attackers' spawn: whoever walks over it carries it.
+    this.spike = { state: 'dropped', carrier: null, pos: this.spikeSpawnPos(), plantProg: 0, defuseProg: 0, defuser: null, plantedAt: 0, site: null };
+    this.phase = 'buy';
+    this.phaseEnd = now + (this.round === 1 || half ? ROUND.firstBuy : ROUND.buy);
+    this.setBarriers(true);
+    for (const c of g.bots) this.botBuy(c);
+    this.plan = null;
+    this.planBots(true);
+    this.emit('round', { round: this.round });
+  }
+
+  spikeSpawnPos() {
+    const g = this.game, spots = g.map.teamSpawns.atk;
+    const n = Math.min(5, spots.length);
+    let x = 0, z = 0, y = 0;
+    for (let i = 0; i < n; i++) { x += spots[i].x / n; z += spots[i].z / n; y = Math.max(y, spots[i].y); }
+    const yaw = spots[0].yaw;
+    for (const d of [3, 2, 1, 0]) {
+      const px = x - Math.sin(yaw) * d, pz = z - Math.cos(yaw) * d;
+      if (!g.world.overlap(px - 0.3, y + 0.05, pz - 0.3, px + 0.3, y + 1.5, pz + 0.3)) {
+        const f = g.world.raycast([px, y + 1, pz], [0, -1, 0], 5);
+        return [px, f ? y + 1 - f.t : y, pz];
+      }
+    }
+    return [spots[0].x, spots[0].y, spots[0].z];
+  }
+
+  // Put a combatant at their spawn, healthy. Survivors keep weapons and shields; the dead get a Classic.
+  spawn(c, now) {
+    const g = this.game, side = this.side(c);
+    const spots = g.map.teamSpawns[side];
+    const i = g.combatants.filter(o => this.side(o) === side).indexOf(c);
+    const sp = spots[i % spots.length];
+    const keepArmor = c.survived ? c.armor : 0;
+    if (!c.survived) { c.armorKind = null; c.regenPool = 0; }
+    // Copy the survivor's guns into a fresh object: spawnAt() below rebuilds c.inv from the DM loadout.
+    const inv = c.survived ? { primary: c.inv.primary, secondary: c.inv.secondary, melee: c.inv.melee || new Gun(WEAPONS.knife), ability: null } : { primary: null, secondary: new Gun(WEAPONS.classic), melee: new Gun(WEAPONS.knife), ability: null };
+    if (c.survived && !inv.secondary) inv.secondary = new Gun(WEAPONS.classic);
+    // Refill ammo for the new round.
+    for (const gun of [inv.primary, inv.secondary]) if (gun) { gun.mag = gun.def.mag; gun.reserve = gun.def.reserve; gun.reloading = false; }
+    const kitCharges = c.kit ? { ...c.kit.charges } : null;
+    // Unfired Headhunter-style bullets go back into the ability's charges.
+    const bk = c.kit && PRICES[c.kit.id]?.bullets;
+    if (bk && c.inv.ability?.abilityKey === bk) kitCharges[bk] += c.inv.ability.mag;
+    const pts = c.kit ? c.kit.ultPoints : 0;
+    c.loadout = { primary: null, secondary: 'classic' };
+    c.spawnAt(sp, now);
+    c.inv = inv;
+    inv.ability = null;
+    c.armor = keepArmor;
+    c.hp = PLAYER.hp;
+    c.slot = '';
+    c.equip(inv.primary ? 'primary' : 'secondary', now);
+    if (c.kit) {
+      const ab = c.kit.agent.abilities;
+      // Bought charges carry over (even through death, as in Valorant); free charges are topped up.
+      for (const k of ['c', 'q', 'e']) {
+        const pr = abilityPrice(c, k);
+        c.kit.charges[k] = pr.cost === null ? ab[k].charges : Math.max(pr.free, Math.min(pr.max, kitCharges[k]));
+      }
+      c.kit.ready = { q: 0, e: 0, c: 0 };
+      c.kit.ultPoints = pts;
+    }
+    c.survived = false;
+    c.roundKills = 0;
+    c.roundDamage = 0;
+    if (c.kit) { c.kit.mustScoreUntil = 0; c.kit.mapPick = null; c.kit.timers = (c.kit.timers || []).filter(t => !t.dead); }
+    if (c.brain) c.brain.reset(now);
+    g.emit('respawn', { who: c, round: true });
+  }
+
+  setBarriers(up) {
+    const g = this.game;
+    if (this.barrierBoxes) for (const b of this.barrierBoxes) { const i = g.world.boxes.indexOf(b); if (i >= 0) g.world.boxes.splice(i, 1); }
+    this.barrierBoxes = [];
+    if (up) for (const b of g.map.barriers || []) {
+      const box = { min: [...b.min], max: [...b.max], pen: false, mat: 'barrier', temp: true, barrier: b.team };
+      g.world.boxes.push(box);
+      this.barrierBoxes.push(box);
+    }
+    this.emit('barriers', { up, boxes: this.barrierBoxes });
+  }
+
+  emit(type, data = {}) { this.game.emit(type, { mode: this, ...data }); }
+
+  tick(now) {
+    const g = this.game;
+    // Regen Shields top themselves back up out of combat, while their reserve lasts.
+    for (const c of g.combatants) {
+      if (!c.alive || c.armorKind !== 'regen' || c.armor >= SHIELDS.regen.armor || !(c.regenPool > 0)) continue;
+      if (now - (c.lastHitTime ?? -99) < REGEN.delay) continue;
+      const add = Math.min(REGEN.rate * DT, c.regenPool, SHIELDS.regen.armor - c.armor);
+      c.armor += add; c.regenPool -= add;
+    }
+    if (this.phase === 'buy') {
+      if (this.spike?.state === 'dropped') this.tickSpike(now); // the spike can be grabbed during the buy phase
+      if (now >= this.phaseEnd) { this.phase = 'live'; this.liveAt = now; this.phaseEnd = now + ROUND.round; this.setBarriers(false); this.emit('live'); this.goTime = now + (this.plan?.style === 'rush' ? 1 + Math.random() * 2 : 6 + Math.random() * 9); }
+      return;
+    }
+    if (this.phase === 'end') {
+      if (now >= this.phaseEnd) this.afterRound();
+      return;
+    }
+    this.tickSpike(now);
+    if (this.phase === 'live' && now >= this.phaseEnd) return this.endRound('def', 'time');
+    if (this.phase === 'planted' && now >= this.spike.plantedAt + ROUND.spike) {
+      this.detonate();
+      return this.endRound('atk', 'detonated');
+    }
+    // Eliminations
+    const atkAlive = this.alive('atk').length, defAlive = this.alive('def').length;
+    if (defAlive === 0) return this.endRound('atk', 'eliminated');
+    if (atkAlive === 0 && this.phase === 'live') return this.endRound('def', 'eliminated');
+    if (!this._nextPlan || now >= this._nextPlan) { this._nextPlan = now + 0.5; this.planBots(false); }
+  }
+
+  // ---------- spike ----------
+  inSite(pos) {
+    for (const s of Object.values(this.game.map.sites || {})) {
+      if (pos[0] >= s.min[0] && pos[0] <= s.max[0] && pos[2] >= s.min[2] && pos[2] <= s.max[2]) return s;
+    }
+    return null;
+  }
+
+  // Keep a channelling player still and their gun down.
+  channel(c, now) {
+    c.input.fwd = c.input.side = 0; c.input.jump = false; c.input.fire = false; c.input.firePressed = false;
+    c.st.channelUntil = now + DT * 1.5;
+  }
+
+  tickSpike(now) {
+    const sp = this.spike, g = this.game;
+    if (!sp) return;
+    if (sp.state === 'carried') {
+      const c = sp.carrier;
+      if (!c || !c.alive) { sp.state = 'dropped'; sp.pos = c ? [c.pos[0], c.pos[1], c.pos[2]] : null; sp.carrier = null; this.emit('spikeDrop', { pos: sp.pos }); return; }
+      const site = this.inSite(c.pos);
+      if (this.phase === 'live' && site && c.input.use && c.grounded) {
+        this.channel(c, now);
+        sp.plantProg += DT;
+        if (sp.plantProg >= ROUND.plant) this.plant(c, site, now);
+      } else sp.plantProg = 0;
+    } else if (sp.state === 'dropped') {
+      for (const c of this.alive('atk')) {
+        if (Math.hypot(c.pos[0] - sp.pos[0], c.pos[2] - sp.pos[2]) < 1.2 && Math.abs(c.pos[1] - sp.pos[1]) < 1.5) {
+          sp.state = 'carried'; sp.carrier = c; sp.pos = null; this.emit('spikePickup', { who: c }); break;
+        }
+      }
+    } else if (sp.state === 'planted') {
+      // Defuse: hold Use next to it. Progress past the halfway mark is kept.
+      let any = false;
+      for (const c of this.alive('def')) {
+        if (!c.input.use || Math.hypot(c.pos[0] - sp.pos[0], c.pos[2] - sp.pos[2]) > 1.8 || Math.abs(c.pos[1] - sp.pos[1]) > 1.5) continue;
+        if (sp.defuser && sp.defuser !== c && sp.defuser.alive && sp.defuser.input.use) continue;
+        any = true;
+        if (sp.defuser !== c || now >= (this.defuseHeardAt || 0)) {
+          // The defuse is loud: nearby attackers turn toward the spike.
+          this.defuseHeardAt = now + 1;
+          for (const a of this.alive('atk')) if (a.brain && dist(a.pos, sp.pos) < 35) a.brain.alert(sp.pos, now);
+        }
+        sp.defuser = c;
+        this.channel(c, now);
+        sp.defuseProg += DT;
+        if (sp.defuseProg >= ROUND.defuseHalf && !sp.halfDone) { sp.halfDone = true; this.emit('defuseHalf'); }
+        if (sp.defuseProg >= ROUND.defuse) { sp.state = 'defused'; this.addUlt(c); return this.endRound('def', 'defused'); }
+        break;
+      }
+      if (!any) { sp.defuser = null; sp.defuseProg = sp.halfDone ? ROUND.defuseHalf : 0; }
+    }
+  }
+
+  plant(c, site, now) {
+    const sp = this.spike;
+    sp.state = 'planted';
+    sp.pos = [c.pos[0], c.pos[1], c.pos[2]];
+    sp.site = site.name;
+    sp.plantedAt = now;
+    sp.carrier = null;
+    sp.defuseProg = 0;
+    sp.halfDone = false;
+    this.phase = 'planted';
+    for (const a of this.members('atk')) a.credits = Math.min(ECON.max, a.credits + ECON.plant);
+    this.addUlt(c);
+    this.emit('planted', { who: c, site: site.name, pos: sp.pos });
+    this.planBots(true);
+  }
+
+  detonate() {
+    const g = this.game, p = this.spike.pos;
+    for (const c of g.combatants) {
+      if (!c.alive) continue;
+      const d = Math.hypot(c.pos[0] - p[0], c.pos[1] - p[1], c.pos[2] - p[2]);
+      if (d < 30) {
+        const dmg = d < 20 ? 999 : Math.round(150 * (30 - d) / 10);
+        g.damage(c, c, dmg, { part: 'body', def: { id: 'spike', name: 'Spike', cat: 'Ability' }, dist: d, point: c.eye(), wallbang: true, spike: true });
+      }
+    }
+    this.spike.state = 'exploded';
+    this.emit('detonate', { pos: p });
+  }
+
+  addUlt(c) { if (c.kit) c.kit.ultPoints = Math.min(c.kit.ultCost, c.kit.ultPoints + 1); }
+
+  // ---------- events ----------
+  onKill(victim, killer, info) {
+    if (killer && killer !== victim && this.game.isEnemy(killer, victim)) {
+      killer.credits = Math.min(ECON.max, killer.credits + ECON.kill);
+      killer.roundKills = (killer.roundKills || 0) + 1;
+    }
+    if (!info?.spike) this.addUlt(victim); // a death grants an ultimate point (not to the spike)
+  }
+
+  endRound(winnerSide, reason) {
+    if (this.phase === 'end') return;
+    const g = this.game, now = g.time;
+    const winTeam = this.teamOnSide(winnerSide), loseTeam = 1 - winTeam;
+    this.score[winTeam]++;
+    this.history.push({ winner: winTeam, side: winnerSide, reason });
+    this.phase = 'end';
+    this.phaseEnd = now + ROUND.end;
+    this.lastResult = { winnerSide, winTeam, reason, planted: this.spike && (this.spike.state === 'planted' || this.spike.state === 'exploded' || this.spike.state === 'defused') };
+    // Economy
+    this.lossStreak[winTeam] = 0;
+    this.lossStreak[loseTeam] = Math.min(3, this.lossStreak[loseTeam] + 1);
+    const lossBonus = ECON.loss[this.lossStreak[loseTeam] - 1];
+    for (const c of g.combatants) {
+      c.survived = c.alive;
+      let add;
+      if (c.team === winTeam) add = ECON.win;
+      else if (this.side(c) === 'atk' && reason === 'time' && c.alive && !this.lastResult.planted) add = ECON.save; // saved without planting
+      else add = lossBonus;
+      c.credits = Math.min(ECON.max, c.credits + add);
+    }
+    this.emit('roundEnd', this.lastResult);
+  }
+
+  afterRound() {
+    const g = this.game;
+    const [a, b] = this.score;
+    const regulation = this.round < ROUND.half * 2;
+    const done = (Math.max(a, b) >= ROUND.toWin && regulation) || (!regulation && Math.abs(a - b) >= 2 && Math.max(a, b) >= ROUND.toWin);
+    if (done) { this.winner = a > b ? 0 : 1; g.end(); return; }
+    this.startRound();
+  }
+
+  // ---------- buying ----------
+  canBuy(c) {
+    return this.phase === 'buy'; // anywhere on the map, until the round starts
+  }
+
+  // item: { type: 'weapon', id } | { type: 'shield', id } | { type: 'ability', key }
+  buy(c, item) {
+    if (!this.canBuy(c)) return 'Buying is only possible during the buy phase';
+    const bought = this.boughtThisRound.get(c) || [];
+    if (item.type === 'weapon') {
+      const def = WEAPONS[item.id];
+      const cur = c.inv[def.slot];
+      if (cur && cur.def.id === def.id) return 'Already owned';
+      if (c.credits < def.cost) return 'Not enough credits';
+      // Selling back what you bought this round in that slot first.
+      const prev = bought.find(b => b.type === 'weapon' && WEAPONS[b.id].slot === def.slot);
+      c.credits -= def.cost;
+      if (prev) { c.credits += WEAPONS[prev.id].cost; bought.splice(bought.indexOf(prev), 1); }
+      c.give(def.id);
+      c.equip(def.slot, this.game.time, true);
+    } else if (item.type === 'shield') {
+      const s = SHIELDS[item.id];
+      if (c.armor >= s.armor && (c.armorKind || 'light') === item.id) return 'Already have that shield';
+      const prev = bought.find(b => b.type === 'shield');
+      const refund = prev ? SHIELDS[prev.id].cost : 0;
+      if (c.credits + refund < s.cost) return 'Not enough credits';
+      c.credits += refund - s.cost;
+      if (prev) bought.splice(bought.indexOf(prev), 1);
+      c.armor = s.armor;
+      c.armorKind = item.id; c.regenPool = s.pool || 0;
+    } else if (item.type === 'ability') {
+      const pr = abilityPrice(c, item.key), cost = pr.cost;
+      if (cost === null) return 'Free every round';
+      if (c.kit.charges[item.key] >= pr.max) return 'Max charges';
+      if (c.credits < cost) return 'Not enough credits';
+      c.credits -= cost;
+      c.kit.charges[item.key]++;
+    }
+    bought.push(item);
+    this.boughtThisRound.set(c, bought);
+    this.emit('bought', { who: c, item });
+    return null;
+  }
+
+  // Sell back something bought this round (right click in the buy menu).
+  sell(c, item) {
+    if (!this.canBuy(c)) return 'Can only sell during the buy phase';
+    const bought = this.boughtThisRound.get(c) || [];
+    const i = bought.findIndex(b => b.type === item.type && (b.id === item.id || (item.key && b.key === item.key)));
+    if (i < 0) return 'Nothing to sell';
+    const b = bought[i];
+    if (b.type === 'weapon') {
+      const def = WEAPONS[b.id];
+      if (c.inv[def.slot]?.def.id !== b.id) return 'You no longer have that weapon';
+      c.credits += def.cost;
+      c.inv[def.slot] = def.slot === 'secondary' ? new Gun(WEAPONS.classic) : null;
+      c.equip(c.inv.primary ? 'primary' : 'secondary', this.game.time, true);
+    } else if (b.type === 'shield') { c.credits += SHIELDS[b.id].cost; c.armor = 0; c.armorKind = null; c.regenPool = 0; }
+    else if (b.type === 'ability') { c.credits += abilityPrice(c, b.key).cost; c.kit.charges[b.key]--; }
+    bought.splice(i, 1);
+    this.emit('bought', { who: c, item });
+    return null;
+  }
+
+  // Bots buy like a sensible team: full buy at 3900+, half buy at 2000+, a pistol-round buy, or save.
+  botBuy(c) {
+    const has = c.inv.primary;
+    const cr = () => c.credits;
+    const tryBuy = (item) => this.buy(c, item) === null;
+    const pistolRound = this.round === 1 || this.round === ROUND.half + 1;
+    if (pistolRound) {
+      if (Math.random() < 0.5) { tryBuy({ type: 'shield', id: 'light' }); tryBuy({ type: 'weapon', id: pick(['ghost', 'frenzy']) }); }
+      else tryBuy({ type: 'weapon', id: 'sheriff' });
+      this.botBuyAbilities(c);
+      return;
+    }
+    if (!has && cr() >= 3900) { tryBuy({ type: 'weapon', id: pick(['vandal', 'phantom', 'vandal', 'phantom', 'operator', 'odin']) }); tryBuy({ type: 'shield', id: 'heavy' }); }
+    else if (!has && cr() >= 2400) { tryBuy({ type: 'weapon', id: pick(['spectre', 'bulldog', 'guardian', 'marshal']) }); tryBuy({ type: 'shield', id: cr() >= 1000 ? 'heavy' : 'light' }); }
+    else if (!has && cr() >= 1500) { tryBuy({ type: 'weapon', id: pick(['spectre', 'bucky', 'stinger']) }); tryBuy({ type: 'shield', id: 'light' }); }
+    else if (!has && cr() >= 800) tryBuy({ type: 'weapon', id: 'sheriff' });
+    if (c.armor < 50 && cr() >= 2000) tryBuy({ type: 'shield', id: 'heavy' });
+    if (c.armor < 25 && cr() >= 650 && Math.random() < 0.5) tryBuy({ type: 'shield', id: 'regen' });
+    if (c.armor < 25 && cr() >= 400) tryBuy({ type: 'shield', id: 'light' });
+    this.botBuyAbilities(c, c.inv.primary ? 0 : 400);
+  }
+
+  // Spend what's left on utility (cheapest first), keeping `reserve` credits back.
+  botBuyAbilities(c, reserve = 0) {
+    if (!c.kit) return;
+    for (let guard = 0; guard < 12; guard++) {
+      const opts = ['c', 'q', 'e'].map(k => ({ k, pr: abilityPrice(c, k) }))
+        .filter(o => o.pr.cost !== null && c.kit.charges[o.k] < o.pr.max && c.credits - o.pr.cost >= reserve)
+        .sort((a, b) => a.pr.cost - b.pr.cost);
+      if (!opts.length || this.buy(c, { type: 'ability', key: opts[0].k }) !== null) return;
+    }
+  }
+
+  // ---------- team AI ----------
+  planBots(fresh) {
+    const g = this.game, map = g.map, sp = this.spike, now = g.time;
+    if (!map.holds) return;
+    const bots = g.bots.filter(b => b.alive);
+    if (fresh && this.phase === 'buy') {
+      // New round: attackers pick a site and split into a main-lane group and a mid group; defenders take
+      // two on A, one mid, two on B.
+      const site = Math.random() < 0.5 ? 'A' : 'B';
+      const defRoles = shuffle(['A', 'A', 'mid', 'B', 'B']);
+      // Low-elo attack calls: a fast rush, a slower default, or a default with someone lurking the other site.
+      const r = Math.random(), style = r < 0.35 ? 'rush' : r < 0.75 ? 'default' : 'lurk';
+      this.plan = { site, style, defRoles: new Map(), atkRoles: new Map(), rotated: new Set(), pushed: new Set() };
+      let di = 0, ai = 0;
+      for (const c of g.combatants) {
+        if (this.side(c) === 'def') this.plan.defRoles.set(c, defRoles[di++ % 5]);
+        else { const i = ai++; this.plan.atkRoles.set(c, style === 'lurk' && i === 4 ? 'lurk' : i < 3 ? 'main' : 'mid'); }
+      }
+    }
+    const plan = this.plan;
+    if (!plan) return;
+    const jitter = (p, r) => [p[0] + (Math.random() - 0.5) * r, p[1], p[2] + (Math.random() - 0.5) * r];
+    const siteSpot = (name, r = 0.7) => { const s = map.sites[name]; return [s.min[0] + (s.max[0] - s.min[0]) * (0.5 + (Math.random() - 0.5) * r), 0, s.min[2] + (s.max[2] - s.min[2]) * (0.5 + (Math.random() - 0.5) * r)]; };
+    // Where defenders last saw attackers (bronze/silver habit: everyone rotates toward the first contact).
+    let contact = null;
+    for (const c of this.alive('def')) {
+      const br = c.brain;
+      if (br && br.lastSeenPos && now - br.lastSeen < 2.5) {
+        const near = Object.keys(map.sites).sort((a, b) => dist(br.lastSeenPos, map.sites[a].center) - dist(br.lastSeenPos, map.sites[b].center))[0];
+        if (dist(br.lastSeenPos, map.sites[near].center) < 45) contact = near;
+      }
+    }
+    const live = this.phase === 'live';
+    for (const b of bots) {
+      const br = b.brain;
+      const side = this.side(b);
+      // A healer holding her revive walks to a fallen teammate (the human player first) when it's safe.
+      if (b.kit?.id === 'solace' && b.kit.ultPoints >= b.kit.ultCost && this.phase !== 'buy' && now - (br.lastSeen ?? -10) > 2) {
+        const body = g.combatants.filter(c => c !== b && !c.alive && c.deathPos && !g.isEnemy(b, c) && dist(b.pos, c.deathPos) < 40)
+          .sort((x, y) => (x.isBot ? 0 : -25) + dist(b.pos, x.deathPos) - ((y.isBot ? 0 : -25) + dist(b.pos, y.deathPos)))[0];
+        if (body) { if (br.goal?.kind !== 'revive' || br.goal.who !== body) br.goal = { kind: 'revive', pos: [...body.deathPos], look: body.deathPos, who: body }; continue; }
+      }
+      if (br.goal?.kind === 'revive') br.goal = null;
+      if (side === 'def') {
+        if (sp.state === 'planted') {
+          // Everyone collapses on the spike; the closest defuses.
+          const closest = this.alive('def').filter(c => c.isBot).sort((x, y) => dist(x.pos, sp.pos) - dist(y.pos, sp.pos))[0];
+          // The others spread around it and watch outward, covering the defuser.
+          const left = sp.plantedAt + ROUND.spike - now;
+          const cover = () => { const p = jitter(sp.pos, 9); return { pos: p, look: [p[0] + (p[0] - sp.pos[0]) * 3, 0, p[2] + (p[2] - sp.pos[2]) * 3] }; };
+          if (b === closest) {
+            if (!br.goal || br.goal.action !== 'defuse') br.goal = { kind: 'spike', pos: [...sp.pos], look: sp.pos, action: 'defuse' };
+            // Out of time: commit to the defuse even with enemies around (needs the whole 7 s, or 3.5 after half).
+            br.goal.commit = left < (sp.halfDone ? ROUND.defuseHalf : ROUND.defuse) + 1.5;
+          } else if (!br.goal || br.goal.kind !== 'spike' || br.goal.action || fresh) { const cv = cover(); br.goal = { kind: 'spike', pos: cv.pos, look: cv.look, hold: true }; }
+          continue;
+        }
+        let role = plan.defRoles.get(b) || 'mid';
+        // Rotate on contact (half the time — and sometimes too early).
+        if (live && contact && role !== contact && !plan.rotated.has(b)) {
+          plan.rotated.add(b);
+          if (Math.random() < 0.55) { role = contact; plan.defRoles.set(b, role); br.goal = null; }
+        }
+        // An aggressive defender pushes out into a lane if nothing has happened for a while.
+        if (live && !contact && now - (this.liveAt || now) > 16 && br.aggr > 0.65 && !plan.pushed.has(b)) {
+          plan.pushed.add(b);
+          const lane = role === 'mid' ? map.stage[pick(['A', 'B'])].mid : map.stage[role].main;
+          br.goal = { kind: 'push', pos: jitter(pick(lane), 3), look: map.teamSpawns.atk[0] ? [map.teamSpawns.atk[0].x, 0, map.teamSpawns.atk[0].z] : null, hold: true };
+          br.nextShift = now + 14;
+          continue;
+        }
+        if (br.goal?.kind === 'push' && now < br.nextShift) continue;
+        const list = map.holds[role];
+        const idx = [...plan.defRoles.entries()].filter(([c, r]) => r === role).findIndex(([c]) => c === b);
+        // Holding: swap to another spot on the same site every so often instead of camping one pixel.
+        if (!br.goal || br.goal.kind !== 'hold' || fresh || (live && now >= (br.nextShift || 0))) {
+          const k = fresh || !br.goal ? Math.max(0, idx) : Math.floor(Math.random() * list.length);
+          const h = list[k % list.length];
+          br.goal = { kind: 'hold', pos: jitter(h.pos, 2), look: h.look, hold: true };
+          br.nextShift = now + 6 + Math.random() * 7;
+        }
+      } else {
+        if (sp.state === 'planted') {
+          if (!br.goal || br.goal.kind !== 'post' || fresh || now >= (br.nextShift || 0)) {
+            const p = [sp.pos[0] + (Math.random() - 0.5) * 16, 0, sp.pos[2] + (Math.random() - 0.5) * 16];
+            br.goal = { kind: 'post', pos: p, look: sp.pos, hold: true };
+            br.nextShift = now + 7 + Math.random() * 7; // reposition during the post-plant
+          }
+          continue;
+        }
+        if (sp.state === 'dropped') {
+          const closest = this.alive('atk').filter(c => c.isBot).sort((x, y) => dist(x.pos, sp.pos) - dist(y.pos, sp.pos))[0];
+          if (b === closest) { br.goal = { kind: 'pickup', pos: [...sp.pos] }; continue; }
+        }
+        const role = plan.atkRoles.get(b) || 'main';
+        if (this.phase === 'buy') {
+          // Buy phase: walk up to the barrier of the lane this player will take, ready to go.
+          const site = role === 'lurk' ? (plan.site === 'A' ? 'B' : 'A') : plan.site;
+          const spots = map.buyStage?.[site]?.[role === 'mid' ? 'mid' : 'main'];
+          if (!spots) { br.goal = null; continue; }
+          if (!br.goal || br.goal.kind !== 'buystage' || fresh) {
+            const k = [...plan.atkRoles.entries()].filter(([c, r]) => r === role).findIndex(([c]) => c === b);
+            br.goal = { kind: 'buystage', pos: jitter(spots[Math.max(0, k) % spots.length], 1.5), look: map.sites[site].center, hold: true };
+          }
+          continue;
+        }
+        if (role === 'lurk') {
+          // The lurker sits in the other site's main, then pushes in once the spike is down or late in the round.
+          const other = plan.site === 'A' ? 'B' : 'A';
+          if (now - (this.liveAt || now) > 45) { if (!br.goal || br.goal.kind !== 'entry') br.goal = { kind: 'entry', pos: siteSpot(other, 0.8), look: siteSpot(other, 0.2), hold: true }; }
+          else if (!br.goal || br.goal.kind !== 'stage' || now >= (br.nextShift || 0)) { br.goal = { kind: 'stage', pos: jitter(pick(map.stage[other].main), 3), look: map.sites[other].center, hold: true }; br.nextShift = now + 6 + Math.random() * 5; }
+          continue;
+        }
+        const st = map.stage[plan.site][role];
+        const executing = now >= this.goTime;
+        if (!executing) {
+          // Staging: keep moving between spots in the lane rather than standing still.
+          if (!br.goal || br.goal.kind !== 'stage' || now >= (br.nextShift || 0)) { br.goal = { kind: 'stage', pos: jitter(pick(st), 3), look: map.sites[plan.site].center, hold: true }; br.nextShift = now + 3 + Math.random() * 3; }
+        } else if (sp.carrier === b && now < this.goTime + 3) {
+          // The carrier lets the entry players go first, then follows to plant.
+          if (!br.goal || br.goal.kind !== 'stage') br.goal = { kind: 'stage', pos: jitter(pick(st), 2), look: map.sites[plan.site].center, hold: true };
+        } else if (sp.carrier === b) {
+          if (!br.goal || br.goal.kind !== 'plant') br.goal = { kind: 'plant', pos: siteSpot(plan.site, 0.5), action: 'plant' };
+        } else if (!br.goal || br.goal.kind !== 'entry') br.goal = { kind: 'entry', pos: siteSpot(plan.site, 0.9), look: siteSpot(plan.site, 0.2), hold: true };
+      }
+    }
+  }
+}
+
+function dist(a, b) { return Math.hypot(a[0] - b[0], a[2] - b[2]); }
