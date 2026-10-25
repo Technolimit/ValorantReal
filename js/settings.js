@@ -35,7 +35,8 @@ export const DEFAULTS = {
   killLimit: 40,
   timeMinutes: 6,
   loadout: { primary: 'vandal', secondary: 'classic' },
-  skins: {}, // weapon id -> skin id (see skins.js)
+  skins: {}, // weapon id (or melee type) -> skin id (see skins.js)
+  melee: 'knife', // melee type shown in the knife slot (see melee.js)
   agent: 'zephyr',
   mode: 'dm', // 'dm' | 'rounds'
   map: 'arena', // deathmatch map

@@ -1,7 +1,8 @@
 // Three.js scene: map, characters, first-person viewmodel and effects (tracers, impacts, flashes).
 import * as THREE from '../vendor/three.module.min.js';
 import { HFOV, VIEW_RECOIL, HITBOX, GUN_HEIGHT } from './config.js';
-import { gunModel, handsModel, studioEnv } from './models.js';
+import { gunModel, handsModel, studioEnv, ownGlow, poseMeleeParts } from './models.js';
+import { MELEE, GUN_INSPECT, meleeId, inspectPose } from './melee.js';
 import { skinFor, SKINS } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
 import { BLADES, SMOKE, bloomTargets } from './abilities.js';
@@ -175,6 +176,7 @@ function flashTexture() {
 
 // First-person gun models, built from boxes. The muzzle object marks where flashes and tracers start.
 const VM_SCALE = 0.8;
+const EXAMINE_HOLD = 280; // ms the inspect key is held before examine mode takes the mouse
 // Hip and aim-down-sights positions (camera space) by weapon class. ADS height is worked out per gun from its
 // model's sight line (see updateCamera); the shotgun and knife keep the fixed pose here.
 const VM_POSE = {
@@ -190,16 +192,6 @@ const VM_POSE = {
   shotgun: { hip: [0.16, -0.15, -0.34], ads: [0.1, -0.13, -0.3] },
   heavy: { hip: [0.17, -0.14, -0.35], ads: [0, -0.069, -0.34] },
 };
-
-// Inspect keyframes: [time s, px, py, pz, rx, ry, rz] offsets added to the viewmodel's resting pose.
-const INSPECT = [
-  [0, 0, 0, 0, 0, 0, 0],
-  [0.45, -0.1, 0.05, -0.05, 0.1, 1.2, -0.25],
-  [1.5, -0.1, 0.06, -0.05, 0.16, 1.32, -0.3],
-  [2.0, -0.05, 0.09, -0.12, 0.08, 0.35, 0.8],
-  [2.8, -0.05, 0.08, -0.12, 0.1, 0.3, 0.75],
-  [3.3, 0, 0, 0, 0, 0, 0],
-];
 
 export class Renderer {
   constructor(canvas, game, settings) {
@@ -1045,6 +1037,14 @@ export class Renderer {
     return 2 * Math.atan(Math.tan((HFOV * DEG) / 2) / zoom / this.aspect);
   }
 
+  // The melee type a combatant carries: yours from settings, everyone else's from what they sent (bots pick one).
+  meleeOf(c) {
+    return meleeId(c === this.game.player ? this.settings.melee : c?.meleeType);
+  }
+
+  // The model id for a weapon in c's hands: the knife slot shows their melee type.
+  modelOf(c, weaponId) { return weaponId === 'knife' ? this.meleeOf(c) : weaponId; }
+
   // The skin a combatant shows on a weapon: yours from settings, bots' and other players' from their skinMap.
   skinOf(c, weaponId) {
     if (!c) return 'standard';
@@ -1122,12 +1122,15 @@ export class Renderer {
     }
   }
 
-  setViewmodel(def) {
-    const skin = def.hands ? '' : skinFor(this.settings, def.id);
-    const key = def.id + '|' + skin;
+  setViewmodel(def, holder) {
+    const id = def.hands ? def.id : this.modelOf(holder, def.id);
+    const skin = def.hands ? '' : this.skinOf(holder, id);
+    const key = id + '|' + skin;
     if (this.vm.key === key) return;
     if (this.vm.model) this.vm.group.remove(this.vm.model);
-    this.vm.model = def.hands ? handsModel(def.color, def.item) : gunModel(def.id, skin);
+    this.vm.model = def.hands ? handsModel(def.color, def.item) : gunModel(id, skin);
+    this.vm.melee = MELEE[id] || null;
+    this.vm.glow = this.vm.melee ? ownGlow(this.vm.model, skin) : null;
     if (def.hands) { this.vm.equipStart = performance.now(); this.vm.equipDur = 250; }
     this.vm.model.scale.setScalar(VM_SCALE);
     this.vm.model.userData.muzzle.add(this.vmFlash);
@@ -1344,11 +1347,41 @@ export class Renderer {
     this.renderer.render(this.scene, cam);
   }
 
-  // Start (or restart) inspecting the gun in hand.
+  // The inspects for what's in hand: a melee type's set, or the one gun inspect.
+  inspectSet(gun) {
+    return gun.def.id === 'knife' ? MELEE[this.meleeOf(this.game.player)].inspects : [GUN_INSPECT];
+  }
+
+  // Inspect key pressed: start inspecting, or (mid-inspect) chain into the next one. Held down, it turns into
+  // examine mode once `EXAMINE_HOLD` passes: the weapon is brought up and the mouse turns it.
   inspect() {
     const p = this.game.player;
     if (!p?.alive || p.gun.reloading) return;
-    this.inspecting = { start: performance.now(), gun: p.gun };
+    const now = performance.now(), set = this.inspectSet(p.gun), cur = this.inspecting;
+    const idx = cur && cur.gun === p.gun && !cur.back ? (cur.idx + 1) % set.length : 0;
+    this.inspecting = { start: now, gun: p.gun, idx, ins: set[idx], count: set.length, held: true, heldAt: now, ex: 0, exOn: false, yaw: 0, pitch: 0 };
+  }
+
+  // Inspect key released: leave examine mode (the weapon eases back to rest).
+  inspectRelease() {
+    const ins = this.inspecting;
+    if (!ins) return;
+    ins.held = false;
+    if (ins.exOn) { ins.exOn = false; ins.back = true; }
+  }
+
+  // Examine mode takes the mouse: it turns the weapon instead of your view.
+  examining() { return !!this.inspecting?.exOn; }
+  examineLook(dx, dy) {
+    const ins = this.inspecting;
+    ins.yaw = Math.max(-2.6, Math.min(2.6, ins.yaw + dx * 0.006));
+    ins.pitch = Math.max(-1.3, Math.min(1.3, ins.pitch + dy * 0.006));
+  }
+
+  // For the HUD: the inspect playing now, if any.
+  inspectInfo() {
+    const ins = this.inspecting;
+    return ins ? { name: ins.ins.name, idx: ins.idx, count: ins.count, examine: ins.exOn, melee: ins.gun.def.id === 'knife' } : null;
   }
 
   updateCamera(p, alpha, dt, look) {
@@ -1441,7 +1474,7 @@ export class Renderer {
     const handsDef = handItem && { id: `hand:${kitc.id}:${handItem}`, hands: true, model: 'hands', color: vp.st.channelUntil > this.game.time ? 0xff4655 : parseInt(kitc.agent.color.slice(1), 16), item: handItem, melee: true };
     const def = blades ? BLADES : handsDef || gun.def;
     const kind = def.model;
-    this.setViewmodel(def);
+    this.setViewmodel(def, vp);
     const vm = this.vm;
     const scoped = gun.scoped();
     this.vmVisible = !scoped && !ride && !sight;
@@ -1508,19 +1541,32 @@ export class Renderer {
       if (vm.swingHeavy) { px -= k * 0.14; rx += k * 0.4; ry += k * 0.9; }
       else { px -= k * 0.12; rz += k * 0.6; ry += k * 0.6; }
     }
-    // Inspect (Y): turn the gun to show one side, then flip it to show the other, then settle back.
+    // Inspect (Y): play the inspect; hold Y to examine (the weapon comes up and the mouse turns it).
     const ins = this.inspecting;
+    let insPose = null;
     if (ins) {
-      const t = ins.fixedT ?? (performance.now() - ins.start) / 1000; // fixedT: a frozen pose (testing)
-      if (ins.gun !== gun || t > INSPECT[INSPECT.length - 1][0] || !p.alive || p.input.fire || p.input.alt || gun.reloading || gun.adsT > 0.05 || handsDef || blades) this.inspecting = null;
+      const now = performance.now();
+      if (ins.held && !ins.exOn && !ins.back && now - ins.heldAt > EXAMINE_HOLD) { ins.exOn = true; ins.frozenT = (now - ins.start) / 1000; }
+      ins.ex = Math.min(1, Math.max(0, ins.ex + (ins.exOn ? dt : -dt) / 0.25));
+      const t = ins.fixedT ?? ins.frozenT ?? (now - ins.start) / 1000; // fixedT: a frozen pose (testing)
+      const done = ins.back ? ins.ex === 0 : t > ins.ins.dur && !ins.exOn;
+      if (done || ins.gun !== gun || !p.alive || p.input.fire || p.input.alt || gun.reloading || gun.adsT > 0.05 || handsDef || blades || spec) this.inspecting = null;
       else {
-        let i = 1; while (i < INSPECT.length - 1 && INSPECT[i][0] < t) i++;
-        const A = INSPECT[i - 1], B = INSPECT[i], u = Math.min(1, Math.max(0, (t - A[0]) / (B[0] - A[0])));
-        const s = u * u * (3 - 2 * u);
-        const k = (j) => A[j] + (B[j] - A[j]) * s;
-        const m = def.melee ? 0.6 : 1;
-        px += k(1); py += k(2); pz += k(3); rx += k(4) * m; ry += k(5) * m; rz += k(6) * m;
+        insPose = inspectPose(ins.ins, t);
+        const v = insPose.pose, e = ins.ex * ins.ex * (3 - 2 * ins.ex);
+        // Examine pose: held up near the middle of the screen, side on, turned by the mouse.
+        const E = [-0.12, 0.07, -0.02, 0.1 + ins.pitch, 1.25 + ins.yaw, 0];
+        const k = (j) => v[j] + (E[j] - v[j]) * e;
+        px += k(0); py += k(1); pz += k(2); rx += k(3); ry += k(4); rz += k(5);
+        insPose.t = t;
       }
+    }
+    if (vm.melee) {
+      // Melee types: their resting pose, then their parts (spins, flips, the Arc Blade's beam) and glow.
+      const m = vm.melee;
+      if (m.hip) { px += m.hip[0]; py += m.hip[1]; pz += m.hip[2]; }
+      if (m.rot) { rx += m.rot[0] * (1 - (insPose ? 0.6 : 0)); ry += m.rot[1] * (insPose ? 0.4 : 1); rz += m.rot[2] * (insPose ? 0.4 : 1); }
+      poseMeleeParts(vm.model, insPose && this.inspecting?.ins, insPose?.t, vm.glow);
     }
     vm.group.position.set(px, py, pz);
     vm.group.rotation.set(rx, ry, rz);
@@ -1570,13 +1616,14 @@ export class Renderer {
       ch.gun.scale.set(0.07, 0.1, 0.75);
       // Show the weapon they're actually holding, in their skin; an ability in hand shows nothing.
       const heldDef = c.kit?.armed || c.kit?.blades ? null : c.gun?.def;
-      const heldSkin = heldDef ? this.skinOf(c, heldDef.id) : '';
-      const hk = heldDef ? heldDef.id + ':' + heldSkin : '';
+      const heldId = heldDef ? this.modelOf(c, heldDef.id) : '';
+      const heldSkin = heldDef ? this.skinOf(c, heldId) : '';
+      const hk = heldDef ? heldId + ':' + heldSkin : '';
       if (hk !== ch.heldKey) {
         ch.heldKey = hk;
         for (const o of [...ch.held.children]) { ch.held.remove(o); o.traverse(m => m.geometry?.dispose()); }
         if (heldDef && !heldDef.hands) {
-          const m = gunModel(heldDef.id, heldSkin, { noHands: true });
+          const m = gunModel(heldId, heldSkin, { noHands: true });
           if (m.userData.hands) for (const hh of m.userData.hands) hh.visible = false;
           m.traverse(o => { if (o.isMesh) o.castShadow = true; });
           m.scale.setScalar(1.15);
