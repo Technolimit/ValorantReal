@@ -498,6 +498,65 @@ const checks = [
     out.shadeSmokeWhereYouLooked = smokeYaw !== null && Math.abs(smokeYaw - 0.03 * 40) < 0.15;
     return { pass: Object.values(out).every(v => v === 'ok' || v === true), ...out };
   }],
+  ['Placed utility can be picked back up with F, with Valorant\'s refund timing and buy-phase-only rules', async () => {
+    const out = {};
+    // Put your own device on the floor in front of you, look at it, press F.
+    const setup = (g, p, kind, dist = 1.6, extra = {}) => {
+      const pos = __ahead(p, dist); pos[1] = p.pos[1];
+      const d = g.addDevice({ kind, owner: p, pos, life: 999, armAt: g.time + 99, ...extra });
+      const e = p.eye(); p.pitch = Math.atan2(pos[1] + 0.2 - e[1], Math.hypot(pos[0] - e[0], pos[2] - e[2]));
+      return d;
+    };
+    const pressF = (g, p) => { p.input.use = true; g.tick(); p.input.use = false; g.tick(); };
+    const dm = async (agent) => { const g = await __start({ agent }); const p = g.player; __place(g, p, 20); p.yaw = 0; __tick(g, 0.2); return [g, p]; };
+    { // Trapwire: straight back; and the pick-up is recorded for online peers
+      const [g, p] = await dm('lattice');
+      let recorded = null; g.on('kitAct', ({ act }) => { if (act[0] === 'pickUp') recorded = act; });
+      p.kit.charges.c = 1; const d = setup(g, p, 'wire', 1.6, { b: [0, 0, 0] });
+      pressF(g, p);
+      out.trapwire = d.removed && p.kit.charges.c === 2 && !!recorded;
+    }
+    { // Turret: back after 20 s; too far away does nothing
+      const [g, p] = await dm('bastion');
+      p.kit.charges.e = 0; const far = setup(g, p, 'turret', 6);
+      pressF(g, p); const farKept = !far.removed;
+      far.removed = true; const d = setup(g, p, 'turret');
+      pressF(g, p); const gone = d.removed, at0 = p.kit.charges.e;
+      __tick(g, 19.5); const at19 = p.kit.charges.e; __tick(g, 1);
+      out.turret = farKept && gone && at0 === 0 && at19 === 0 && p.kit.charges.e === 1;
+    }
+    { // Trademark: 30 s; an Alarmbot already chasing can't be picked up
+      const [g, p] = await dm('regent');
+      p.kit.charges.c = 0; setup(g, p, 'trademark'); pressF(g, p);
+      __tick(g, 29.5); const at29 = p.kit.charges.c; __tick(g, 1);
+      const [g2, p2] = await dm('bastion');
+      const a = setup(g2, p2, 'alarm'); a.target = g2.bots[0]; a.chaseUntil = g2.time + 99; pressF(g2, p2);
+      out.trademarkAndChasingAlarm = at29 === 0 && p.kit.charges.c === 1 && !a.removed;
+    }
+    { // Spycam: leaves the camera view too
+      const [g, p] = await dm('lattice');
+      p.kit.charges.e = 0; const d = setup(g, p, 'cam'); p.kit.cam = d;
+      pressF(g, p);
+      out.spycam = d.removed && !p.kit.cam && !p.kit.view;
+    }
+    { // Cyber Cage: not mid-round, but in the buy phase (straight back, as everything is in the buy phase)
+      const [g, p] = await dm('lattice');
+      p.kit.charges.q = 0; const d = setup(g, p, 'cage'); pressF(g, p);
+      const g2 = await __start({ mode: 'rounds', map: 'divide', agent: 'lattice' });
+      __tick(g2, 1);
+      const p2 = g2.player; p2.kit.charges.q = 0; p2.kit.charges.e = 0;
+      const c2 = setup(g2, p2, 'cage'); pressF(g2, p2);
+      const t2 = setup(g2, p2, 'cam'); pressF(g2, p2);
+      out.cageBuyPhaseOnly = !d.removed && g2.mode.phase === 'buy' && c2.removed && p2.kit.charges.q === 1 && t2.removed && p2.kit.charges.e === 1;
+    }
+    { // Astra's star: recalled from across the map, back after 25 s
+      const [g, p] = await dm('stella');
+      p.kit.starsLeft = 0; setup(g, p, 'star', 15); pressF(g, p);
+      __tick(g, 24.5); const at24 = p.kit.starsLeft; __tick(g, 1);
+      out.star = at24 === 0 && p.kit.starsLeft === 1;
+    }
+    return { pass: Object.values(out).every(Boolean), ...out };
+  }],
   ['Bot 5v5 (6 min): no errors, bots don\'t stay stuck on walls, bot flashes hit enemies more than their own side', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'fight' });
     const s = { flashes: 0, self: 0, ally: 0, enemy: 0, errors: 0, rounds: 0 };

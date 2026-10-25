@@ -1087,11 +1087,13 @@ export class Game {
 
   tickDrops(now) {
     if (!this.mode) this.drops = this.drops.filter(d => now - d.at < 25); // deathmatch: guns despawn
-    if (!this.drops.length) { for (const c of this.combatants) c.prevUse = c.input.use; return; }
     for (const c of this.combatants) {
       const pressed = c.input.use && !c.prevUse;
       c.prevUse = c.input.use;
       if (!c.alive || c.remote || c.st.channelUntil > now) continue;
+      // F on your own placed utility picks it back up (before any gun lying there).
+      if (pressed && !c.isBot && c.kit) { const d = c.kit.pickupInView(); if (d && c.kit.pickUp([...d.pos])) continue; }
+      if (!this.drops.length) continue;
       // Walk over a gun with that slot empty: it's picked up automatically (not your own fresh drop).
       for (const d of [...this.drops]) {
         if (now - d.at < (d.by === c ? 1.5 : 0.3)) continue;
