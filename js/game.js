@@ -163,7 +163,7 @@ export class Game {
         continue;
       }
       if (c.decay > 0 && now >= c.decayRegenAt) { const back = Math.min(c.decay, 12 * DT); c.decay -= back; c.hp = Math.min(PLAYER.hp, c.hp + back); }
-      if (c.kit) c.kit.tick(now);
+      if (c.kit) { c.kit.tick(now); c.kit.keepAim(); }
       c.move(DT, now, this.world);
       if (!c.kit?.blocking() && !(c.st.channelUntil > now) && !(c.st.disarmUntil > now)) c.gun.tick(c, now, DT); // detained: no gun
     }
