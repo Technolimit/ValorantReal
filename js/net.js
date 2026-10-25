@@ -19,7 +19,9 @@ import { Bot, BOT_NAMES } from './bot.js';
 import { TEAM_COLORS } from './rounds.js';
 import { sanitizeSkin, registerSkin, SKINS } from './skins.js';
 
-const SNAP_HZ = 20, STATE_HZ = 30, TIMEOUT = 4, PEER_PREFIX = 'tapfire-';
+// TIMEOUT: silence that counts as gone. LOAD_TIMEOUT: a joiner's first message can take this long, since it
+// downloads and builds the map after the welcome and sends nothing meanwhile.
+const SNAP_HZ = 20, STATE_HZ = 30, TIMEOUT = 8, LOAD_TIMEOUT = 60, PEER_PREFIX = 'tapfire-';
 const PEERJS_URL = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const newId = () => Math.random().toString(36).slice(2, 10);
@@ -382,11 +384,15 @@ export class NetSession {
     const g = this.game, now = g.time;
     if (this.frames.length) { this.t.send({ k: 'in', f: this.frames }, this.role === 'client' ? this.hostId : undefined); this.frames = []; }
     if (this.role === 'host') {
-      for (const [id, p] of this.peers) if (now - p.seen > TIMEOUT && performance.now() - p.seenWall > TIMEOUT * 1000) this.dropPeer(id);
+      for (const [id, p] of this.peers) {
+        const limit = p.loaded ? TIMEOUT : LOAD_TIMEOUT;
+        if (now - p.seen > limit && performance.now() - p.seenWall > limit * 1000) this.dropPeer(id);
+      }
       if (now - this.lastSnap >= 1 / SNAP_HZ) { this.lastSnap = now; this.t.send(this.snapshot()); }
     } else {
       const p = g.player;
-      if (p.alive && now - this.lastState >= 1 / STATE_HZ) {
+      if (!p.alive && now - this.lastState >= 0.5) { this.lastState = now; this.t.send({ k: 'hb' }, this.hostId); } // dead: still here
+      else if (p.alive && now - this.lastState >= 1 / STATE_HZ) {
         this.lastState = now;
         this.t.send({ k: 'st', life: this.life, p: p.pos.map(r3), v: p.vel.map(r3), y: r3(p.yaw), pi: r3(p.pitch), ca: r3(p.crouchAmount()), w: p.gun?.def.id, u: p.input.use ? 1 : 0, gr: p.grounded ? 1 : 0 }, this.hostId);
       }
@@ -416,7 +422,7 @@ export class NetSession {
     }
     const p = this.peers.get(id);
     if (!p) return;
-    p.seen = g.time; p.seenWall = performance.now();
+    p.seen = g.time; p.seenWall = performance.now(); p.loaded = true;
     const c = p.c;
     if (m.k === 'st') {
       if (m.life !== p.life || !c.alive) return; // stale: sent before the client heard about its respawn
@@ -616,8 +622,9 @@ export class NetSession {
       this.cb.onWelcome(m); // main.js loads the map, starts a local match, then calls attachClient(m)
       return;
     }
-    if (m.from !== this.hostId || !g.netRole) return;
-    this.hostSeen = performance.now();
+    if (m.from !== this.hostId) return;
+    this.hostSeen = performance.now(); // even while our copy of the match is still loading
+    if (!g.netRole) return;
     if (m.k === 'snap') this.applySnap(m);
     else if (m.k === 'in') this.queueFrames(m.f);
     else if (m.k === 'roster') this.applyRoster(m.list);
@@ -672,6 +679,7 @@ export class NetSession {
   attachClient(w) {
     const g = this.game, me = g.player;
     g.netRole = 'client';
+    this.hostSeen = performance.now(); // building the map can block for seconds before queued messages are read
     g.onInputs = () => this.recordInputs();
     g.applyNetInput = (c) => this.applyInput(c);
     me.nid = this.nid;
