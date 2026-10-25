@@ -151,7 +151,9 @@ await check('Online: joining mid-match opens the deathmatch-style picker with th
   const free = await E.evaluate((a) => !document.querySelector(`#agent-grid .agent-card[data-id="${a}"]`).disabled, botAgent);
   await E.click(`#agent-grid .agent-card[data-id="${botAgent}"]`);
   await E.click('#agent-lock');
-  await E.waitForFunction(() => window.__game.net.role === 'client', null, { timeout: 30000 });
+  // Joining loads the map and builds the match while four other tabs run theirs, which can take most of a
+  // minute on a slow machine: allow what the host allows a joiner to load (LOAD_TIMEOUT in net.js).
+  await E.waitForFunction(() => window.__game.net.role === 'client', null, { timeout: 60000 });
   await H.waitForTimeout(800);
   const r = await teams(H);
   const kit = await E.evaluate(() => window.__game.game.player.kit.id);
