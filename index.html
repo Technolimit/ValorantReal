@@ -554,7 +554,8 @@ th { color: var(--muted); font-weight: 500; }
     <section id="srv-join">
       <div class="srv-head"><span>Server</span><span>Mode · map</span><span>Players</span><span></span></div>
       <div id="srv-list"></div>
-      <p id="srv-empty" class="note">No servers open in this browser right now. Create one, or join a friend's server with its code below.</p>
+      <p id="srv-empty" class="note">No servers open right now. Create one, or join a friend's server with its code below.</p>
+      <p id="srv-net" class="note"></p>
       <div class="form">
         <label for="net-code">Join by code</label>
         <span class="inline"><input id="net-code" maxlength="12" autocomplete="off" placeholder="e.g. K3X9QD"><button id="net-join">Join</button></span>
@@ -586,7 +587,7 @@ th { color: var(--muted); font-weight: 500; }
 
     <p id="online-status"></p>
     <div class="buttons"><button id="online-back">Back</button></div>
-    <p class="note">There's no game server: whoever creates a server hosts it in their own browser, and everyone picks an agent on the agent select screen once they're in. The list shows servers open in other tabs of this browser. Servers on other computers can't be listed without a central server, so share the room code instead (the host sees it on screen while hosting).</p>
+    <p class="note">There's no game server: whoever creates a server hosts it in their own browser, and everyone picks an agent on the agent select screen once they're in. The list shows internet servers from every player who has this screen open or is hosting (one player's browser keeps the list, and another takes over when they leave), plus servers in other tabs of this browser. If a server doesn't show up, join with its room code; the host sees it on the agent select screen.</p>
   </div>
 </div>
 

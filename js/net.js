@@ -50,8 +50,11 @@ class LocalTransport {
   close() { this.ch.close(); }
 }
 
+// Extra PeerJS options (host, port, path...) to use a broker other than the public one; the checks point it at a local one.
+export const peerOptions = {};
+
 let peerLib = null;
-function loadPeerJS() {
+export function loadPeerJS() {
   if (window.Peer) return Promise.resolve(window.Peer);
   if (peerLib) return peerLib;
   peerLib = new Promise((res, rej) => {
@@ -79,7 +82,7 @@ class PeerTransport {
   async open() {
     const Peer = await loadPeerJS();
     const hostPeer = PEER_PREFIX + this.room;
-    this.peer = new Peer(this.isHost ? hostPeer : undefined, { debug: 0 });
+    this.peer = new Peer(this.isHost ? hostPeer : undefined, { debug: 0, ...peerOptions });
     await new Promise((res, rej) => {
       this.peer.on('open', res);
       this.peer.on('error', (e) => rej(new Error(e.type === 'unavailable-id' ? 'That room code is already hosted' : e.type === 'peer-unavailable' ? 'No host with that room code' : e.message || String(e))));

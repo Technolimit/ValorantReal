@@ -17,7 +17,7 @@ import { ROUND } from './rounds.js';
 import { Minimap } from './minimap.js';
 import { RoundHud } from './roundhud.js';
 import { MAPS, loadMapIndex, preloadMap, mapList, mapInfo, mapJSON, addMap, removeCustomMap, supportsMode, upgradeMap, stringifyMap } from './map.js';
-import { NetSession, roomCode } from './net.js';
+import { NetSession, roomCode, peerOptions } from './net.js';
 import { Lobby, SelectScreen, emblem } from './agentselect.js';
 import { ServerDirectory } from './servers.js';
 
@@ -918,6 +918,7 @@ function fillServerMaps() {
 }
 
 function serverTab(tab) {
+  servers.internet.start(); // join the internet list (see servers.js)
   for (const t of ['join', 'create']) { $('srv-tab-' + t).classList.toggle('sel', t === tab); $('srv-' + t).hidden = t !== tab; }
   if (tab === 'join') servers.refresh();
 }
@@ -949,11 +950,17 @@ let serverListKey = '';
 function buildServerList() {
   const list = $('srv-list'), all = servers.servers();
   // Hosts re-announce every second: only redraw when something changed, so a Join button stays put under the mouse.
-  const listKey = JSON.stringify([net.room, net.active, all.map(({ seen, ...s }) => s)]);
+  const listKey = JSON.stringify([net.room, net.active, servers.internet.state, all.map(({ seen, ...s }) => s)]);
   if (listKey === serverListKey && list.isConnected) return;
   serverListKey = listKey;
   list.innerHTML = '';
   $('srv-empty').hidden = all.length > 0;
+  $('srv-net').textContent = {
+    connecting: 'Internet list: connecting…',
+    holder: 'Internet list: connected (your browser is holding the list right now)',
+    member: 'Internet list: connected',
+    offline: 'Internet list: can\'t reach the PeerJS broker. Servers in this browser still show, and codes still work.',
+  }[servers.internet.state] || '';
   for (const s of all) {
     const full = s.players >= s.max, mine = net.active && net.room === s.room;
     const row = document.createElement('div');
@@ -981,6 +988,7 @@ async function hostOnline({ lobby = true } = {}) {
   const mj = () => (mapInfo(id)?.file ? null : mapJSON(id));
   if (lobby) {
     try { await preloadMap(id); } catch (err) { netStatus(err.message, true); return false; }
+    if (transport === 'peer') servers.internet.start(); // so the server shows up on other computers
     if (running) { running = false; game.state = 'idle'; }
     try {
       await net.host({ transport, room, server, profile: netProfile(), mapJSON: mj(), lobby: new Lobby({ mode: settings.mode, map: id, mapName: MAPS[id] || id, botCount: settings.botCount }) });
@@ -1326,5 +1334,5 @@ function frame(t) {
 requestAnimationFrame(frame);
 
 // Exposed for automated checks in a headless browser; `frozen` stops the loop from ticking.
-const hooks = { game, renderer, sound, settings, startMatch, playerInput, openAgents, switchAgent, net, hostOnline, joinOnline, frozen: false };
+const hooks = { game, renderer, sound, settings, startMatch, playerInput, openAgents, switchAgent, net, hostOnline, joinOnline, servers, peerOptions, frozen: false };
 window.__game = hooks;
