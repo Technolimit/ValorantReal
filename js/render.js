@@ -7,6 +7,7 @@ import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
 import { BLADES, SMOKE, bloomTargets } from './abilities.js';
 import { ROUND } from './rounds.js';
 import { materialOf } from './map.js';
+import { dirFromAngles } from './entity.js';
 
 const DEG = Math.PI / 180;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -269,6 +270,8 @@ export class Renderer {
       pl.position.set(...l.at);
       wg.add(pl);
     }
+    this.nearFog = null;
+    this.shadowSight = null; // the materials it tinted belonged to the old map
     this.scene.background = new THREE.Color(env.sky);
     this.scene.fog = env.fog ? new THREE.Fog(env.fog.color, env.fog.near, env.fog.far) : null;
 
@@ -794,7 +797,7 @@ export class Renderer {
       this.scene.add(marker, wall, sphere);
     }
     const pv = this.preview, kit = p.kit, a = p.alive && kit?.armed && kit.agent.abilities[kit.armed.k];
-    const pos = a && a.preview ? a.preview(kit) : null;
+    const pos = a && a.preview ? kit.previewPos : null; // the spot the kit will use, worked out this tick
     const col = kit ? parseInt(kit.agent.color.slice(1), 16) : 0xffffff;
     pv.marker.visible = !!pos && !a.wallPreview && !a.smokePreview;
     pv.wall.visible = !!pos && !!a.wallPreview;
@@ -1131,11 +1134,49 @@ export class Renderer {
     this.updateSmokes();
     this.updateFx2();
     this.updateSpike();
+    this.updateNearsight(p);
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
     if (p && (p.alive || this.specTarget) && this.vmVisible) {
       this.renderer.clearDepth();
       this.renderer.render(this.vmScene, this.vmCamera);
+    }
+  }
+
+  // Shadow sight (aiming Shade): every surface of the map turns to translucent violet glass on a dark sky.
+  setShadowSight(on) {
+    if (!!this.shadowSight === on) return;
+    if (on) {
+      const mats = new Set();
+      this.worldGroup?.traverse(o => { if (o.material) for (const m of [o.material].flat()) mats.add(m); });
+      this.shadowSight = { bg: this.scene.background, fog: this.scene.fog, mats: [...mats].map(m => ({ m, transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite, color: m.color?.getHex() })) };
+      for (const { m } of this.shadowSight.mats) { m.transparent = true; m.opacity = 0.3; m.depthWrite = false; m.color?.setHex(0x9a7cff); m.needsUpdate = true; }
+      this.scene.background = new THREE.Color(0x150d33);
+      this.scene.fog = null;
+    } else {
+      const s = this.shadowSight;
+      for (const { m, transparent, opacity, depthWrite, color } of s.mats) { m.transparent = transparent; m.opacity = opacity; m.depthWrite = depthWrite; if (color !== undefined) m.color.setHex(color); m.needsUpdate = true; }
+      this.scene.background = s.bg;
+      this.scene.fog = s.fog;
+      this.shadowSight = null;
+    }
+  }
+
+  // Nearsighted (Dread, Hound, Glare, Nest...): the world fades into murk a few metres out, like bots see it.
+  updateNearsight(p) {
+    if (this.shadowSight) return;
+    const range = p?.alive ? this.game.sightRange(p) : Infinity;
+    const want = range < Infinity ? range : 0;
+    if (want === (this.nearFog?.range || 0)) return;
+    if (!this.nearFog) this.nearFog = { fog: this.scene.fog, bg: this.scene.background };
+    if (want) {
+      this.scene.fog = new THREE.Fog(0x120d18, want * 0.3, want + 1);
+      this.scene.background = new THREE.Color(0x120d18);
+      this.nearFog.range = want;
+    } else {
+      this.scene.fog = this.nearFog.fog;
+      this.scene.background = this.nearFog.bg;
+      this.nearFog = null;
     }
   }
 
@@ -1242,6 +1283,16 @@ export class Renderer {
     const shade = p.alive && p.kit?.shadow?.phase === 'channel' ? { pos: p.kit.shadow.dest, kind: 'shade' } : null;
     const ride = p.alive && (p.kit?.pilot || p.kit?.view || shade);
     if (ride) cam.position.set(ride.pos[0], ride.pos[1] + (ride.kind === 'cam' || ride.kind === 'sdrone' || ride.kind === 'owl' ? 0 : ride.kind === 'shade' ? 1.7 : 0.7), ride.pos[2]);
+    // Shade: the view flies out with the smoke marker, through walls, and the world turns to shadow so you
+    // can see where it will land (characters are hidden: it shows the map, not enemies).
+    const held = !ride && !spec && p.alive && p.kit?.armed && p.kit.agent.abilities[p.kit.armed.k];
+    const sight = held?.shadowSight && p.kit.previewPos;
+    this.setShadowSight(!!sight);
+    if (sight) {
+      const t = p.kit.previewPos, d = dirFromAngles(p.yaw, p.pitch);
+      const back = Math.min(Math.hypot(t[0] - x, t[1] - eyeY, t[2] - z), held.smokePreview * 3.5 + 4);
+      cam.position.set(t[0] - d[0] * back, t[1] - d[1] * back + 0.6, t[2] - d[2] * back);
+    }
     this.updatePreview(p);
     if (spec) {
       // Spectating a teammate: their eyes, their aim.
@@ -1308,7 +1359,7 @@ export class Renderer {
     this.setViewmodel(def);
     const vm = this.vm;
     const scoped = gun.scoped();
-    this.vmVisible = !scoped && !ride;
+    this.vmVisible = !scoped && !ride && !sight;
     if (blades) for (let i = 0; i < BLADES.count; i++) { const b = vm.model.userData.parts['b' + i]; if (b) b.visible = i < blades.left; }
     const pose = VM_POSE[kind];
     const a = def.alt && (def.alt.type === 'zoom' || def.alt.type === 'zoomBurst' || def.alt.type === 'scope') ? gun.adsT : 0;
@@ -1411,8 +1462,9 @@ export class Renderer {
         continue;
       }
       // Spectating: don't render the body we're looking out of, or anyone pressed right up against the camera.
+      // Shadow sight sees through walls, so it shows nobody.
       const st = this.specTarget;
-      ch.group.visible = !st || (c !== st && Math.hypot(c.pos[0] - st.pos[0], c.pos[2] - st.pos[2]) > 1.3);
+      ch.group.visible = !this.shadowSight && (!st || (c !== st && Math.hypot(c.pos[0] - st.pos[0], c.pos[2] - st.pos[2]) > 1.3));
       const x = lerp(c.prevPos[0], c.pos[0], alpha), y = lerp(c.prevPos[1], c.pos[1], alpha), z = lerp(c.prevPos[2], c.pos[2], alpha);
       ch.group.position.set(x, y, z);
       ch.group.rotation.set(0, c.yaw, 0);
@@ -1450,7 +1502,7 @@ export class Renderer {
       ch.held.rotation.set(Math.max(-0.6, Math.min(0.6, c.pitch || 0)) * 0.8, 0, 0);
       const hot = now - ch.flash < 80;
       // Revealed (sonar, traps, lockdown): glowing red silhouette drawn through walls.
-      const shown = c.st && c.st.revealUntil > this.game.time && this.game.isEnemy(this.game.player, c);
+      const shown = c.st && c.st.revealUntil > this.game.time && !(c.st.hiddenUntil > this.game.time) && this.game.isEnemy(this.game.player, c);
       for (const m of [ch.body, ch.head, ch.legs, ch.gun, ch.visor]) {
         m.material.emissive.setHex(shown ? 0xff2244 : hot ? 0x553333 : this.bloomSet?.has(c) ? (pk.regrow?.on ? 0x3f9a1f : 0x1f5a12) : 0x000000);
         if (m.material.depthTest === shown) { m.material.depthTest = !shown; m.material.transparent = shown; m.material.opacity = shown ? 0.9 : 1; m.renderOrder = shown ? 10 : 0; }

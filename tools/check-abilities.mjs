@@ -1,0 +1,313 @@
+// Headless checks for how abilities interact (flashes, smokes, death, detain, nearsight, phasing, online).
+//   npm i -D playwright && npx playwright install chromium   (once)
+//   node tools/check-abilities.mjs            all checks
+//   node tools/check-abilities.mjs --offline  skip the two-tab online checks
+// Serves this folder on a local port, drives the real game through window.__game with the loop frozen,
+// and ticks the simulation by hand. Exits with code 1 if any check fails.
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { extname, join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png' };
+const offline = process.argv.includes('--offline');
+
+let chromium;
+try { ({ chromium } = await import('playwright')); } catch {
+  console.error('Playwright is missing: npm i -D playwright && npx playwright install chromium');
+  process.exit(2);
+}
+
+const server = createServer(async (req, res) => {
+  const path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^([/\\])+/, '');
+  try { const body = await readFile(join(ROOT, path || 'index.html')); res.writeHead(200, { 'content-type': TYPES[extname(path)] || 'application/octet-stream' }); res.end(body); }
+  catch { res.writeHead(404); res.end(); }
+});
+await new Promise(r => server.listen(0, r));
+const url = `http://localhost:${server.address().port}/index.html`;
+
+// Runs in the page: start a frozen match and give back helpers.
+const PAGE_HELPERS = `
+window.__start = async (o) => {
+  const h = window.__game; h.frozen = true;
+  Object.assign(h.settings, { mode: 'dm', botCount: 1, agent: 'cinder', map: 'arena', botMode: 'static', difficulty: 'normal', side: 'atk' }, o);
+  await h.startMatch({}); h.frozen = true;
+  return h.game;
+};
+window.__tick = (g, s) => { for (let i = 0; i < Math.round(s * 128); i++) g.tick(); };
+// Put c on open ground, facing -z, with 'len' metres of clear sight ahead.
+window.__place = (g, c, len = 8, skip = 0) => {
+  const b = g.map.boxes.filter(x => !x.floor);
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const q of b) { x0 = Math.min(x0, q.min[0]); x1 = Math.max(x1, q.max[0]); z0 = Math.min(z0, q.min[2]); z1 = Math.max(z1, q.max[2]); }
+  let n = 0;
+  for (let x = x0 + 2; x < x1 - 2; x += 1.5) for (let z = z0 + 2; z < z1 - 2; z += 1.5) {
+    const f = g.floorAt(x, z), f2 = g.floorAt(x, z - len);
+    if (!f || !f2 || Math.abs(f[1] - f2[1]) > 0.05 || !g.canStand(c, f)) continue;
+    const e = [x, f[1] + 1.6, z];
+    if (!g.world.lineOfSight(e, [x, e[1], z - len]) || !g.world.lineOfSight([x, f[1] + 0.3, z], [x, f[1] + 0.3, z - len])) continue;
+    if (g.combatants.some(o => o !== c && o.alive && Math.hypot(o.pos[0] - x, o.pos[2] - z) < 25)) continue;
+    if (n++ < skip) continue;
+    c.pos = [...f]; c.prevPos = [...f]; c.vel = [0, 0, 0]; c.yaw = 0; c.pitch = 0;
+    return true;
+  }
+  return false;
+};
+// A point d metres in front of c's eyes.
+// A solid block that only exists for the check (not drawn).
+window.__box = (g, min, max) => { const b = { min, max, pen: false, mat: 'wall', temp: true }; g.world.boxes.push(b); return b; };
+// Aim c's crosshair at point t.
+window.__aim = (c, t) => { const e = c.eye(), dx = t[0] - e[0], dy = t[1] - e[1], dz = t[2] - e[2]; c.yaw = Math.atan2(-dx, -dz); c.pitch = Math.atan2(dy, Math.hypot(dx, dz)); };
+// Steps 0.4 m high and 0.6 m deep, 3 m wide, climbing away from c (who faces -z), starting at metres ahead.
+window.__stairs = (g, c, at = 3, n = 4) => { const [x, y, z] = c.pos; for (let i = 0; i < n; i++) __box(g, [x - 1.5, y, z - at - 0.6 * (i + 1)], [x + 1.5, y + 0.4 * (i + 1), z - at - 0.6 * i]); return { top: (i) => [x, y + 0.4 * (i + 1), z - at - 0.6 * i - 0.3] }; };
+window.__remote = () => window.__game.game.combatants.find(x => x.remote);
+window.__ahead = (c, d) => { const e = c.eye(); return [e[0] - Math.sin(c.yaw) * d, e[1], e[2] - Math.cos(c.yaw) * d]; };
+`;
+
+const checks = [
+  ['Bots on the thrower\'s team look away from its flash; enemies and humans are still blinded', async () => {
+    const g = await __start({ mode: 'rounds', map: 'divide' });
+    __tick(g, 31);
+    const p = g.player, ally = g.bots.find(b => !g.isEnemy(p, b)), foe = g.bots.find(b => g.isEnemy(p, b));
+    const out = {};
+    for (const [name, c] of [['allyBot', ally], ['enemyBot', foe], ['human', p]]) {
+      if (!__place(g, c, 8)) return { error: 'no open ground for ' + name };
+      c.st.blindUntil = 0;
+      g.flash(ally, __ahead(c, 3), 2);
+      out[name] = c.st.blindUntil > g.time;
+      c.pos = [999, -50, 999];
+    }
+    return { pass: !out.allyBot && out.enemyBot && out.human, ...out };
+  }],
+  ['A smoke between you and a flash stops the blind', async () => {
+    const g = await __start({});
+    const b = g.bots[0], p = g.player;
+    if (!__place(g, b, 10)) return { error: 'no open ground' };
+    const pop = __ahead(b, 8);
+    g.flash(p, pop, 2);
+    const open = b.st.blindUntil > g.time;
+    b.st.blindUntil = 0;
+    g.addSmoke(p, __ahead(b, 4), g.time - 1, { radius: 2.5, life: 20 });
+    g.flash(p, pop, 2);
+    const smoked = b.st.blindUntil > g.time;
+    return { pass: open && !smoked, blindedInOpen: open, blindedThroughSmoke: smoked };
+  }],
+  ['Utility in the air still lands after its thrower dies; self effects do not', async () => {
+    const g = await __start({ agent: 'cinder' });
+    const p = g.player, k = p.kit;
+    p.pitch = -0.3;
+    k.agent.abilities.e.use(k); // Ember: fire pool when it lands
+    g.kill(p, g.bots[0], { part: 'body', def: { id: 'x', name: 'x' } });
+    __tick(g, 1.5);
+    const landed = g.zones.length > 0;
+    const g2 = await __start({ agent: 'zephyr' });
+    const z = g2.player;
+    z.kit.agent.abilities.q.use(z.kit); // Lift: wind-up, then launch
+    g2.kill(z, g2.bots[0], { part: 'body', def: { id: 'x', name: 'x' } });
+    __tick(g2, 0.5);
+    return { pass: landed && z.vel[1] <= 0, emberLanded: landed, deadZephyrLaunched: z.vel[1] > 0 };
+  }],
+  ['Detained players cannot shoot or use abilities', async () => {
+    const g = await __start({ agent: 'cinder' });
+    const p = g.player;
+    __tick(g, 1);
+    p.st.disarmUntil = g.time + 5;
+    const shots = p.stats.shots, charges = p.kit.charges.c;
+    for (let i = 0; i < 64; i++) { p.input.fire = p.input.firePressed = true; if (i === 10) p.input.abC = true; g.tick(); }
+    p.input.fire = false;
+    return { pass: p.stats.shots === shots && p.kit.charges.c === charges, shots: p.stats.shots - shots, abilityUsed: p.kit.charges.c !== charges };
+  }],
+  ['Nearsight closes in a human player\'s view', async () => {
+    const g = await __start({});
+    const p = g.player, r = window.__game.renderer;
+    const before = r.scene.fog?.far ?? Infinity;
+    p.st.nearUntil = g.time + 2;
+    r.updateNearsight(p);
+    const during = r.scene.fog?.far ?? Infinity;
+    p.st.nearUntil = 0;
+    r.updateNearsight(p);
+    const after = r.scene.fog?.far ?? Infinity;
+    return { pass: during <= 7 && after === before, farBefore: before, farDuring: during, farAfter: after };
+  }],
+  ['Phased-out players shrug off statuses', async () => {
+    const g = await __start({});
+    const p = g.player, b = g.bots[0];
+    if (!__place(g, b, 10)) return { error: 'no open ground' };
+    b.st.hiddenUntil = b.st.intangibleUntil = g.time + 5;
+    g.pulse(p, b.eye(), 5, 'stun', 3);
+    g.pulse(p, b.eye(), 5, 'reveal', 3);
+    g.flash(p, __ahead(b, 3), 2);
+    const hit = { stunned: b.st.stunUntil > g.time, revealed: b.st.revealUntil > g.time, blinded: b.st.blindUntil > g.time };
+    return { pass: !hit.stunned && !hit.revealed && !hit.blinded, ...hit };
+  }],
+  ['The spike kills through a Focus shield', async () => {
+    const g = await __start({ mode: 'rounds', map: 'divide', agent: 'vanta' });
+    __tick(g, 31);
+    const p = g.player, m = g.mode;
+    p.kit.shield = true;
+    m.spike = { state: 'planted', pos: [...p.pos], site: 'A', plantedAt: g.time };
+    m.detonate();
+    return { pass: !p.alive, alive: p.alive };
+  }],
+  ['Rekindle and Overload give back the shields you had, not free heavy shields', async () => {
+    const out = {};
+    for (const agent of ['cinder', 'override']) {
+      const g = await __start({ mode: 'rounds', map: 'divide', agent, botMode: 'static' });
+      __tick(g, 31);
+      const p = g.player;
+      p.armor = 0;
+      p.kit.ultPoints = 99; p.kit.agent.abilities.x.use(p.kit);
+      const foe = g.combatants.find(c => g.isEnemy(p, c));
+      g.damage(p, foe, 500, { part: 'body', def: { id: 'vandal', name: 'Vandal' }, dist: 5, point: p.eye() });
+      __tick(g, 3.5);
+      out[agent] = { alive: p.alive, armor: p.armor };
+    }
+    return { pass: Object.values(out).every(o => o.alive && o.armor === 0), ...out };
+  }],
+  ['Ultimate points reset at halftime', async () => {
+    const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'static' });
+    const m = g.mode;
+    m.round = 12;
+    for (const c of g.combatants) c.kit.ultPoints = 5;
+    m.startRound();
+    const left = g.combatants.filter(c => c.kit.ultPoints > 0).length;
+    return { pass: m.round === 13 && left === 0, playersStillHoldingPoints: left };
+  }],
+  ['Rift lands on the step you aim at and teleports you there', async () => {
+    const g = await __start({ agent: 'umbra', map: 'arena' });
+    const o = g.player, k = o.kit;
+    if (!__place(g, o, 14)) return { error: 'no open ground' };
+    const base = o.pos[1], st = __stairs(g, o, 3, 4), t = st.top(2); // third step, 1.2 m up
+    __aim(o, t);
+    k.charges.c = 2; o.input.abC = true; __tick(g, 0.4);
+    const pv = k.previewPos && [...k.previewPos];
+    o.input.firePressed = true; __tick(g, 1);
+    const up = o.pos[1] - base;
+    return { pass: !!pv && Math.abs(pv[1] - t[1]) < 0.05 && Math.abs(up - 1.2) < 0.05, previewHeight: pv && +(pv[1] - base).toFixed(2), landedHeight: +up.toFixed(2) };
+  }],
+  ['Rift aimed at a ledge lip above your eyes lands on top of it', async () => {
+    const g = await __start({ agent: 'umbra', map: 'arena' });
+    const o = g.player, k = o.kit;
+    if (!__place(g, o, 14)) return { error: 'no open ground' };
+    const [x, y, z] = o.pos, h = 2.4;
+    __box(g, [x - 2, y, z - 9], [x + 2, y + h, z - 6]); // a 2.4 m block 6 m ahead
+    __aim(o, [x, y + h - 0.3, z - 6]); // just under its lip
+    k.charges.c = 2; o.input.abC = true; __tick(g, 0.4);
+    o.input.firePressed = true; __tick(g, 1);
+    return { pass: Math.abs(o.pos[1] - (y + h)) < 0.05, landedHeight: +(o.pos[1] - y).toFixed(2) };
+  }],
+  ['Grenades thrown onto a box land on top of it', async () => {
+    const g = await __start({ agent: 'cinder', map: 'arena' });
+    const o = g.player, k = o.kit;
+    if (!__place(g, o, 14)) return { error: 'no open ground' };
+    const [x, y, z] = o.pos;
+    __box(g, [x - 1, y, z - 8], [x + 1, y + 1, z - 6]); // 1 m crate
+    __aim(o, [x, y + 1, z - 6.2]); // its top, near the front edge
+    k.agent.abilities.e.use(k); __tick(g, 2);
+    const fire = g.zones.find(zz => zz.def?.id === 'ember');
+    return { pass: !!fire && Math.abs(fire.pos[1] - (y + 1)) < 0.05, fireHeight: fire && +(fire.pos[1] - y).toFixed(2) };
+  }],
+  ['Boomer climbs stairs instead of bouncing off them', async () => {
+    const g = await __start({ agent: 'blitz', map: 'arena' });
+    const o = g.player, k = o.kit;
+    if (!__place(g, o, 14)) return { error: 'no open ground' };
+    const base = o.pos[1];
+    __stairs(g, o, 2, 4);
+    o.pitch = -0.2;
+    k.agent.abilities.c.use(k);
+    let top = 0;
+    for (let i = 0; i < 20; i++) { __tick(g, 0.125); const bot = g.devices.find(d => d.kind === 'boombot'); if (bot) top = Math.max(top, bot.pos[1] - base); }
+    return { pass: top > 1.5, highestPoint: +top.toFixed(2) };
+  }],
+  ['Shade smoke forms exactly where its preview showed, also after pushing it out', async () => {
+    const g = await __start({ agent: 'umbra', map: 'arena' });
+    const o = g.player, k = o.kit;
+    if (!__place(g, o, 14)) return { error: 'no open ground' };
+    o.pitch = -0.05;
+    k.charges.e = 2; o.input.abE = true; __tick(g, 0.4);
+    for (let i = 0; i < 40; i++) { o.input.alt = true; g.tick(); } // hold right click: farther
+    o.input.alt = false; g.tick();
+    const pv = [...k.previewPos];
+    o.input.firePressed = true; __tick(g, 1);
+    const s = g.smokes[g.smokes.length - 1];
+    const off = s ? Math.hypot(s.pos[0] - pv[0], s.pos[1] - pv[1], s.pos[2] - pv[2]) : null;
+    return { pass: off !== null && off < 1e-6, offset: off };
+  }],
+  ['Bot 5v5 (6 min): no errors, bot flashes hit enemies more than their own side', async () => {
+    const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'fight' });
+    const s = { flashes: 0, self: 0, ally: 0, enemy: 0, errors: 0, rounds: 0 };
+    const flash = g.flash.bind(g);
+    g.flash = (owner, pos, dur) => {
+      const before = new Map(g.combatants.map(c => [c, c.st.blindUntil]));
+      flash(owner, pos, dur);
+      s.flashes++;
+      for (const c of g.combatants) if (c.st.blindUntil > before.get(c) + 0.3) { if (c === owner) s.self++; else if (g.isEnemy(owner, c)) s.enemy++; else s.ally++; }
+    };
+    g.on('roundEnd', () => s.rounds++);
+    g.on('live', () => { if (g.player.alive) g.kill(g.player, g.player, { part: 'body', def: { id: 'x', name: 'x' } }); });
+    for (let i = 0; i < 128 * 60 * 6 && g.state === 'playing'; i++) { try { g.tick(); } catch (e) { s.errors++; s.error = String(e.stack).slice(0, 300); } }
+    return { pass: s.errors === 0 && s.rounds > 0 && s.self === 0 && s.enemy >= s.ally, ...s };
+  }],
+];
+
+const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+let failed = 0;
+const report = (name, r) => {
+  const ok = r && r.pass;
+  if (!ok) failed++;
+  const { pass, ...rest } = r || {};
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  ${JSON.stringify(rest)}`);
+};
+
+const page = await browser.newPage();
+const errors = [];
+page.on('pageerror', e => errors.push(String(e)));
+await page.goto(url);
+await page.waitForFunction(() => window.__game);
+await page.addScriptTag({ content: PAGE_HELPERS });
+for (const [name, fn] of checks) {
+  try { report(name, await page.evaluate(fn)); } catch (e) { report(name, { error: String(e).slice(0, 300) }); }
+}
+
+if (!offline) {
+  // Two tabs of one browser play online over BroadcastChannel: a host (Cinder) and a client (Thistle).
+  const ctx = await browser.newContext();
+  const H = await ctx.newPage(), C = await ctx.newPage();
+  for (const p of [H, C]) { p.on('pageerror', e => errors.push(String(e))); await p.goto(url); await p.waitForFunction(() => window.__game); await p.addScriptTag({ content: PAGE_HELPERS }); }
+  const form = (agent) => {
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+    set('net-transport', 'local'); set('net-room', 'CHECKS'); set('net-mode', 'dm'); set('net-agent', agent); set('net-name', agent);
+    Object.assign(window.__game.settings, { botCount: 1, botMode: 'static', map: 'arena', agent });
+  };
+  await H.evaluate(form, 'cinder'); await C.evaluate(form, 'thistle');
+  await H.evaluate(() => window.__game.hostOnline());
+  await C.evaluate(() => window.__game.joinOnline());
+  // The local transport can miss the first handshake on a slow machine, so join once more before giving up.
+  const joined = () => C.waitForFunction(() => window.__game.net?.role === 'client', null, { timeout: 15000 }).then(() => true, () => false);
+  if (!await joined()) { await C.evaluate(() => window.__game.joinOnline()); if (!await joined()) throw new Error('client never joined the host'); }
+  await H.waitForTimeout(2000);
+  // Kill the client's Thistle on the host, then cast Ruse from the grave.
+  const killedAt = await H.evaluate(() => { const g = window.__game.game, c = __remote(); g.damage(c, g.player, 999, { part: 'head', def: { id: 'vandal', name: 'Vandal' }, dist: 3, point: c.eye() }); c.respawnAt = Infinity; return g.time; }); // no deathmatch respawn: only Not Dead Yet can bring her back
+  await C.waitForTimeout(300);
+  await C.evaluate(() => { const p = window.__game.game.player; p.kit.charges.e = 2; p.input.abE = true; });
+  await C.waitForTimeout(100);
+  await C.evaluate(() => { const g = window.__game.game, k = g.player.kit, d = g.player.deathPos || g.player.pos; if (k.mapPick) { k.mapClick([d[0] + 3, d[1], d[2]]); k.mapConfirm(); } });
+  await H.waitForFunction((t) => window.__game.game.smokes.some(s => s.born > t), killedAt, { timeout: 8000 }).catch(() => {}); // the smokes form 0.7 s after the call
+  const smokes = await H.evaluate((t) => window.__game.game.smokes.filter(s => s.born > t).length, killedAt);
+  report('Online: a dead Thistle\'s Ruse smoke reaches the host', { pass: smokes > 0, freshHostSmokes: smokes });
+  // Not Dead Yet: both sides should agree she is alive.
+  await H.evaluate(() => { __remote().kit.ultPoints = 8; });
+  await C.waitForTimeout(150);
+  await C.evaluate(() => { window.__game.game.player.input.abX = true; });
+  await C.waitForTimeout(500);
+  const client = await C.evaluate(() => window.__game.game.player.alive);
+  const host = await H.evaluate(() => __remote().alive);
+  report('Online: Not Dead Yet revives her on both screens', { pass: client && host, clientSeesAlive: client, hostSeesAlive: host });
+}
+
+if (errors.length) { failed++; console.log('Page errors:', errors.slice(0, 5)); }
+await browser.close();
+server.close();
+console.log(failed ? `${failed} failed` : 'All checks passed');
+process.exit(failed ? 1 : 0);

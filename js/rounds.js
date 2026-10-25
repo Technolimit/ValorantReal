@@ -6,7 +6,8 @@
 //     sides swap every round and everyone gets 5000 credits each overtime round.
 //   * Economy: 800 to start, 9000 cap, +3000 per round win, +1900 / 2400 / 2900 for 1 / 2 / 3+ losses in a
 //     row, +200 per kill, +300 to every attacker for planting, and attackers who survive a round they lost
-//     on time without planting get only 1000. Halftime resets credits to 800 and weapons to the Classic.
+//     on time without planting get only 1000. Halftime resets credits to 800, weapons to the Classic and
+//     ultimate points to zero.
 //   * Dead players stay dead until the next round. Survivors keep their weapons and remaining shields.
 //     Unused ability charges carry over; the signature ability (E) refills every round.
 import { WEAPONS } from './weapons.js';
@@ -101,7 +102,7 @@ export class RoundMode {
     if (g.contract) g.contract = null;
     this.emit('roundClear');
     for (const c of g.combatants) {
-      if (half) { c.credits = ECON.start; c.survived = false; c.inv.primary = null; c.inv.secondary = new Gun(WEAPONS.classic); c.armor = 0; c.inv.ability = null; if (c.kit) { c.kit.charges.c = 0; c.kit.charges.q = 0; c.kit.charges.e = 0; } }
+      if (half) { c.credits = ECON.start; c.survived = false; c.inv.primary = null; c.inv.secondary = new Gun(WEAPONS.classic); c.armor = 0; c.inv.ability = null; if (c.kit) { c.kit.charges.c = 0; c.kit.charges.q = 0; c.kit.charges.e = 0; c.kit.ultPoints = 0; } }
       if (ot) c.credits = ECON.ot;
       this.spawn(c, now);
     }
@@ -622,7 +623,7 @@ export class NetRoundMode extends RoundMode {
     g.walls = []; g.smokes = []; g.zones = []; g.devices = []; g.eventide = null; g.drops = [];
     if (g.contract) g.contract = null;
     this.emit('roundClear');
-    if (half) { p.survived = false; p.inv.primary = null; p.inv.secondary = new Gun(WEAPONS.classic); p.armor = 0; p.inv.ability = null; if (p.kit) { p.kit.charges.c = 0; p.kit.charges.q = 0; p.kit.charges.e = 0; } }
+    if (half) { p.survived = false; p.inv.primary = null; p.inv.secondary = new Gun(WEAPONS.classic); p.armor = 0; p.inv.ability = null; if (p.kit) { p.kit.charges.c = 0; p.kit.charges.q = 0; p.kit.charges.e = 0; p.kit.ultPoints = 0; } }
     this.boughtThisRound = new Map();
     this.phase = 'buy';
     this.spawn(p, now, sp);
