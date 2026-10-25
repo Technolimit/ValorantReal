@@ -1056,6 +1056,7 @@ function frame(t) {
     spikeBeeps(); rhud.update(dt);
     minimap.update();
     sound.setListener(game.player.eye(), game.player.yaw);
+    sound.setDeaf(game.player.alive && game.player.st.deafUntil > game.time);
   } else {
     renderer.renderIdle(t / 1000);
   }

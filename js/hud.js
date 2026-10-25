@@ -179,6 +179,7 @@ export class Hud {
     else if (kit?.gate && !kit.gate.removed) mode = 'RIFTWALK READY · PRESS E TO TELEPORT';
     else if (p.st.disarmUntil > g.time) mode = `DETAINED · ${(p.st.disarmUntil - g.time).toFixed(1)}s`;
     else if (p.st.suppressUntil > g.time) mode = `SUPPRESSED · ${(p.st.suppressUntil - g.time).toFixed(1)}s`;
+    else if (p.st.deafUntil > g.time) mode = `DEAFENED · ${(p.st.deafUntil - g.time).toFixed(1)}s`;
     else if (p.st.intangibleUntil > g.time) mode = 'VANISHED';
     else if (kit && g.time < kit.empressUntil) mode = `RAVENOUS · ${(kit.empressUntil - g.time).toFixed(0)}s`;
     else if (kit?.orbs?.length) mode = 'SOUL ORB · Q FEAST · E VANISH';

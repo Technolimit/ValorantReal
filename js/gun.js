@@ -74,7 +74,7 @@ export class Gun {
   }
 
   onEquip(now) {
-    this.equipEnd = now + this.def.equip;
+    this.equipEnd = now + this.def.equip / (this.buffHandling || 1); // Ravenous: faster draw
     this.nextFire = Math.max(this.nextFire, this.equipEnd);
     this.reloading = false;
     this.reloadStopped = -10;
@@ -102,14 +102,15 @@ export class Gun {
     if (this.reloading || !d.mag || this.mag >= d.mag || this.reserve <= 0) return;
     this.reloading = true;
     this.reloadStart = now;
+    const k = this.buffHandling || 1; // Ravenous: faster reload
     if (d.perRound) {
       // One round at a time; each one can be fired as soon as it's chambered.
       const n = Math.min(d.mag - this.mag, this.reserve);
-      this.roundStart = now + d.perRound.first;
-      this.roundEnd = this.roundStart + d.perRound.each;
-      this.reloadDur = d.perRound.first + n * d.perRound.each;
+      this.roundStart = now + d.perRound.first / k;
+      this.roundEnd = this.roundStart + d.perRound.each / k;
+      this.reloadDur = (d.perRound.first + n * d.perRound.each) / k;
     } else {
-      this.reloadDur = d.reloadOne && d.mag - this.mag === 1 ? d.reloadOne : d.reload;
+      this.reloadDur = (d.reloadOne && d.mag - this.mag === 1 ? d.reloadOne : d.reload) / k;
     }
     this.reloadEnd = now + this.reloadDur;
     this.burstLeft = 0;
@@ -152,7 +153,7 @@ export class Gun {
           this.reserve--;
           owner.game.emit('reloadRound', { who: owner, gun: this });
           if (this.mag >= d.mag || this.reserve <= 0) this.stopReload(now);
-          else { this.roundStart = this.roundEnd; this.roundEnd += d.perRound.each; }
+          else { this.roundStart = this.roundEnd; this.roundEnd += d.perRound.each / (this.buffHandling || 1); }
         }
       } else if (now >= this.reloadEnd) {
         const take = Math.min(d.mag - this.mag, this.reserve);

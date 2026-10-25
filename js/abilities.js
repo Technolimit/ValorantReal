@@ -325,13 +325,13 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Dread', desc: 'Send a wave of shadow straight ahead (30 m) that passes through walls, nearsighting every enemy it touches for 2 s.', charges: 1, cooldown: 30,
+        name: 'Dread', desc: 'Send a wave of shadow straight ahead (30 m) that passes through walls, nearsighting and deafening every enemy it touches for 2 s.', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           const end = [eye[0] + d[0] * 30, eye[1] + d[1] * 30, eye[2] + d[2] * 30];
           const ft4 = flight(eye, end, 10);
           g.emit('throw', { who: o, from: eye, to: end, time: ft4, color: 0x7a4dff, wave: true });
-          later(kit, ft4 + -0.3, () => g.lineEffect(o, eye, end, 1.8, 'near', 2));
+          later(kit, ft4 + -0.3, () => g.lineEffect(o, eye, end, 1.8, 'near+deaf', 2));
         },
       },
       e: {
@@ -514,7 +514,7 @@ export const AGENTS = {
     blurb: 'An old commander who fights from the map: sky smokes and orbital fire wherever he points, a stim beacon for the push and an incendiary to hold it.',
     abilities: {
       c: {
-        item: 'device', name: 'Rally', desc: 'Throw a beacon (10 m) that sets up a field for 12 s. Standing in it gives you 10% faster fire rate for 4 s after you leave.', charges: 1, cooldown: 30,
+        item: 'device', name: 'Rally', desc: 'Throw a beacon (10 m) that sets up a field for 12 s. You and teammates standing in it get 10% faster fire rate and 15% faster movement, lasting 4 s after you leave.', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 10, { floor: true, back: 0.4 });
           o.game.addZone({ kind: 'stim', color: 0xffb547, owner: o, pos, r: 6, life: 12 }, kit.now);
@@ -666,7 +666,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Ravenous', desc: 'Enter a frenzy for 30 s: 15% faster fire rate, and every kill heals you 100 and resets the timer.', points: 6,
+        name: 'Ravenous', desc: 'Enter a frenzy for 30 s: 15% faster fire rate, equip and reload, and every kill heals you 100 and resets the timer.', points: 6,
         use(kit) {
           kit.empressUntil = kit.now + 30;
           kit.owner.game.emit('ability', { who: kit.owner, type: 'ult' });
@@ -901,14 +901,14 @@ export const AGENTS = {
     blurb: 'An information broker. Wires, cages and a camera tell him everything — and his ultimate reads the minds of the fallen.',
     abilities: {
       c: {
-        item: 'device', name: 'Tripline', desc: 'Hold the wire, aim at a wall (6 m) and left click to stretch it across the gap. An enemy who crosses it is revealed, held and then stunned for 3 s.', charges: 2, cooldown: 30,
+        item: 'device', name: 'Tripline', desc: 'Hold the wire, aim at a wall (6 m) and left click to stretch it across the gap at that height. An enemy who crosses it is revealed, held and then stunned for 3 s.', charges: 2, cooldown: 30,
         use(kit) {
           const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           const hit = g.world.raycast(eye, d, 6);
           if (!hit || hit.box.floor || hit.n[1] !== 0) return false;
-          const n = hit.n, a = [eye[0] + d[0] * hit.t + n[0] * 0.05, 0, eye[2] + d[2] * hit.t + n[2] * 0.05];
-          const fl = g.floorAt(a[0] + n[0] * 0.3, a[2] + n[2] * 0.3);
-          a[1] = (fl ? fl[1] : o.pos[1]) + 0.35;
+          const n = hit.n, a = [eye[0] + d[0] * hit.t + n[0] * 0.05, eye[1] + d[1] * hit.t, eye[2] + d[2] * hit.t + n[2] * 0.05];
+          const fl = g.floorAt(a[0] + n[0] * 0.3, a[2] + n[2] * 0.3, a[1] + 0.5);
+          if (fl) a[1] = Math.max(a[1], fl[1] + 0.1); // at the height you aim at, never inside the floor
           const h2 = g.world.raycast(a, [n[0], 0, n[2]], 12);
           if (!h2) return false;
           const b = [a[0] + n[0] * h2.t, a[1], a[2] + n[2] * h2.t];
@@ -977,12 +977,12 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Grasp', desc: 'Throw an orb (20 m) that bursts 0.6 s after landing: enemies within 6 m are held in place for 4.5 s.', charges: 1, cooldown: 25,
+        name: 'Grasp', desc: 'Throw an orb (20 m) that bursts 0.6 s after landing: enemies within 6 m are held in place and deafened for 4.5 s and lose 75 health to Decay (never lethal).', charges: 1, cooldown: 25,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.4 });
           const ft18 = flight(o.eye(), pos, 13);
           o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft18, color: 0xb07a9a });
-          later(kit, ft18 + 0.6, () => o.game.pulse(o, [pos[0], pos[1] + 1, pos[2]], 6, 'hold', 4.5, 0xb07a9a));
+          later(kit, ft18 + 0.6, () => { for (const c of o.game.pulse(o, [pos[0], pos[1] + 1, pos[2]], 6, 'hold+deaf', 4.5, 0xb07a9a)) o.game.decay(c, 75); });
         },
       },
       e: {
@@ -995,12 +995,13 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Terror', desc: 'Unleash a 40 m wave of nightmare through walls: everyone it hits is revealed for 12 s and decays (loses up to 50 health, never lethal).', points: 8,
+        name: 'Terror', desc: 'Unleash a 40 m wave of nightmare through walls: everyone it hits is revealed and deafened for 12 s and decays (loses up to 50 health, never lethal).', points: 8,
         use(kit) {
           const o = kit.owner, g = o.game;
           g.emit('quakeLine', { from: [o.pos[0], o.pos[1] + 1, o.pos[2]], yaw: o.yaw, cone: true, color: 0xb07a9a });
           later(kit, 0.8, () => g.cone(o, 40, 30 * DEG, (c) => {
             c.st.revealUntil = kit.now + 12;
+            c.st.deafUntil = kit.now + 12;
             const n = Math.min(50, c.hp + c.armor - 1);
             if (n > 0) g.damage(c, o, n, { part: 'body', def: src('terror', 'Terror'), dist: 0, point: c.eye(), wallbang: true, dot: true });
           }));
@@ -1191,7 +1192,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'orb', name: 'Lagoon', desc: 'Hold the orb, left click to throw it (20 m). It becomes a water dome 4.5 m across for 12 s that blocks sight.', charges: 1, cooldown: 35,
+        item: 'orb', name: 'Lagoon', desc: 'Hold the orb, left click to throw it (20 m). It becomes a water dome 4.5 m across for 12 s that blocks sight and stops bullets until it takes 500 damage.', charges: 1, cooldown: 35,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.6 });
           const ft = flight(o.eye(), pos, 13);
@@ -1636,7 +1637,12 @@ export class Kit {
     for (const k of ['q', 'e', 'c']) {
       if (!inp['ab' + k.toUpperCase()]) continue;
       if (this.armed && this.armed.k === k) { this.armed = null; continue; } // press again to put it away
-      if (buyLock && !buyPhaseAllows(this.id, k)) { g.emit('abilityLocked', { who: o, key: k }); continue; }
+      if (buyLock && !buyPhaseAllows(this.id, k)) {
+        // Buy phase: you can still take it out and line it up; using it waits for the round to start.
+        if (!ab[k].instant && !this.busy() && this.charges[k] > 0) { this.armed = { k, at: now }; o.gun.onHolster(); g.emit('abilityArm', { who: o, key: k }); }
+        else g.emit('abilityLocked', { who: o, key: k });
+        continue;
+      }
       if (this.mapPick && this.mapPick.key === k) { this.mapConfirm(); continue; } // press again to confirm map picks
       if (ab[k].reuse && (!this.busy() || this.view || this.pilot) && ab[k].reuse(this)) continue; // second press: detonate / toggle / teleport
       if (this.busy()) continue;
@@ -1648,6 +1654,10 @@ export class Kit {
     this.previewPos = held?.preview ? held.preview(this) : null; // what the player sees is where it lands
     if (this.armed && now - this.armed.at > 0.25) { // short draw before the ability can be used
       const k = this.armed.k, a = ab[k];
+      if (buyLock && !buyPhaseAllows(this.id, k) && (inp.firePressed || (a.charge ? !inp.fire && this.chargeT > 0 : inp.altPressed && !a.rotate && !a.distance))) {
+        g.emit('abilityLocked', { who: o, key: k }); // held, not thrown: keep holding it
+        inp.firePressed = inp.altPressed = false; this.chargeT = 0;
+      }
       if (a.rotate && inp.altPressed) { this.rot = !this.rot; inp.altPressed = false; } // right click rotates the preview
       if (a.distance) {
         // Hold right click to push the marker out (wraps back in at max range); R toggles through-walls.
@@ -1964,19 +1974,20 @@ export class Kit {
   // Ongoing per-tick effects for the second wave of agents.
   tickExtras(now) {
     const o = this.owner, g = o.game, DT = 1 / 128;
-    // Fire-rate buffs: stim beacon, empress
+    // Fire-rate buffs: stim beacon, empress; Ravenous also speeds up equipping and reloading
     let rate = 1;
     if (o.st.stimUntil > now) rate *= 1.1;
     if (now < this.empressUntil) rate *= 1.15;
     if (now < this.nullUntil) rate *= 1.1;
-    for (const gun of Object.values(o.inv)) if (gun) { gun.buffRate = rate; gun.buffRecoil = 1; }
+    const handling = now < this.empressUntil ? 1.15 : 1;
+    for (const gun of Object.values(o.inv)) if (gun) { gun.buffRate = rate; gun.buffRecoil = 1; gun.buffHandling = handling; }
     // Ability guns are gone once their last round is fired.
     const ag = o.inv.ability;
     if (ag && ag.mag <= 0 && now >= ag.nextFire - 0.05) {
       o.inv.ability = null;
       if (o.slot === 'ability') o.equip(o.inv.primary ? 'primary' : 'secondary', now, true);
     }
-    for (const z of g.zones) if (z.kind === 'stim' && z.owner === o && Math.hypot(o.pos[0] - z.pos[0], o.pos[2] - z.pos[2]) < z.r) o.st.stimUntil = now + 4;
+    for (const z of g.zones) if (z.kind === 'stim' && o.alive && !g.isEnemy(z.owner, o) && Math.hypot(o.pos[0] - z.pos[0], o.pos[2] - z.pos[2]) < z.r) o.st.stimUntil = now + 4;
     // Bloom channel: heal teammates in sight from the pool while C is held (bots: a few seconds).
     const rg = this.regrow;
     if (rg?.on) {

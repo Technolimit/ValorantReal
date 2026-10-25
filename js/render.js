@@ -431,11 +431,13 @@ export class Renderer {
       slot.to.set(to[0], to[1], to[2]);
       slot.color = gun.def === BLADES ? [0.55, 0.95, 1] : own ? [1, 0.9, 0.6] : [1, 0.55, 0.4];
     });
-    g.on('impact', ({ point, normal, melee }) => {
+    g.on('impact', ({ point, normal, melee, util }) => {
       if (!this.settings.showImpacts || melee) return;
+      if (util) return this.burst(point, normal, util.kind === 'cove' ? [0.5, 0.85, 0.95] : [0.9, 0.8, 0.4], 3, 1.5); // sparks off utility, no decal in mid-air
       this.addDecal(point, normal);
       this.burst(point, normal, [0.35, 0.33, 0.3], 3, 1.5);
     });
+    g.on('utilBroken', (it) => this.burst(it.pos, [0, 1, 0], it.kind === 'cove' ? [0.5, 0.85, 0.95] : [1, 0.75, 0.3], 14, 3));
     g.on('hit', ({ target, part, point, attacker }) => {
       const col = part === 'head' ? [1, 1, 1] : [0.85, 0.1, 0.15];
       this.burst(point, null, col, part === 'head' ? 10 : 6, 2.5);

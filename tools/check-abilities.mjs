@@ -280,6 +280,95 @@ const checks = [
     const maps = Object.values(out).every(r => r.orbs === 2 && r.reach.every(x => x.onFloor && x.atk && x.def));
     return { pass: maps && early === 0 && got === 1 && taken && back, ...out, pointsAt2s: early, pointsAt3s: got, orbTaken: taken, backNextRound: back };
   }],
+  ['Enemy utility can be shot down; a Lagoon dome stops bullets until it breaks', async () => {
+    const g = await __start({});
+    const p = g.player, b = g.bots[0];
+    if (!__place(g, p, 12)) return { error: 'no open ground' };
+    const dir = (t) => { __aim(p, t); return [-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch), -Math.cos(p.yaw) * Math.cos(p.pitch)]; };
+    const f = __ahead(p, 6); f[1] = p.pos[1];
+    const tur = g.addDevice({ kind: 'turret', owner: b, pos: f, yaw: 0, aimYaw: 0, life: 40, next: g.time + 99 });
+    let shots = 0;
+    while (!tur.removed && shots < 20) { g.fireBullets(p, p.gun, [dir([f[0], f[1] + 0.5, f[2]])]); shots++; }
+    // A dome between p and b: b takes nothing until the dome has soaked up 500.
+    b.pos = __ahead(p, 9); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.hp = 100; b.armor = 0;
+    const dome = g.addSmoke(b, __ahead(p, 5), g.time, { radius: 2.2, life: 12, kind: 'cove' });
+    const hpBefore = b.hp;
+    let n = 0;
+    while (dome.hp > 0 && n < 100) { g.fireBullets(p, p.gun, [dir(b.eye())]); n++; if (b.hp < hpBefore) break; }
+    const blockedHp = b.hp;
+    g.tick();
+    g.fireBullets(p, p.gun, [dir(b.eye())]);
+    return { pass: tur.removed && shots > 1 && blockedHp === hpBefore && dome.hp <= 0 && b.hp < hpBefore, turretShots: shots, botHpWhileDomeUp: blockedHp, shotsToBreakDome: n, botHpAfter: b.hp };
+  }],
+  ['Seize deafens and decays; deafened bots ignore sounds; Paranoia deafens', async () => {
+    const g = await __start({ agent: 'nyx', botMode: 'fight' });
+    const p = g.player, b = g.bots[0];
+    __tick(g, 1);
+    if (!__place(g, p, 10)) return { error: 'no open ground' };
+    b.pos = __ahead(p, 5); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.hp = 100;
+    for (const c of g.pulse(p, [b.pos[0], b.pos[1] + 1, b.pos[2]], 6, 'hold+deaf', 4.5, 0)) g.decay(c, 75);
+    const deaf = b.st.deafUntil > g.time, decayed = b.hp === 25;
+    const before = b.brain.alertUntil ?? 0;
+    b.brain.lastSeen = -100;
+    b.brain.hear({ pos: p.pos }, g.time);
+    const heard = (b.brain.alertUntil ?? 0) !== before;
+    b.st.deafUntil = 0;
+    g.lineEffect(p, p.eye(), __ahead(p, 20), 1.8, 'near+deaf', 2);
+    return { pass: deaf && decayed && !heard && b.st.deafUntil > g.time && b.st.nearUntil > g.time, seizeDeafens: deaf, seizeDecays: decayed, deafBotHeard: heard };
+  }],
+  ['Tripwire goes at the height you aim at and only trips bodies it crosses', async () => {
+    const g = await __start({ agent: 'lattice' });
+    const p = g.player, b = g.bots[0];
+    if (!__place(g, p, 8)) return { error: 'no open ground' };
+    const y = p.pos[1];
+    __box(g, [p.pos[0] - 3, y, p.pos[2] - 3.2], [p.pos[0] + 3, y + 4, p.pos[2] - 3]); // a wall ahead
+    __box(g, [p.pos[0] - 3.2, y, p.pos[2] - 9], [p.pos[0] - 3, y + 4, p.pos[2] + 1]); // and one to the left
+    __box(g, [p.pos[0] + 3, y, p.pos[2] - 9], [p.pos[0] + 3.2, y + 4, p.pos[2] + 1]); // and right
+    __aim(p, [p.pos[0] + 3, y + 2.4, p.pos[2] - 1]);
+    p.kit.agent.abilities.c.use(p.kit);
+    const high = g.devices.find(d => d.kind === 'wire');
+    const highY = high ? high.pos[1] - y : null;
+    // Walk the bot under the high wire: nothing happens.
+    b.pos = [p.pos[0], y, p.pos[2] - 1]; b.prevPos = [...b.pos];
+    __tick(g, 0.1);
+    const trippedHigh = b.st.stunUntil > g.time;
+    high.removed = true; g.tick();
+    __aim(p, [p.pos[0] + 3, y + 1.0, p.pos[2] - 1]);
+    p.kit.agent.abilities.c.use(p.kit);
+    __tick(g, 0.1);
+    const trippedLow = b.st.stunUntil > g.time;
+    return { pass: highY !== null && Math.abs(highY - 2.4) < 0.2 && !trippedHigh && trippedLow, wireHeight: highY, trippedByHighWire: trippedHigh, trippedByWaistWire: trippedLow };
+  }],
+  ['Ravenous speeds up reload; Rally buffs teammates too', async () => {
+    const g = await __start({ mode: 'rounds', map: 'divide', agent: 'vex' });
+    __tick(g, 31);
+    const p = g.player, gun = p.gun;
+    gun.mag = 1; gun.startReload(p, g.time); const normal = gun.reloadDur; gun.reloading = false;
+    p.kit.empressUntil = g.time + 30; g.tick();
+    gun.mag = 1; gun.startReload(p, g.time); const fast = gun.reloadDur; gun.reloading = false;
+    const ally = g.bots.find(x => !g.isEnemy(p, x));
+    const zone = g.addZone({ kind: 'stim', owner: p, pos: [...ally.pos], r: 6, life: 12 }, g.time);
+    __tick(g, 0.1);
+    return { pass: fast < normal * 0.9 && ally.st.stimUntil > g.time, reloadNormal: normal, reloadRavenous: fast, allyStimmed: ally.st.stimUntil > g.time };
+  }],
+  ['Buy phase: any ability can be held; set-up utility (camera, Sentry, Anchor) can be placed', async () => {
+    const press = (g, c, key, aim) => { c.input['ab' + key] = true; g.tick(); __tick(g, 0.35); if (aim) aim(); c.input.firePressed = true; g.tick(); __tick(g, 0.2); };
+    const out = {};
+    for (const [agent, key, kind] of [['lattice', 'E', 'cam'], ['bastion', 'E', 'turret'], ['regent', 'E', 'anchor']]) {
+      const g = await __start({ mode: 'rounds', map: 'divide', agent });
+      __tick(g, 2);
+      const p = g.player; p.kit.charges[key.toLowerCase()] = 1; p.pitch = -0.3;
+      press(g, p, key);
+      out[agent] = g.mode.phase === 'buy' && g.devices.some(d => d.kind === kind && d.owner === p);
+    }
+    const g = await __start({ mode: 'rounds', map: 'divide', agent: 'cinder' });
+    __tick(g, 2);
+    const p = g.player; p.kit.charges.q = 1; p.input.abQ = true; g.tick(); __tick(g, 0.35);
+    const held = p.kit.armed?.k === 'q';
+    p.input.firePressed = true; g.tick(); __tick(g, 0.2);
+    const stillHeld = p.kit.armed?.k === 'q' && p.kit.charges.q === 1;
+    return { pass: Object.values(out).every(Boolean) && held && stillHeld, placed: out, flareHeldInBuy: held, flareNotThrownInBuy: stillHeld };
+  }],
   ['Bot 5v5 (6 min): no errors, bot flashes hit enemies more than their own side', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'fight' });
     const s = { flashes: 0, self: 0, ally: 0, enemy: 0, errors: 0, rounds: 0 };
@@ -350,6 +439,20 @@ if (!offline) {
   const client = await C.evaluate(() => window.__game.game.player.alive);
   const host = await H.evaluate(() => __remote().alive);
   report('Online: Not Dead Yet revives her on both screens', { pass: client && host, clientSeesAlive: client, hostSeesAlive: host });
+  // Shooting the host's Sentry from the client breaks it on both screens.
+  const spot = await C.evaluate(() => { const p = window.__game.game.player; const f = __ahead(p, 5); f[1] = p.pos[1]; return f; });
+  await H.evaluate((f) => { const g = window.__game.game; window.__t = g.addDevice({ kind: 'turret', owner: g.player, pos: f, yaw: 0, aimYaw: 0, life: 60, next: g.time + 99 }); }, spot);
+  await C.evaluate((f) => {
+    const g = window.__game.game, p = g.player;
+    window.__t = g.addDevice({ kind: 'turret', owner: __remote(), pos: f, yaw: 0, aimYaw: 0, life: 60, next: g.time + 99 });
+    __aim(p, [f[0], f[1] + 0.5, f[2]]);
+    const d = [-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch), -Math.cos(p.yaw) * Math.cos(p.pitch)];
+    for (let i = 0; i < 12; i++) g.fireBullets(p, p.gun, [d]);
+  }, spot);
+  await H.waitForFunction(() => window.__t.removed, null, { timeout: 5000 }).catch(() => {});
+  await C.waitForFunction(() => window.__t.removed, null, { timeout: 5000 }).catch(() => {});
+  const hostGone = await H.evaluate(() => !!window.__t.removed), clientGone = await C.evaluate(() => !!window.__t.removed);
+  report('Online: a client shooting the host\'s Sentry breaks it for both', { pass: hostGone && clientGone, hostSentryGone: hostGone, clientSentryGone: clientGone });
 }
 
 if (errors.length) { failed++; console.log('Page errors:', errors.slice(0, 5)); }

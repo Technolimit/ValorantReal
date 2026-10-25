@@ -58,7 +58,7 @@ export class Bot {
   }
 
   hear(source, now) {
-    if (this.mode === 'static' || now - this.lastSeen < 1) return;
+    if (this.mode === 'static' || now - this.lastSeen < 1 || this.me.st.deafUntil > now) return; // deafened: hears nothing
     this.alert(source.pos, now);
   }
 
