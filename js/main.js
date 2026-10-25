@@ -70,11 +70,15 @@ const mouse = [false, false, false];
 const look = { dx: 0, dy: 0 };
 
 const isPlayer = (who) => who === game.player;
+// Whose ears you hear through: yours, or (dead in 5v5) the teammate you're spectating. Their shots and steps
+// play up close like your own; everything else is placed relative to them.
+const ears = () => renderer.specTarget || game.player;
+const isEars = (who) => who === ears();
 
 // ---- sound hooks ----
-game.on('shot', ({ who, gun }) => { if (isPlayer(who)) sound.stopAction(); sound.gunshot(gun.def, isPlayer(who) ? null : who.eye(), gun); });
-game.on('footstep', ({ who }) => sound.footstep(isPlayer(who) ? null : who.pos, isPlayer(who)));
-game.on('land', ({ who }) => sound.land(isPlayer(who) ? null : who.pos, isPlayer(who)));
+game.on('shot', ({ who, gun }) => { if (isPlayer(who)) sound.stopAction(); sound.gunshot(gun.def, isEars(who) ? null : who.eye(), gun); });
+game.on('footstep', ({ who }) => sound.footstep(isEars(who) ? null : who.pos, isEars(who)));
+game.on('land', ({ who }) => sound.land(isEars(who) ? null : who.pos, isEars(who)));
 game.on('hit', ({ attacker, target, part, killed, dot }) => {
   if (isPlayer(attacker) && !isPlayer(target) && (!dot || killed)) sound.hitConfirm(part, killed);
   if (isPlayer(target)) sound.hurt(part === 'head');
@@ -1242,7 +1246,8 @@ function frame(t) {
     inspectHint();
     spikeBeeps(); rhud.update(dt);
     minimap.update();
-    sound.setListener(game.player.eye(), game.player.yaw);
+    const ear = ears();
+    sound.setListener(ear.eye(), ear.yaw);
     sound.setDeaf(game.player.alive && game.player.st.deafUntil > game.time);
   } else {
     renderer.renderIdle(t / 1000);
@@ -1252,5 +1257,5 @@ function frame(t) {
 requestAnimationFrame(frame);
 
 // Exposed for automated checks in a headless browser; `frozen` stops the loop from ticking.
-const hooks = { game, renderer, settings, startMatch, playerInput, openAgents, switchAgent, net, hostOnline, joinOnline, frozen: false };
+const hooks = { game, renderer, sound, settings, startMatch, playerInput, openAgents, switchAgent, net, hostOnline, joinOnline, frozen: false };
 window.__game = hooks;
