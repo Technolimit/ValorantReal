@@ -4,6 +4,7 @@ import { WEAPONS, BUY_GROUPS } from './weapons.js';
 import { PLAYER, TICK_RATE } from './config.js';
 import { patternPreview } from './gun.js';
 import { MELEE } from './melee.js';
+import { KillBanner, bannerColors } from './killbanner.js';
 import { AGENTS, SMOKE, BLADES, BEAMS, insideSlab, bloomTargets, BLOOM } from './abilities.js';
 
 const DEG = Math.PI / 180;
@@ -23,6 +24,8 @@ export class Hud {
     this.dirs = [];
     this.nums = [];
     this.centerUntil = 0;
+    this.banner = new KillBanner($('killbanner'));
+    this.streak = 0;
     this.fps = 0;
     this.buyOpen = false;
     this.cursor = { x: innerWidth / 2, y: innerHeight / 2 };
@@ -44,11 +47,15 @@ export class Hud {
     const g = this.game;
     g.on('kill', ({ killer, victim, def, headshot, wallbang }) => {
       this.addFeed(killer, victim, def, headshot, wallbang);
-      if (killer === g.player && victim !== g.player) {
-        this.center(`<b>ELIMINATED</b> ${esc(victim.name)}${headshot ? '<small>HEADSHOT</small>' : ''}`);
+      if (killer === g.player && victim !== g.player && g.isEnemy(killer, victim)) this.killBanner(victim, def, headshot);
+      if (victim === g.player) {
+        // Deathmatch streaks end when you die; in rounds they run for the whole round, like the kill count.
+        if (!g.mode) this.streak = 0;
+        this.showDeath();
       }
-      if (victim === g.player) this.showDeath();
     });
+    g.on('round', () => { this.streak = 0; this.banner.clear(); });
+    g.on('start', () => { this.streak = 0; this.banner.clear(); });
     g.on('hit', ({ attacker, target, part, amount, point, wallbang }) => {
       if (target === g.player) {
         this.flashDamage(attacker);
@@ -71,6 +78,17 @@ export class Hud {
     el.innerHTML = html;
     el.style.opacity = 1;
     this.centerUntil = performance.now() + 1600;
+  }
+
+  // The kill banner, in the colours of the skin on whatever got the kill (your melee's skin for knife kills,
+  // your agent's colour for ability kills). An ace is every enemy in the round, all killed by you.
+  killBanner(victim, def, headshot) {
+    const g = this.game, p = g.player, r = this.renderer;
+    this.streak++;
+    const colors = WEAPONS[def.id] ? bannerColors(r.skinOf(p, r.modelOf(p, def.id))) : bannerColors('standard', p.kit?.agent.color);
+    const enemies = g.mode ? g.combatants.filter(c => g.isEnemy(p, c)) : [];
+    const ace = enemies.length > 1 && this.streak >= enemies.length && enemies.every(c => !c.alive);
+    this.banner.show({ count: this.streak, colors, ace, caption: `<b>ELIMINATED</b> ${esc(victim.name)}${headshot ? '<small>HEADSHOT</small>' : ''}` });
   }
 
   addFeed(killer, victim, def, headshot, wallbang) {

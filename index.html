@@ -48,6 +48,39 @@ button { font: inherit; }
 #center-msg b { color: var(--accent); letter-spacing: 2px; margin-right: 6px; }
 #center-msg small { display: block; color: #ffd54a; font-size: 12px; letter-spacing: 2px; margin-top: 2px; }
 
+/* Kill banner (js/killbanner.js): colours are --kb-* custom properties set from the killing weapon's skin. */
+#killbanner { position: absolute; left: 50%; top: 63%; transform: translateX(-50%); width: clamp(110px, 19vh, 170px); }
+.kb { position: relative; transform: scale(var(--kb-scale)); transform-origin: 50% 40%; animation: kb-in 0.24s cubic-bezier(0.2, 1.5, 0.4, 1) both, kb-out 0.35s ease-in 1.95s forwards; }
+.kb-emblem { display: block; width: 100%; overflow: visible; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.8)); }
+.kb-emblem * { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.kb-frame circle, .kb-frame line { stroke: var(--kb-face); stroke-width: 1.2; opacity: 0.45; }
+.kb-ring { stroke: var(--kb-face); stroke-width: 3.5; }
+.kb-inner { stroke: var(--kb-accent); stroke-width: 1; opacity: 0.5; }
+.kb-shock { stroke: var(--kb-accent); stroke-width: 3; transform-box: fill-box; transform-origin: center; animation: kb-shock 0.55s ease-out both; }
+.kb-pips path { stroke: rgba(255, 255, 255, 0.18); stroke-width: 5.5; }
+.kb-pips path.on { stroke: var(--kb-accent); filter: drop-shadow(0 0 4px var(--kb-accent)); }
+.kb-pips path.new { animation: kb-pip 0.5s ease-out 0.12s both; }
+.kb-face { fill: var(--kb-face) !important; }
+.kb-shade { fill: rgba(0, 0, 0, 0.14) !important; }
+.kb-socket { fill: var(--kb-socket) !important; }
+.kb-eye { fill: var(--kb-accent) !important; filter: drop-shadow(0 0 3px var(--kb-accent)); }
+.kb-lines { stroke: var(--kb-socket); stroke-width: 2; }
+.kb-hash line, .kb-wings path, .kb-stem path { stroke: var(--kb-trim); stroke-width: 2; }
+.kb-hash, .kb-wings { animation: kb-fan 0.35s ease-out 0.08s both; transform-box: view-box; transform-origin: center; }
+.kb-spin { stroke: var(--kb-accent); stroke-width: 1.5; stroke-dasharray: 3 9; opacity: 0.8; transform-box: fill-box; transform-origin: center; animation: kb-spin 4s linear infinite; }
+.kb-rays line { stroke: var(--kb-accent); stroke-width: 2.5; filter: drop-shadow(0 0 4px var(--kb-accent)); transform-box: view-box; transform-origin: center; animation: kb-rays 0.7s ease-out both; }
+.kb-caption { position: absolute; left: 50%; top: 100%; transform: translateX(-50%); white-space: nowrap; text-align: center; font-size: 13px; letter-spacing: 2px; text-shadow: 0 1px 3px #000; margin-top: 2px; }
+.kb-caption > b:not(.kb-ace) { color: var(--kb-accent); margin-right: 6px; }
+.kb-caption small { display: block; color: #ffd54a; font-size: 11px; }
+.kb-ace { display: block; color: var(--kb-accent); font-size: 18px; letter-spacing: 4px; text-shadow: 0 0 8px var(--kb-accent), 0 1px 3px #000; }
+@keyframes kb-in { from { transform: scale(calc(var(--kb-scale) * 1.7)); opacity: 0; } to { transform: scale(var(--kb-scale)); opacity: 1; } }
+@keyframes kb-out { to { transform: scale(calc(var(--kb-scale) * 0.92)); opacity: 0; } }
+@keyframes kb-shock { from { transform: scale(1); opacity: 0.9; } to { transform: scale(1.9); opacity: 0; } }
+@keyframes kb-pip { 0% { stroke: #fff; stroke-width: 9; } 100% { stroke-width: 5.5; } }
+@keyframes kb-fan { from { transform: scale(0.75); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes kb-spin { to { transform: rotate(360deg); } }
+@keyframes kb-rays { from { transform: scale(0.7); opacity: 1; } to { transform: scale(1.15); opacity: 0.5; } }
+
 #vitals { position: absolute; left: 24px; bottom: 22px; display: flex; gap: 22px; text-shadow: 0 1px 3px #000; }
 .stat { display: grid; grid-template-columns: auto 120px; grid-template-rows: auto auto; column-gap: 10px; align-items: center; }
 .stat span { grid-row: span 2; font-size: 34px; font-weight: 700; min-width: 2.2ch; text-align: right; }
@@ -419,6 +452,7 @@ th { color: var(--muted); font-weight: 500; }
   <div id="rhint"></div>
   <div id="killfeed"></div>
   <div id="center-msg"></div>
+  <div id="killbanner"></div>
   <div id="vitals">
     <div class="stat"><span id="hp">100</span><div class="bar"><i id="hpbar"></i></div><label>HP</label></div>
     <div class="stat armor"><span id="armor">50</span><div class="bar"><i id="armorbar"></i></div><label>Shield</label></div>
