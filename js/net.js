@@ -300,7 +300,7 @@ export class NetSession {
   recordInputs() {
     if (!this.role || this.role === 'joining') return;
     for (const c of this.owned()) {
-      if (!c.alive || !c.kit || !c.nid) continue;
+      if ((!c.alive && !c.kit?.agent.deadCast) || !c.kit || !c.nid) continue; // a dead Thistle still casts
       const i = c.input, kit = c.kit;
       let bits = 0;
       for (const k of ['abQ', 'abE', 'abC', 'abX']) if (i[k]) bits |= BIT[k];

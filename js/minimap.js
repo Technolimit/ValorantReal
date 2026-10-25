@@ -71,7 +71,7 @@ export class Minimap {
     const allies = g.combatants.filter(c => c.alive && !g.isEnemy(me, c));
     for (const e of g.combatants) {
       if (!e.alive || !g.isEnemy(me, e)) continue;
-      let vis = e.st.revealUntil > now;
+      let vis = e.st.revealUntil > now && e.st.hiddenUntil <= now;
       if (!vis && e.st.hiddenUntil <= now) {
         const ee = e.eye();
         for (const a of allies) {

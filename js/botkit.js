@@ -90,7 +90,7 @@ export function applyCast(me, k, { dist: dd, power, picks = [] } = {}) {
   }
   if (r === false) return false;
   const re = REUSE[kit.id + ':' + k];
-  if (re && ab.reuse) kit.timers.push({ at: g.time + re, fn: () => ab.reuse(kit) });
+  if (re && ab.reuse) kit.timers.push({ at: g.time + re, fn: () => ab.reuse(kit), self: true });
   if (!kit.busy() && me.alive) me.equip(me.slot, g.time, true);
   return true;
 }

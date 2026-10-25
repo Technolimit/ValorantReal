@@ -133,7 +133,12 @@ export class Game {
     for (const c of this.combatants) {
       if (c.remote) {
         // Someone else's player: follows the network, and replays their ability inputs on its kit.
-        if (!c.alive) continue;
+        if (!c.alive) {
+          // A dead Thistle still casts (Ruse, Not Dead Yet), and thrown utility still lands.
+          if (c.kit?.agent.deadCast && this.state === 'playing') { this.applyNetInput?.(c); c.kit.tickDead(now); }
+          else c.kit?.runTimers(now);
+          continue;
+        }
         netStep(c, DT);
         this.applyNetInput?.(c);
         if (c.kit) c.kit.tick(now);
@@ -141,6 +146,7 @@ export class Game {
       }
       if (!c.alive) {
         if (c.kit?.agent.deadCast && this.state === 'playing') c.kit.tickDead(now);
+        else c.kit?.runTimers(now); // utility already thrown still lands after its owner dies
         // A bot Thistle comes back with Not Dead Yet a moment after falling, when it has the points.
         if (c.isBot && c.kit?.agent.deadCast && c.deathPos && this.mode?.phase !== 'end' && c.kit.ultPoints >= c.kit.ultCost && now - c.diedAt > 1.5) c.kit.notDeadYet();
         continue;
@@ -148,7 +154,7 @@ export class Game {
       if (c.decay > 0 && now >= c.decayRegenAt) { const back = Math.min(c.decay, 12 * DT); c.decay -= back; c.hp = Math.min(PLAYER.hp, c.hp + back); }
       if (c.kit) c.kit.tick(now);
       c.move(DT, now, this.world);
-      if (!c.kit?.blocking() && !(c.st.channelUntil > now)) c.gun.tick(c, now, DT);
+      if (!c.kit?.blocking() && !(c.st.channelUntil > now) && !(c.st.disarmUntil > now)) c.gun.tick(c, now, DT); // detained: no gun
     }
     for (const c of this.combatants) {
       const i = c.input;
@@ -163,7 +169,7 @@ export class Game {
     // Venom sees enemies inside her own Nest.
     for (const s of this.smokes) {
       if (!s.nest || now >= s.until) continue;
-      for (const c of this.combatants) if (c.alive && this.isEnemy(s.owner, c) && Math.hypot(c.pos[0] - s.pos[0], c.pos[1] + 1 - s.pos[1], c.pos[2] - s.pos[2]) < s.radius) c.st.revealUntil = now + 0.15;
+      for (const c of this.combatants) if (this.affectable(c) && this.isEnemy(s.owner, c) && Math.hypot(c.pos[0] - s.pos[0], c.pos[1] + 1 - s.pos[1], c.pos[2] - s.pos[2]) < s.radius) c.st.revealUntil = now + 0.15;
     }
     for (const w of this.walls) if (now >= w.until) this.removeWall(w);
     if (this.walls.some(w => w.removed)) this.walls = this.walls.filter(w => !w.removed);
@@ -175,6 +181,11 @@ export class Game {
   // Line of sight that smoke also blocks (used for bot vision; bullets ignore smoke).
   canSee(a, b) {
     return this.world.lineOfSight(a, b) && !smokeBlocks(this.smokes, a, b, this.time);
+  }
+
+  // Can abilities put a status on c? Not while phased out or intangible (Phase Out, Vanish, downed).
+  affectable(c) {
+    return c.alive && !(c.st.intangibleUntil > this.time) && !(c.st.hiddenUntil > this.time);
   }
 
   addSmoke(owner, pos, now, { radius = SMOKE.radius, life = SMOKE.life, color = 0xcfdbe6, kind = 'smoke', nest = false, slab = null } = {}) {
@@ -206,15 +217,16 @@ export class Game {
         if (d > z.r || dy < -1.0 || dy > 3) continue;
         const enemy = this.isEnemy(z.owner, c) || (z.burnsOwner && c === z.owner);
         if (z.armAt && now < z.armAt) continue; // orbital strike still charging
-        if (z.nearsight && this.isEnemy(z.owner, c)) c.st.nearUntil = now + 0.3;
-        if (z.acid && enemy) c.st.vulnUntil = now + 0.3;
-        if (z.slowField && this.isEnemy(z.owner, c)) { c.st.slowUntil = now + 0.2; c.st.slowAmt = z.slowField; }
+        const fx = this.affectable(c);
+        if (fx && z.nearsight && this.isEnemy(z.owner, c)) c.st.nearUntil = now + 0.3;
+        if (fx && z.acid && enemy) c.st.vulnUntil = now + 0.3;
+        if (fx && z.slowField && this.isEnemy(z.owner, c)) { c.st.slowUntil = now + 0.2; c.st.slowAmt = z.slowField; }
         if (z.kind === 'fire') {
           if (enemy) {
             c.burn = (c.burn || 0) + z.dps * DT;
             if (c.burn >= 5) { const n = Math.floor(c.burn); c.burn -= n; this.damage(c, z.owner, n, { part: 'body', def: z.def, dist: 0, point: c.eye(), wallbang: false, dot: true }); }
           } else if (z.heal) c.hp = Math.min(Math.max(PLAYER.hp, c.hp), c.hp + z.heal * DT);
-        } else if (z.kind === 'trap' && this.isEnemy(z.owner, c) && !z.sprung) {
+        } else if (z.kind === 'trap' && fx && this.isEnemy(z.owner, c) && !z.sprung) {
           z.sprung = true;
           z.until = now + 0.6;
           c.st.slowUntil = now + z.dur; c.st.slowAmt = z.slow;
@@ -225,7 +237,7 @@ export class Game {
       if (z.kind === 'lockdown' && !z.fired && now >= z.armAt) {
         z.fired = true;
         for (const c of this.combatants) {
-          if (!c.alive || !this.isEnemy(z.owner, c)) continue;
+          if (!this.affectable(c) || !this.isEnemy(z.owner, c)) continue;
           if (Math.hypot(c.pos[0] - z.pos[0], c.pos[2] - z.pos[2]) > z.r) continue;
           c.st.disarmUntil = now + z.dur;
           c.st.slowUntil = now + z.dur; c.st.slowAmt = z.slow;
@@ -238,13 +250,15 @@ export class Game {
   }
 
   // Blind everyone who can see `pos` and is roughly facing it; a glance from the side blinds for less.
+  // Smokes block it like walls do. Bots on the thrower's team (the thrower too) hear the callout and look away.
   flash(owner, pos, dur) {
     const now = this.time;
     for (const c of this.combatants) {
-      if (!c.alive) continue;
+      if (!this.affectable(c)) continue;
+      if (c.isBot && !this.isEnemy(owner, c)) continue;
       const e = c.eye(), dx = pos[0] - e[0], dy = pos[1] - e[1], dz = pos[2] - e[2];
       const dist = Math.hypot(dx, dy, dz);
-      if (dist > 35 || !this.world.lineOfSight(e, pos)) continue;
+      if (dist > 35 || !this.canSee(e, pos)) continue;
       const f = dirOf(c.yaw, c.pitch);
       const facing = (f[0] * dx + f[1] * dy + f[2] * dz) / Math.max(dist, 1e-6);
       if (facing < 0.1) continue; // looking away
@@ -259,7 +273,7 @@ export class Game {
   pulse(owner, pos, r, type, dur, color, needSight = false) {
     const now = this.time;
     for (const c of this.combatants) {
-      if (!c.alive || !this.isEnemy(owner, c)) continue;
+      if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
       if (Math.hypot(c.pos[0] - pos[0], c.pos[1] + 1 - pos[1], c.pos[2] - pos[2]) > r) continue;
       if (needSight && !this.world.lineOfSight(pos, c.eye()) && !this.world.lineOfSight(pos, [c.pos[0], c.pos[1] + 1, c.pos[2]])) continue;
       if (type === 'stun') { c.st.stunUntil = now + dur; c.st.slowUntil = now + dur; c.st.slowAmt = 0.4; }
@@ -289,7 +303,7 @@ export class Game {
     const now = this.time, ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     const len2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2;
     for (const c of this.combatants) {
-      if (!c.alive || !this.isEnemy(owner, c)) continue;
+      if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
       const p = [c.pos[0], c.pos[1] + 1, c.pos[2]];
       let t = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / len2;
       t = Math.max(0, Math.min(1, t));
@@ -305,7 +319,7 @@ export class Game {
   // Gravity well: drag enemies within r toward pos.
   pull(owner, pos, r, speed) {
     for (const c of this.combatants) {
-      if (!c.alive || !this.isEnemy(owner, c)) continue;
+      if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
       const dx = pos[0] - c.pos[0], dz = pos[2] - c.pos[2], d = Math.hypot(dx, dz);
       if (d > r || d < 0.3) continue;
       c.vel[0] = dx / d * speed; c.vel[2] = dz / d * speed;
@@ -367,7 +381,7 @@ export class Game {
   // Everyone within `range` and `half` radians of the owner's facing, through walls.
   cone(owner, range, half, fn) {
     for (const c of this.combatants) {
-      if (!c.alive || !this.isEnemy(owner, c)) continue;
+      if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
       const dx = c.pos[0] - owner.pos[0], dz = c.pos[2] - owner.pos[2], d = Math.hypot(dx, dz);
       if (d > range) continue;
       const ang = Math.atan2(-dx, -dz), off = Math.abs(Math.atan2(Math.sin(ang - owner.yaw), Math.cos(ang - owner.yaw)));
@@ -404,7 +418,7 @@ export class Game {
       if (t < 0) continue;
       const dist = Math.hypot(o[0] + d[0] * t - p[0], (o[1] + d[1] * t - p[1]) * 0.6, o[2] + d[2] * t - p[2]);
       if (dist > B.width) continue;
-      c.st.revealUntil = now + 2;
+      if (this.affectable(c)) c.st.revealUntil = now + 2;
       this.damage(c, owner, B.dmg, { part: 'body', def: B, dist: t, point: p, wallbang: true });
     }
     this.emit('beam', { who: owner, from: o, to: [o[0] + d[0] * 140, o[1] + d[1] * 140, o[2] + d[2] * 140] });
@@ -418,10 +432,11 @@ export class Game {
     return !!f;
   }
 
-  // Floor point under map coordinates x, z (highest surface), or null.
-  floorAt(x, z) {
-    const f = this.world.raycast([x, 30, z], [0, -1, 0], 40);
-    return f ? [x, 30 - f.t, z] : null;
+  // Floor point under map coordinates x, z (highest surface), or null. With `fromY`, the first floor below
+  // that height instead: under a roof or a bridge that is the floor you're on, not the roof.
+  floorAt(x, z, fromY = 30) {
+    const f = this.world.raycast([x, fromY, z], [0, -1, 0], 40);
+    return f ? [x, fromY - f.t, z] : null;
   }
 
   // Placed gadgets: drone (flies and tags), alarm (chases and makes Vulnerable), turret, swarm (hidden).
@@ -436,7 +451,7 @@ export class Game {
 
   tickDevices(now) {
     if (!this.devices.length) return;
-    const enemiesOf = (d) => this.combatants.filter(c => c.alive && this.isEnemy(d.owner, c));
+    const enemiesOf = (d) => this.combatants.filter(c => this.affectable(c) && this.isEnemy(d.owner, c));
     for (const d of this.devices) {
       if (now >= d.until) d.removed = true;
       if (d.removed) continue;
@@ -472,8 +487,8 @@ export class Game {
           } else {
             d.pos[0] += dx / dist * 6 * DT;
             d.pos[2] += dz / dist * 6 * DT;
-            const f = this.floorAt(d.pos[0], d.pos[2]);
-            if (f && Math.abs(f[1] - d.pos[1]) < 0.5) d.pos[1] = f[1];
+            const f = this.floorAt(d.pos[0], d.pos[2], d.pos[1] + 0.6); // up steps, down drops
+            if (f && f[1] - d.pos[1] > -3) d.pos[1] = f[1];
           }
         }
       } else if (d.kind === 'boombot') {
@@ -493,13 +508,16 @@ export class Game {
             d.dir = [dx / dist, 0, dz / dist]; sp = 8;
           }
         }
+        // Climbs steps up to 0.45 m and rolls off ledges, checking the body clears walls at the height it ends up at.
         for (const ax of [0, 2]) {
           const np = [...d.pos]; np[ax] += d.dir[ax] * sp * DT;
-          if (this.world.overlap(np[0] - 0.2, np[1] + 0.15, np[2] - 0.2, np[0] + 0.2, np[1] + 0.5, np[2] + 0.2)) d.dir[ax] = -d.dir[ax];
-          else d.pos[ax] = np[ax];
+          // Its front edge reaches a step first and its back edge leaves a ledge last: it rides the highest floor under it.
+          const lead = [...np], trail = [...np]; lead[ax] += Math.sign(d.dir[ax]) * 0.2; trail[ax] -= Math.sign(d.dir[ax]) * 0.2;
+          const ys = [trail, np, lead].map(q => this.floorAt(q[0], q[2], d.pos[1] + 0.6)).filter(f => f && f[1] - d.pos[1] > -3).map(f => f[1]);
+          const y = ys.length ? Math.max(...ys) : d.pos[1];
+          if (this.world.overlap(np[0] - 0.2, y + 0.05, np[2] - 0.2, np[0] + 0.2, y + 0.5, np[2] + 0.2)) d.dir[ax] = -d.dir[ax];
+          else { d.pos[ax] = np[ax]; d.pos[1] = y; }
         }
-        const f = this.floorAt(d.pos[0], d.pos[2]);
-        if (f && Math.abs(f[1] - d.pos[1]) < 0.5) d.pos[1] = f[1];
       } else if (d.kind === 'cloud') {
         // Steerable smoke orb: follows your crosshair while you hold the key, bursts when you let go.
         const held = d.owner.input[d.key];
@@ -524,7 +542,7 @@ export class Game {
         if (d.travelled < 18) {
           const step = d.speed * DT;
           d.pos[0] += d.dir[0] * step; d.pos[2] += d.dir[2] * step; d.travelled += step;
-          const f = this.floorAt(d.pos[0], d.pos[2]);
+          const f = this.floorAt(d.pos[0], d.pos[2], d.pos[1] - SLAB.h / 2 + 1.5);
           if (f && Math.abs(f[1] - (d.pos[1] - SLAB.h / 2)) < 1.5) d.pos[1] = f[1] + SLAB.h / 2;
           d.smoke.pos[0] = d.pos[0]; d.smoke.pos[1] = d.pos[1]; d.smoke.pos[2] = d.pos[2];
         }
@@ -545,7 +563,7 @@ export class Game {
           d.yaw += Math.max(-1.6 * DT, Math.min(1.6 * DT, diff)); // ~90 degrees a second
         }
         const step = d.speed * DT, nx = d.pos[0] - Math.sin(d.yaw) * step, nz = d.pos[2] - Math.cos(d.yaw) * step;
-        let f = this.floorAt(nx, nz);
+        let f = this.floorAt(nx, nz, d.pos[1] + 0.6);
         if (d.through) { const g0 = this.world.raycast([nx, d.pos[1] + 0.5, nz], [0, -1, 0], 6); f = g0 ? [nx, d.pos[1] + 0.5 - g0.t, nz] : null; } // flows along the ground, through walls
         const blocked = !f || (!d.through && (f[1] > d.pos[1] + 0.5 || this.world.overlap(nx - 0.2, d.pos[1] + 0.5, nz - 0.2, nx + 0.2, d.pos[1] + 1.5, nz + 0.2)));
         if (blocked || d.travelled >= (d.maxDist || 15)) { d.removed = true; continue; }
@@ -606,8 +624,8 @@ export class Game {
           if (this.world.overlap(np[0] - 0.25, np[1] + 0.4, np[2] - 0.25, np[0] + 0.25, np[1] + 1.2, np[2] + 0.25)) blocked = true;
           else d.pos[ax] = np[ax];
         }
-        const f = this.floorAt(d.pos[0], d.pos[2]);
-        if (f && f[1] - d.pos[1] < 0.5 && f[1] - d.pos[1] > -3) d.pos[1] = f[1];
+        const f = this.floorAt(d.pos[0], d.pos[2], d.pos[1] + 0.6);
+        if (f && f[1] - d.pos[1] > -3) d.pos[1] = f[1];
       } else if (d.kind === 'owl') {
         // Flown with WASD (relative to where you look) plus the mouse; Space rises, crouch sinks.
         const pin = d.owner.kit?.pilotInput || {}, yaw = d.owner.yaw, pitch = d.owner.pitch;
@@ -694,7 +712,7 @@ export class Game {
   }
 
   revealAll(owner, dur) {
-    for (const c of this.combatants) if (c.alive && this.isEnemy(owner, c)) c.st.revealUntil = this.time + dur;
+    for (const c of this.combatants) if (this.affectable(c) && this.isEnemy(owner, c)) c.st.revealUntil = this.time + dur;
     this.emit('pulse', { pos: owner.eye(), r: 90, type: 'reveal', color: 0xffd54a, owner });
   }
 
@@ -715,7 +733,7 @@ export class Game {
     for (const r of [0, 0.4, 0.8, 1.2]) {
       for (let a = 0; a < (r ? 8 : 1); a++) {
         const p = [pos[0] + Math.cos(a * Math.PI / 4) * r, pos[1], pos[2] + Math.sin(a * Math.PI / 4) * r];
-        const f = this.floorAt(p[0], p[2]);
+        const f = this.floorAt(p[0], p[2], pos[1] + 0.9);
         if (f && Math.abs(f[1] - pos[1]) < 1 && this.canStand(c, f)) return this.teleport(c, f);
       }
     }
@@ -879,7 +897,7 @@ export class Game {
     if (attacker !== target && !this.isEnemy(attacker, target)) return; // no friendly fire
     const now = this.time;
     if (target.st.intangibleUntil > now && !info.spike) return; // Vanish: can't be hurt
-    if (target.kit?.shield) { target.kit.shield = false; this.emit('pulse', { pos: target.eye(), r: 1.2, type: 'shield', color: 0x9b5cff, owner: target }); return; } // Focus shield eats one hit
+    if (target.kit?.shield && !info.spike) { target.kit.shield = false; this.emit('pulse', { pos: target.eye(), r: 1.2, type: 'shield', color: 0x9b5cff, owner: target }); return; } // Focus shield eats one hit
     if (target.st.vulnUntil > now) amount *= 2; // Vulnerable: double damage
     if (target.kit) target.kit.onDamaged();
     if (target.decay > 0) target.decayRegenAt = now + 2.5; // getting hit pauses Decay recovery
@@ -900,7 +918,7 @@ export class Game {
     target.lastHitFrom = attacker.eye();
     target.lastHitTime = now;
     let killed = target.hp <= 0;
-    if (killed && target.kit?.saveFromDeath()) {
+    if (killed && !info.spike && target.kit?.saveFromDeath()) {
       this.emit('hit', { attacker, target, part: info.part, amount, dealt, point: info.point, killed: false, def: info.def, wallbang: info.wallbang, dot: !!info.dot });
       return;
     }

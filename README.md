@@ -13,6 +13,9 @@ npx serve .            # or: python3 -m http.server 8000
 Opening `index.html` straight from disk (`file://`) won't work: browsers block ES modules and `fetch` there.
 It also works as-is on any static host (GitHub Pages, Netlify, an S3 bucket).
 
+`node tools/check-abilities.mjs` runs headless checks of ability interactions in Chromium (it needs
+`playwright`). Pass `--offline` to skip the two-tab online checks.
+
 ## Online play (no server)
 
 Main menu → **Online**. One player hosts, the others join with the room code. Pick a mode and an agent;

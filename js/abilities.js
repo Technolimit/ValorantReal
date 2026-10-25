@@ -33,7 +33,10 @@ const src = (id, name) => ({ id, name, cat: 'Ability', dmg: [[50, 0, 0, 0]] });
 export function aimPoint(o, range, { floor = false, back = 0.6, bodies = true } = {}) {
   const g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
   const hit = g.world.raycast(eye, d, range);
-  let t = hit ? Math.max(0.3, hit.t - back) : range;
+  // Looking at the top of something (a step, a box, a ledge) lands on it; backing off along the ray there
+  // would slide off its edge and drop to the floor below.
+  const onTop = floor && hit?.n && hit.n[1] > 0.5;
+  let t = hit ? Math.max(0.3, hit.t - (onTop ? 0.02 : back)) : range;
   if (bodies) { // thrown things stop on the first player they hit (and drop at their feet)
     for (const c of g.combatants) {
       if (!c.alive || !g.isEnemy(o, c)) continue;
@@ -48,7 +51,38 @@ export function aimPoint(o, range, { floor = false, back = 0.6, bodies = true } 
   }
   return pos;
 }
+// Thrown or placed utility lands even if its owner dies first; `mine` is for effects on the owner's own body
+// (teleports, dashes, shields), which die with them.
+// The free standing spot nearest p on the same level (within 0.8 m): a landing marker next to a wall, on a
+// stair edge or at a ledge lip still has somewhere to put your feet.
+function standSpot(o, p) {
+  const g = o.game;
+  for (const r of [0, 0.3, 0.55, 0.8]) {
+    for (let a = 0; a < (r ? 8 : 1); a++) {
+      const f = g.floorAt(p[0] + Math.cos(a * Math.PI / 4) * r, p[2] + Math.sin(a * Math.PI / 4) * r, p[1] + 0.5);
+      if (f && Math.abs(f[1] - p[1]) < 0.5 && g.canStand(o, f)) return f;
+    }
+  }
+  return null;
+}
+// Where a teleport aimed at the crosshair lands (Rift): the surface you look at, the step or ledge whose lip
+// you are aiming just under (up to 1.2 m below its top), or the floor in front of a wall.
+function landing(o, range) {
+  const g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
+  const hit = g.world.raycast(eye, d, range);
+  if (hit && hit.n[1] === 0) {
+    const p = [eye[0] + d[0] * hit.t, eye[1] + d[1] * hit.t, eye[2] + d[2] * hit.t];
+    const h = Math.hypot(d[0], d[2]) || 1, ix = p[0] + d[0] / h * 0.45, iz = p[2] + d[2] / h * 0.45;
+    const top = g.floorAt(ix, iz, p[1] + 1.25);
+    if (top && top[1] > p[1] - 0.05) { const s = standSpot(o, top); if (s) return s; }
+  }
+  return standSpot(o, aimPoint(o, range, { floor: true, back: 0.7, bodies: false }));
+}
+// Where a held ability with a preview will land: exactly the spot the preview showed this tick while the
+// player is holding it; recomputed for bots and replays, which cast without holding.
+const target = (kit, a) => (kit.armed && kit.previewPos) || a.preview(kit);
 const later = (kit, delay, fn) => kit.timers.push({ at: kit.now + delay, fn });
+const mine = (kit, delay, fn) => kit.timers.push({ at: kit.now + delay, fn, self: true });
 // Flight time for a thrown ability at `speed` m/s (through an optional bend point), never instant.
 function flight(from, to, speed, via) {
   const d = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
@@ -188,7 +222,7 @@ export const AGENTS = {
         use(kit) {
           const o = kit.owner;
           o.game.emit('ability', { who: o, type: 'windup' });
-          later(kit, 0.2, () => {
+          mine(kit, 0.2, () => {
             o.vel[1] = LIFT_VELOCITY;
             o.grounded = false;
             o.airCap = Math.max(o.horizSpeed(), 1.5);
@@ -269,7 +303,7 @@ export const AGENTS = {
         name: 'Rekindle', desc: 'Mark where you stand. For 10 s you can fight freely: if you die, or when time runs out, you return to the mark at full health. The death does not count.', points: 6,
         use(kit) {
           const o = kit.owner;
-          kit.rebirth = { pos: [...o.pos], yaw: o.yaw, pitch: o.pitch, until: kit.now + 10 };
+          kit.rebirth = { pos: [...o.pos], yaw: o.yaw, pitch: o.pitch, until: kit.now + 10, armor: o.armor };
           o.game.emit('ability', { who: o, type: 'rebirth', pos: [...o.pos], kit });
         },
       },
@@ -282,12 +316,12 @@ export const AGENTS = {
     abilities: {
       c: {
         name: 'Rift', desc: 'Hold it: a marker shows where you will land (up to 12 m) and follows your aim. Left click to go; 1 s later you step through the shadows to it.', charges: 2, cooldown: 25,
-        preview(kit) { const o = kit.owner, p = aimPoint(o, 12, { floor: true, back: 0.7, bodies: false }); return o.game.canStand(o, p) ? p : null; },
+        preview(kit) { return landing(kit.owner, 12); },
         use(kit) {
-          const o = kit.owner, pos = this.preview(kit);
+          const o = kit.owner, pos = target(kit, this);
           if (!pos) return false;
           o.game.emit('ability', { who: o, type: 'step', pos });
-          later(kit, 0.5, () => o.game.teleportNear(o, pos));
+          mine(kit, 0.5, () => o.game.teleportNear(o, pos));
         },
       },
       q: {
@@ -301,12 +335,12 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Shade', desc: 'Hold the orb: a preview sphere shows where the smoke will form. Hold right click to push it farther (up to 70 m), press R to switch to through-walls mode (the marker passes through walls), left click to cast. Lasts 15 s.', charges: 2, cooldown: 30,
-        armHint: 'LEFT CLICK: CAST · HOLD RIGHT CLICK: FARTHER · R: THROUGH WALLS',
+        name: 'Shade', desc: 'Hold the orb: your view follows the smoke out through walls, and the sphere shows exactly where it will form. Hold right click to push it farther (up to 70 m), press R to let the marker pass through walls, left click to cast. Lasts 15 s.', charges: 2, cooldown: 30,
+        armHint: 'LEFT CLICK: CAST · HOLD RIGHT CLICK: FARTHER · R: THROUGH WALLS', shadowSight: true,
         smokePreview: 3.8, distance: { min: 4, max: 70, start: 16, speed: 22 },
         preview(kit) { return smokeTarget(kit, 3.8); },
         use(kit) {
-          const o = kit.owner, pos = smokeTarget(kit, 3.8);
+          const o = kit.owner, pos = [...target(kit, this)];
           o.game.emit('throw', { who: o, from: [pos[0], pos[1] + 14, pos[2]], to: pos, time: 0.4, color: 0xa67bff });
           later(kit, 0.4, () => o.game.addSmoke(o, pos, kit.now, { radius: 3.8, life: 15, color: 0x5b3f8f }));
         },
@@ -795,7 +829,7 @@ export const AGENTS = {
           kit.gate = null;
           gt.removed = true;
           o.game.emit('ability', { who: o, type: 'step', pos: gt.pos });
-          later(kit, 0.4, () => o.game.teleportNear(o, [...gt.pos]));
+          mine(kit, 0.4, () => o.game.teleportNear(o, [...gt.pos]));
           return true;
         },
       },
@@ -985,7 +1019,7 @@ export const AGENTS = {
         preview(kit) { const o = kit.owner; return aimPoint(o, 12, { floor: true, back: 0.4, bodies: false }); },
         wallPreview: { half: 3, h: 2.6, th: 0.4 },
         use(kit) {
-          const o = kit.owner, pos = this.preview(kit);
+          const o = kit.owner, pos = target(kit, this);
           return o.game.addWall(o, pos, o.yaw + (kit.rot ? Math.PI / 2 : 0), 30, { half: 3, h: 2.6, th: 0.2, style: 'ice', lift: true });
         },
       },
@@ -1016,7 +1050,7 @@ export const AGENTS = {
           o.st.channelUntil = kit.now + 1.5;
           o.st.slowUntil = kit.now + 1.5; o.st.slowAmt = 0.95;
           g.emit('ability', { who: o, type: 'ult' });
-          later(kit, 1.5, () => { if (!ally.alive && g.mode && g.mode.phase !== 'end') g.resurrect(ally, o); });
+          mine(kit, 1.5, () => { if (!ally.alive && g.mode && g.mode.phase !== 'end') g.resurrect(ally, o); });
         },
       },
     },
@@ -1130,7 +1164,7 @@ export const AGENTS = {
           if (kit.now < (kit.tpReady || 0) || Math.hypot(o.pos[0] - a.pos[0], o.pos[2] - a.pos[2]) > 50) { o.game.emit('abilityFail', { who: o, key: 'e' }); return true; }
           kit.tpReady = kit.now + 20;
           o.game.emit('ability', { who: o, type: 'step', pos: a.pos });
-          later(kit, 0.5, () => o.game.teleportNear(o, [...a.pos]));
+          mine(kit, 0.5, () => o.game.teleportNear(o, [...a.pos]));
           return true;
         },
       },
@@ -1212,7 +1246,7 @@ export const AGENTS = {
         use(kit) {
           kit.focusWind = kit.now + 1;
           kit.owner.gun.onHolster();
-          later(kit, 1, () => { kit.focusUntil = kit.now + 12; kit.shield = true; kit.owner.game.emit('ability', { who: kit.owner, type: 'heal' }); });
+          mine(kit, 1, () => { kit.focusUntil = kit.now + 12; kit.shield = true; kit.owner.game.emit('ability', { who: kit.owner, type: 'heal' }); });
           kit.owner.game.emit('ability', { who: kit.owner, type: 'windup' });
         },
       },
@@ -1261,7 +1295,7 @@ export const AGENTS = {
             o.game.emit('ability', { who: o, type: 'dash' });
           };
           go(true);
-          later(kit, 0.35, () => go(false));
+          mine(kit, 0.35, () => go(false));
         },
       },
       e: {
@@ -1292,7 +1326,7 @@ export const AGENTS = {
           later(kit, 1.2, () => {
             g.lineEffect(o, a, b, 3, 'hinder', 6);
             for (let i = 1; i <= 8; i++) g.emit('pulse', { pos: [a[0] + f[0] * i * 5, a[1], a[2] + f[1] * i * 5], r: 3, type: 'stun', color: 0xfff2b0, owner: o });
-            o.st.hasteUntil = kit.now + 10;
+            if (o.alive) o.st.hasteUntil = kit.now + 10;
           });
         },
       },
@@ -1401,7 +1435,8 @@ export const AGENTS = {
           const o = kit.owner, g = o.game;
           kit.nullUntil = kit.now + 12;
           kit.nullSaved = false;
-          for (let t = 0; t < 12; t += 2) later(kit, t, () => g.pulse(o, o.eye(), 30, 'reveal', 2.5, 0x6fa8ff));
+          kit.nullArmor = o.armor; // comes back with the shields it had, not free ones
+          for (let t = 0; t < 12; t += 2) mine(kit, t, () => g.pulse(o, o.eye(), 30, 'reveal', 2.5, 0x6fa8ff));
           g.emit('ability', { who: o, type: 'ult' });
         },
       },
@@ -1588,6 +1623,11 @@ export class Kit {
     if (this.tailwind && now > this.tailwind.until) this.tailwind = null; // unused dash fades
 
     const buyLock = g.mode?.phase === 'buy';
+    if (o.st.disarmUntil > now) { // detained: no abilities, no ability guns
+      inp.abQ = inp.abE = inp.abC = inp.abX = false;
+      inp.fire = inp.firePressed = inp.altPressed = false;
+      this.armed = null;
+    }
     for (const k of ['q', 'e', 'c']) {
       if (!inp['ab' + k.toUpperCase()]) continue;
       if (this.armed && this.armed.k === k) { this.armed = null; continue; } // press again to put it away
@@ -1599,6 +1639,8 @@ export class Kit {
       if (!ab[k].instant) { this.armed = { k, at: now }; o.gun.onHolster(); g.emit('abilityArm', { who: o, key: k }); continue; } // equip first
       this.spend(k);
     }
+    const held = this.armed && ab[this.armed.k];
+    this.previewPos = held?.preview ? held.preview(this) : null; // what the player sees is where it lands
     if (this.armed && now - this.armed.at > 0.25) { // short draw before the ability can be used
       const k = this.armed.k, a = ab[k];
       if (a.rotate && inp.altPressed) { this.rot = !this.rot; inp.altPressed = false; } // right click rotates the preview
@@ -1639,11 +1681,7 @@ export class Kit {
     }
 
     // Delayed effects (fuses, wind-ups, sonar pulses...)
-    if (this.timers.length) {
-      const due = this.timers.filter(t => now >= t.at);
-      this.timers = this.timers.filter(t => now < t.at);
-      if (o.alive) for (const t of due) t.fn();
-    }
+    this.runTimers(now);
 
     if (this.blades) this.tickBlades(now);
     if (this.beams) this.tickBeams(now);
@@ -1700,9 +1738,17 @@ export class Kit {
       else if (!this.mapPick && this.charges.e > 0) ab.e.use(this, now);
     }
     if (inp.abX && this.ultPoints >= this.ultCost && o.deathPos && !this.mapPick) this.notDeadYet();
-    const due = this.timers.filter(t => now >= t.at && t.dead);
-    this.timers = this.timers.filter(t => !(now >= t.at && t.dead));
-    for (const t of due) t.fn();
+    this.runTimers(now);
+  }
+
+  // Fire due delayed effects. After death only the ones that don't need the owner's body still go off.
+  runTimers(now) {
+    this.now = now;
+    if (!this.timers.length) return;
+    const due = this.timers.filter(t => now >= t.at);
+    if (!due.length) return;
+    this.timers = this.timers.filter(t => now < t.at);
+    for (const t of due) if (this.owner.alive || !t.self) t.fn();
   }
 
   notDeadYet() {
@@ -1736,7 +1782,7 @@ export class Kit {
     o.st.intangibleUntil = now + delay;
     o.st.slowUntil = now + delay; o.st.slowAmt = 0.9;
     o.game.emit('ability', { who: o, type: 'downed' });
-    later(this, delay, () => { o.hp = PLAYER.hp; o.armor = PLAYER.armor; o.game.emit('ability', { who: o, type: 'rekindled' }); if (!this.busy()) o.equip(o.slot, this.now, true); });
+    mine(this, delay, () => { o.hp = PLAYER.hp; o.armor = this.nullArmor ?? PLAYER.armor; o.game.emit('ability', { who: o, type: 'rekindled' }); if (!this.busy()) o.equip(o.slot, this.now, true); });
     return true;
   }
 
@@ -1745,7 +1791,7 @@ export class Kit {
     const o = this.owner, r = this.rebirth, g = o.game;
     this.rebirth = null;
     o.hp = PLAYER.hp;
-    o.armor = PLAYER.armor;
+    o.armor = r.armor ?? PLAYER.armor;
     for (const k of Object.keys(o.st)) if (k.endsWith('Until')) o.st[k] = 0;
     o.yaw = r.yaw; o.pitch = r.pitch;
     g.teleport(o, r.pos);

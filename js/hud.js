@@ -177,6 +177,7 @@ export class Hud {
     else if (kit?.view) mode = g.time >= (kit.view.dartReady || 0) ? 'WATCHER · LEFT CLICK: TRACKING DART · E TO LEAVE' : 'WATCHER · E TO LEAVE';
     else if (kit?.hawk && !kit.hawk.removed) mode = 'LANTERN HAWK · PRESS E TO BURST';
     else if (kit?.gate && !kit.gate.removed) mode = 'RIFTWALK READY · PRESS E TO TELEPORT';
+    else if (p.st.disarmUntil > g.time) mode = `DETAINED · ${(p.st.disarmUntil - g.time).toFixed(1)}s`;
     else if (p.st.intangibleUntil > g.time) mode = 'VANISHED';
     else if (kit && g.time < kit.empressUntil) mode = `RAVENOUS · ${(kit.empressUntil - g.time).toFixed(0)}s`;
     else if (kit?.orbs?.length) mode = 'SOUL ORB · Q FEAST · E VANISH';
