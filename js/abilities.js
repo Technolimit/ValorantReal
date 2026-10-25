@@ -134,6 +134,21 @@ function gasOff(kit, gr) {
   gr.items = [];
 }
 
+// Placed utility its owner can pick back up with F, by Valorant's rules: which key's charge comes back, after
+// how long (in the buy phase it is always straight back), and what can only be picked up in the buy phase.
+// Stars are recalled from anywhere you can look at them; everything else has to be within reach.
+export const PICKUPS = {
+  wire: { k: 'c', cd: 0 },             // Trapwire
+  cam: { k: 'e', cd: 15 },             // Spycam
+  cage: { k: 'q', buyOnly: true },     // Cyber Cage
+  alarm: { k: 'q', cd: 20 },           // Alarmbot
+  turret: { k: 'e', cd: 20 },          // Turret
+  trademark: { k: 'c', cd: 30 },       // Trademark
+  anchor: { k: 'e', cd: 0 },           // Rendezvous
+  emitter: { k: 'q', buyOnly: true },  // Poison Cloud
+  star: { star: true, cd: 25, far: true },
+};
+
 // The player's own device of `kind` closest to the crosshair (within 9 degrees), if any.
 function lookAt(kit, kind, maxDeg = 9) {
   const o = kit.owner, e = o.eye(), f = dirFromAngles(o.yaw, o.pitch);
@@ -1588,6 +1603,49 @@ export class Kit {
     const away = !!(this.view || this.pilot || this.shadow || held?.shadowSight);
     if (away && !this.aimBefore) this.aimBefore = { yaw: o.yaw, pitch: o.pitch };
     else if (!away && this.aimBefore) { o.yaw = this.aimBefore.yaw; o.pitch = this.aimBefore.pitch; this.aimBefore = null; }
+  }
+
+  // Your own placed utility you're looking at and could pick up now (F), if any.
+  pickupInView() {
+    const o = this.owner, g = o.game, e = o.eye(), f = dirFromAngles(o.yaw, o.pitch);
+    let best = null, bestCos = Math.cos(12 * DEG);
+    for (const d of g.devices) {
+      const rule = PICKUPS[d.kind];
+      if (!rule || d.owner !== o || d.removed || !this.canPickUp(d)) continue;
+      const c = [d.pos[0], d.pos[1] + 0.2, d.pos[2]], dx = c[0] - e[0], dy = c[1] - e[1], dz = c[2] - e[2], dist = Math.hypot(dx, dy, dz);
+      if (!rule.far && (Math.hypot(d.pos[0] - o.pos[0], d.pos[2] - o.pos[2]) > 2.6 || Math.abs(d.pos[1] - o.pos[1]) > 2.2 || !g.world.lineOfSight(e, c))) continue;
+      const near = !rule.far && dist < 1.2; // standing over it counts as looking at it
+      const cos = near ? 1 : (f[0] * dx + f[1] * dy + f[2] * dz) / Math.max(dist, 0.01);
+      if (cos > bestCos) { bestCos = cos; best = d; }
+    }
+    return best;
+  }
+
+  canPickUp(d) {
+    const rule = PICKUPS[d.kind];
+    if (rule.buyOnly && this.owner.game.mode?.phase !== 'buy') return false;
+    return !d.target; // an alarm bot already chasing someone is spent
+  }
+
+  // Pick up your device at `pos` (online peers replay this with the same position).
+  pickUp(pos) {
+    const o = this.owner, g = o.game;
+    let d = null, bestD = 1;
+    for (const x of g.devices) {
+      if (!PICKUPS[x.kind] || x.owner !== o || x.removed || !this.canPickUp(x)) continue;
+      const dd = Math.hypot(x.pos[0] - pos[0], x.pos[1] - pos[1], x.pos[2] - pos[2]);
+      if (dd < bestD) { bestD = dd; d = x; }
+    }
+    if (!d) return false;
+    const rule = PICKUPS[d.kind];
+    d.removed = true;
+    if (d.kind === 'cam') { if (this.view === d) this.view = null; this.cam = null; }
+    if (d.kind === 'anchor' && this.anchor === d) this.anchor = null;
+    if (d.kind === 'emitter' && this.gas.groups.cloud) { gasOff(this, this.gas.groups.cloud); delete this.gas.groups.cloud; }
+    const back = () => { if (rule.star) this.starsLeft++; else this.charges[rule.k]++; };
+    if (!rule.cd || g.mode?.phase === 'buy') back(); else later(this, rule.cd, back);
+    g.emit('pickedUp', { who: o, kind: d.kind, pos: [...d.pos] });
+    return true;
   }
 
   // While true the gun can't fire (blades/beams out, an ability armed, channelling).

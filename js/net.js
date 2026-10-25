@@ -133,9 +133,9 @@ const KEY_OF = { abQ: 'q', abE: 'e', abC: 'c' };
 // The kit is doing something the fire / alt / reload buttons steer (aiming an ability, blades out...).
 const inAbility = (k) => !!(k.armed || k.blades || k.beams || k.launcher || k.highGear || k.overdrive || k.drift || k.pilot || k.view || k.mapPick || k.shadow || k.grab || k.tailwind);
 
-// Direct kit calls from the map picker UI are recorded too.
+// Direct kit calls from the map picker UI (and picking utility back up) are recorded too.
 let replaying = false;
-for (const name of ['mapClick', 'mapConfirm', 'mapCancel']) {
+for (const name of ['mapClick', 'mapConfirm', 'mapCancel', 'pickUp']) {
   const orig = Kit.prototype[name];
   Kit.prototype[name] = function (...args) {
     if (!replaying) this.owner.game.emit('kitAct', { who: this.owner, act: [name, ...args] });
@@ -396,6 +396,7 @@ export class NetSession {
         } else if (a[0] === 'mapClick' && Array.isArray(a[1])) kit.mapClick(a[1]);
         else if (a[0] === 'mapConfirm') kit.mapConfirm();
         else if (a[0] === 'mapCancel') kit.mapCancel();
+        else if (a[0] === 'pickUp' && Array.isArray(a[1]) && a[1].length === 3) kit.pickUp(a[1]);
       }
     } catch (err) { console.warn('ability replay failed', err); }
     replaying = false;
