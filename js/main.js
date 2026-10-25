@@ -10,6 +10,7 @@ import { SKINS, SKIN_ORDER, skinFor, swatch, isCustom, saveCustomSkin, deleteCus
 import { GunPreview } from './models.js';
 import { MELEE, MELEE_ORDER, isMelee, meleeId } from './melee.js';
 import { RELOAD_STYLE, RELOAD_SOUNDS } from './reloadanim.js';
+import { SLOTS, MAX_BYTES, loadClips, saveClip, deleteClip, clearClips } from './customsounds.js';
 import { AGENTS, AGENT_ORDER, Kit } from './abilities.js';
 import { ROUND } from './rounds.js';
 import { Minimap } from './minimap.js';
@@ -36,6 +37,9 @@ const canvas = $('view');
 const renderer = new Renderer(canvas, game, settings);
 const sound = new Sound();
 sound.setVolume(settings.volume);
+sound.falloff = settings.falloff;
+const clipNames = new Map(); // 'vandal:fire' -> file name, for the gun sounds list in settings
+loadClips().then((clips) => { for (const [key, c] of clips) { clipNames.set(key, c.name); sound.setClip(key, c.data); } });
 const hud = new Hud(game, renderer, settings);
 const rhud = new RoundHud(game);
 const minimap = new Minimap(game);
@@ -74,10 +78,10 @@ game.on('hit', ({ attacker, target, part, killed, dot }) => {
   if (isPlayer(attacker) && !isPlayer(target) && (!dot || killed)) sound.hitConfirm(part, killed);
   if (isPlayer(target)) sound.hurt(part === 'head');
 });
-game.on('reload', ({ who, gun }) => { if (isPlayer(who)) sound.reload(gun.reloadDur, RELOAD_SOUNDS[RELOAD_STYLE[gun.def.id]]); });
+game.on('reload', ({ who, gun }) => { if (isPlayer(who)) sound.reload(gun.reloadDur, RELOAD_SOUNDS[RELOAD_STYLE[gun.def.id]], gun.def.id); });
 game.on('reloadRound', ({ who }) => { if (isPlayer(who)) { sound.click(0, 0.3); sound.thunk(0.03); } });
 game.on('dry', ({ who }) => { if (isPlayer(who)) sound.click(0, 0.3); });
-game.on('equip', ({ who }) => { if (isPlayer(who)) sound.equip(); });
+game.on('equip', ({ who, gun }) => { if (isPlayer(who)) sound.equip(gun?.def?.id); });
 game.on('swing', ({ who, heavy }) => { if (isPlayer(who)) sound.swing(heavy); });
 game.on('ability', ({ who, type }) => { if (isPlayer(who)) sound.ability(type); });
 game.on('smoke', ({ pos, kind }) => { if (kind !== 'fire') sound.smoke(pos); });
@@ -406,6 +410,7 @@ const SCHEMA = [
   ]],
   ['Video & audio', [
     ['volume', 'Volume', 'range', { min: 0, max: 1, step: 0.05 }],
+    ['falloff', 'Distance falloff', 'range', { min: 0.5, max: 2, step: 0.1 }],
     ['shadows', 'Shadows', 'checkbox'],
     ['renderScale', 'Render scale', 'select', { 0.5: '50%', 0.75: '75%', 1: '100%' }],
     ['showImpacts', 'Bullet holes', 'checkbox'],
@@ -456,8 +461,70 @@ function buildSettings() {
   }
 }
 
+// Settings → Gun sounds: upload your own fire / reload / equip sound per gun, preview it, or go back to the default.
+function buildGunSounds() {
+  const root = $('gun-sounds');
+  root.innerHTML = `<h3>Gun sounds</h3><p class="note">Upload your own sound for any gun: mp3, wav or ogg, up to ${MAX_BYTES / 1048576} MB. It's saved in this browser and plays whenever anyone fires that gun (reload and equip are just yours). ▶ plays the current sound.</p><p id="gun-sounds-msg" class="note warn" hidden></p>`;
+  const msg = (t) => { const m = $('gun-sounds-msg'); m.textContent = t; m.hidden = !t; };
+  const play = (id, slot) => {
+    sound.init();
+    if (slot === 'fire') sound.gunshot(WEAPONS[id], null, {});
+    else if (slot === 'reload') sound.reload(WEAPONS[id].reload, RELOAD_SOUNDS[RELOAD_STYLE[id]], id);
+    else sound.equip(id);
+  };
+  const list = document.createElement('div');
+  list.className = 'gs-list';
+  for (const [, ids] of BUY_GROUPS) for (const id of ids) {
+    const row = document.createElement('div');
+    row.className = 'gs-row';
+    row.innerHTML = `<span class="gs-gun">${WEAPONS[id].name}</span>`;
+    for (const [slot, label] of SLOTS) {
+      const key = `${id}:${slot}`, name = clipNames.get(key);
+      const cell = document.createElement('span');
+      cell.className = 'gs-slot' + (name ? ' custom' : '');
+      const file = document.createElement('input');
+      file.type = 'file'; file.accept = 'audio/*,.mp3,.wav,.ogg,.m4a'; file.hidden = true;
+      const up = document.createElement('button');
+      up.className = 'mini'; up.textContent = label; up.title = name ? `${label}: ${name} (click to replace)` : `${label}: default sound (click to upload your own)`;
+      up.onclick = () => file.click();
+      const test = document.createElement('button');
+      test.className = 'mini'; test.textContent = '▶'; test.title = `Play the ${label.toLowerCase()} sound`;
+      test.onclick = () => play(id, slot);
+      cell.append(file, up, test);
+      if (name) {
+        const reset = document.createElement('button');
+        reset.className = 'mini'; reset.textContent = '✕'; reset.title = 'Back to the default sound';
+        reset.onclick = async () => { await sound.setClip(key, null); clipNames.delete(key); deleteClip(key).catch(() => {}); buildGunSounds(); };
+        cell.append(reset);
+      }
+      file.onchange = async () => {
+        const f = file.files[0];
+        if (!f) return;
+        if (f.size > MAX_BYTES) { msg(`${f.name} is ${(f.size / 1048576).toFixed(1)} MB; the limit is ${MAX_BYTES / 1048576} MB.`); return; }
+        const data = await f.arrayBuffer();
+        sound.init();
+        try { await sound.setClip(key, data); } catch { await sound.setClip(key, null); msg(`Couldn't read ${f.name} as audio. Try an mp3, wav or ogg file.`); return; }
+        clipNames.set(key, f.name);
+        try { await saveClip(key, { name: f.name, data }); msg(''); } catch { msg('Playing it this session, but this browser wouldn\'t save it (storage blocked or full).'); }
+        buildGunSounds();
+        if (!$('gun-sounds-msg').textContent) play(id, slot);
+      };
+      row.appendChild(cell);
+    }
+    list.appendChild(row);
+  }
+  root.appendChild(list);
+  if (clipNames.size) {
+    const all = document.createElement('button');
+    all.className = 'mini'; all.textContent = 'Reset all gun sounds';
+    all.onclick = async () => { for (const key of clipNames.keys()) sound.setClip(key, null); clipNames.clear(); clearClips().catch(() => {}); buildGunSounds(); };
+    root.appendChild(all);
+  }
+}
+
 function applySettings(key) {
   if (key === 'volume') sound.setVolume(settings.volume);
+  if (key === 'falloff') sound.falloff = settings.falloff;
   if (key === 'shadows') renderer.setShadows(settings.shadows);
   if (key === 'renderScale') renderer.resize();
   if (key === 'adsMode' && game.player) game.player.adsHold = settings.adsMode === 'hold';
@@ -467,6 +534,7 @@ function applySettings(key) {
 function openSettings(from) {
   settingsReturn = from;
   buildSettings();
+  buildGunSounds();
   show('settings');
 }
 
