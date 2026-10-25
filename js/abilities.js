@@ -791,16 +791,20 @@ export const AGENTS = {
         reuse(kit) {
           if (!kit.highGear) return false;
           kit.highGear = null;
-          kit.owner.equip(kit.owner.slot, kit.now, true); // gun back out
+          if (!kit.overdrive) kit.owner.equip(kit.owner.slot, kit.now, true); // gun back out (in Overload the beam stays up)
           return true;
         },
       },
       x: {
-        name: 'Overload', desc: 'Channel a lightning beam for 20 s: hold left click to fire (27 body / 54 head, accurate on the move). Kills reset the timer and refill energy.', points: 7,
+        name: 'Overload', desc: 'Fire a lightning beam from your fingertip: hold left click (27 body / 54 head, accurate while running and sliding). Starts your sprint with full energy and a fresh slide. Overload runs on its own meter (20 s); kills refill it and give your slide back.', points: 7,
         use(kit) {
-          kit.highGear = null;
-          kit.overdrive = { until: kit.now + 20, next: kit.now + 0.4 };
-          kit.owner.game.emit('ability', { who: kit.owner, type: 'ult' });
+          const o = kit.owner;
+          kit.overdrive = { fuel: 100, next: kit.now + 0.4 };
+          kit.energy = 100;
+          kit.slideAt = 0;
+          kit.highGear = { slideAt: 0 }; // straight into a sprint
+          o.gun.onHolster();
+          o.game.emit('ability', { who: o, type: 'ult' });
         },
       },
     },
@@ -1949,7 +1953,7 @@ export class Kit {
       this.owner.game.addDevice({ kind: 'focusorb', owner: this.owner, pos: [e[0], e[1] + 0.6, e[2]], life: 3 });
     }
     if (def?.id === 'tourdeforce' && victim) this.owner.game.addZone({ kind: 'slowfield', color: 0xe8c26a, owner: this.owner, pos: [...victim.pos], r: 4.5, life: 6, slowField: 0.6 }, this.now);
-    if (this.overdrive) { this.overdrive.until = this.now + 20; this.energy = 100; }
+    if (this.overdrive) { this.overdrive.fuel = 100; this.energy = 100; this.slideAt = 0; } // Overload: kills refill it and give the slide back
     if (this.id === 'lumen' && this.charges.e < 1 && ++this.refractKills >= 2) { this.charges.e = 1; this.refractKills = 0; } // Refract: two kills
     if (this.blades && def === BLADES) this.blades.left = BLADES.count; // a blade kill refills the set
     else if (!this.blades && !this.beams) this.ultPoints = Math.min(this.ultCost, this.ultPoints + 1);
@@ -1964,22 +1968,25 @@ export class Kit {
   tickWave3(now) {
     const o = this.owner, inp = o.input, g = o.game, DT = 1 / 128;
     if (this.highGear) {
-      this.energy -= 12 * DT;
+      if (!this.overdrive) this.energy -= 12 * DT; // in Overload the sprint runs on Overload's meter
       if (this.energy <= 0) { this.energy = 0; this.highGear = null; }
       else if (((inp.crouch && !this.prevCrouch) || inp.altPressed) && now >= this.slideAt && o.grounded) {
         const len = Math.hypot(inp.fwd, inp.side), sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
         const dir = len > 0 ? [(-sy * inp.fwd + cy * inp.side) / len, (-cy * inp.fwd - sy * inp.side) / len] : [-sy, -cy];
         o.dash = { until: now + 0.32, dir, speed: 13, exit: 8 };
         this.slideAt = now + 8;
-        this.highGear = null; // the slide ends Overclock and the gun comes back out
-        o.equip(o.slot, now, true);
+        if (!this.overdrive) { // the slide ends Overclock and the gun comes back out; in Overload you keep running
+          this.highGear = null;
+          o.equip(o.slot, now, true);
+        }
         g.emit('ability', { who: o, type: 'dash' });
       }
     } else this.energy = Math.min(100, this.energy + 4 * DT);
     this.prevCrouch = inp.crouch;
 
     if (this.overdrive) {
-      if (now >= this.overdrive.until) this.overdrive = null;
+      this.overdrive.fuel -= 5 * DT; // 20 s of beam unless kills top it up
+      if (this.overdrive.fuel <= 0) { this.overdrive = null; this.highGear = null; o.equip(o.slot, now, true); }
       else if (inp.fire && now >= this.overdrive.next) {
         this.overdrive.next = now + 1 / 15;
         const sp = 0.25 * DEG * Math.sqrt(Math.random()), th = Math.random() * Math.PI * 2;
@@ -1987,7 +1994,7 @@ export class Kit {
         const res = g.trace(o, eye, d, 0);
         const end = [eye[0] + d[0] * res.endT, eye[1] + d[1] * res.endT, eye[2] + d[2] * res.endT];
         o.stats.shots++;
-        g.emit('tracer', { who: o, gun: { def: OVERDRIVE }, from: eye, to: end });
+        g.emit('tracer', { who: o, gun: { def: OVERDRIVE }, from: eye, to: end, finger: true });
         g.emit('overloadShot', { who: o });
         if (res.hit) {
           const b = OVERDRIVE.dmg[0], part = res.hit.part;
