@@ -420,7 +420,7 @@ const SCHEMA = [
   ['Video & audio', [
     ['volume', 'Volume', 'range', { min: 0, max: 1, step: 0.05 }],
     ['shadows', 'Shadows', 'checkbox'],
-    ['renderScale', 'Render scale', 'select', { 0.5: '50%', 0.75: '75%', 1: '100%' }],
+    ['renderScale', 'Render scale', 'select', { auto: 'Auto (drops when the frame rate does)', 0.5: '50%', 0.75: '75%', 1: '100%' }],
     ['showImpacts', 'Bullet holes', 'checkbox'],
     ['impactSeconds', 'Bullet holes last (s)', 'range', { min: 1, max: 30, step: 1 }],
     ['damageNumbers', 'Damage numbers', 'checkbox'],
@@ -456,7 +456,7 @@ function buildSettings() {
       input.addEventListener('input', () => {
         let v = type === 'checkbox' ? input.checked : input.value;
         if (type === 'number' || type === 'range') { v = parseFloat(v); if (!Number.isFinite(v)) return; }
-        if (key === 'renderScale') v = parseFloat(v);
+        if (key === 'renderScale') v = v === 'auto' ? 'auto' : parseFloat(v);
         settings[key] = v;
         showVal();
         applySettings(key);
