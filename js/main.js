@@ -77,6 +77,8 @@ game.on('hit', ({ attacker, target, part, killed, dot }) => {
   if (isPlayer(attacker) && !isPlayer(target) && (!dot || killed)) sound.hitConfirm(part, killed);
   if (isPlayer(target)) sound.hurt(part === 'head');
 });
+// The HUD's kill listener runs first (it was hooked when the HUD was built), so hud.streak already counts this kill.
+game.on('kill', ({ killer, victim }) => { if (isPlayer(killer) && !isPlayer(victim) && game.isEnemy(killer, victim)) sound.killStreak(hud.streak); });
 game.on('reload', ({ who, gun }) => { if (isPlayer(who)) sound.reload(gun.reloadDur, RELOAD_SOUNDS[RELOAD_STYLE[gun.def.id]], gun.def.id); });
 game.on('reloadRound', ({ who }) => { if (isPlayer(who)) { sound.click(0, 0.3); sound.thunk(0.03); } });
 game.on('dry', ({ who }) => { if (isPlayer(who)) sound.click(0, 0.3); });
