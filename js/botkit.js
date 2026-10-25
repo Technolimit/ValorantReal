@@ -61,8 +61,21 @@ export function cast(bot, k, target, { picks = null, yOff = 0.2 } = {}) {
     me.pitch = Math.max(-1.3, Math.min(1.3, Math.atan2(dy, Math.hypot(dx, dz))));
   }
   const d = target ? dist(me.pos, target) : 10;
-  if (ab.distance) kit.dist = Math.max(ab.distance.min, Math.min(ab.distance.max, d));
-  if (ab.charge) kit.power = Math.max(0.15, Math.min(1, d / 45));
+  const floors = [];
+  for (const p of picks || [target]) { const f = p && g.floorAt(p[0], p[2]); if (f) floors.push(f); }
+  const params = { dist: ab.distance ? Math.max(ab.distance.min, Math.min(ab.distance.max, d)) : undefined, power: ab.charge ? Math.max(0.15, Math.min(1, d / 45)) : undefined, picks: floors };
+  const r = applyCast(me, k, params);
+  if (r === false) { bot.lastCast = g.time - 1.2; return false; } // couldn't place it: try again a bit later
+  g.emit('botCast', { who: me, k, ...params }); // online: clients replay the same cast (net.js)
+  bot.lastCast = g.time;
+  return true;
+}
+
+// Use ability k with the bot's current aim. Online clients call this to replay a bot's cast exactly.
+export function applyCast(me, k, { dist: dd, power, picks = [] } = {}) {
+  const kit = me.kit, g = me.game, ab = kit.agent.abilities[k];
+  if (dd !== undefined) kit.dist = dd;
+  if (power !== undefined) kit.power = power;
   kit.usedAt = -1;
   let r;
   if (k === 'x') {
@@ -71,15 +84,14 @@ export function cast(bot, k, target, { picks = null, yOff = 0.2 } = {}) {
   } else r = kit.spend(k, 'left');
   kit.power = undefined;
   if (kit.mapPick) {
-    for (const p of picks || [target]) { if (!kit.mapPick || !p) break; const f = g.floorAt(p[0], p[2]); if (f) kit.mapClick(f); }
+    for (const f of picks) { if (!kit.mapPick) break; kit.mapClick(f); }
     if (kit.mapPick) kit.mapConfirm();
     if (kit.mapPick) kit.mapCancel();
   }
-  if (r === false) { bot.lastCast = g.time - 1.2; return false; } // couldn't place it: try again a bit later
+  if (r === false) return false;
   const re = REUSE[kit.id + ':' + k];
   if (re && ab.reuse) kit.timers.push({ at: g.time + re, fn: () => ab.reuse(kit) });
   if (!kit.busy() && me.alive) me.equip(me.slot, g.time, true);
-  bot.lastCast = g.time;
   return true;
 }
 
