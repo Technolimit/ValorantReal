@@ -194,7 +194,7 @@ export class Hud {
     else if (kit?.shadow?.phase === 'channel') mode = `NIGHTWALK · ${(kit.shadow.until - g.time).toFixed(1)}s`;
     else if (kit?.rebirth) mode = `REKINDLE · ${(kit.rebirth.until - g.time).toFixed(1)}s`;
     else if (kit?.launcher) mode = 'FINALE · LEFT CLICK TO FIRE · X TO PUT AWAY';
-    else if (kit?.overdrive) mode = `OVERLOAD · HOLD LEFT CLICK · ${(kit.overdrive.until - g.time).toFixed(0)}s`;
+    else if (kit?.overdrive) mode = `OVERLOAD · HOLD LEFT CLICK · ${Math.ceil(kit.overdrive.fuel / 5)}s${kit.highGear ? ' · CROUCH TO SLIDE' + (g.time < kit.slideAt ? ' (' + (kit.slideAt - g.time).toFixed(0) + 's)' : '') : ''}`;
     else if (kit?.highGear) mode = `OVERCLOCK · ENERGY ${Math.round(kit.energy)}% · CROUCH TO SLIDE${g.time < kit.slideAt ? ' (' + (kit.slideAt - g.time).toFixed(0) + 's)' : ''}`;
     else if (kit?.drift) mode = `PHASED OUT · ${(kit.drift.until - g.time).toFixed(1)}s · X TO RETURN`;
     else if (kit?.pilot?.kind === 'tiger') mode = `STALKER · STEER WITH MOUSE · LEFT CLICK TO POUNCE · ${(kit.pilot.until - g.time).toFixed(1)}s`;
@@ -356,7 +356,7 @@ export class Hud {
     if (now < (kit.focusWind || 0)) add('Focus', kit.focusWind, 1);
     add('Focus', kit.focusUntil, 12, kit.shield ? ' · shield up' : '');
     if (kit.shield && now >= kit.focusUntil) rows.push({ name: 'Shield', frac: 1, text: 'up' });
-    if (kit.overdrive) add('Overload', kit.overdrive.until, 20);
+    if (kit.overdrive) pct('Overload', kit.overdrive.fuel / 100);
     if (kit.highGear || kit.id === 'volt') pct('Energy', kit.energy / 100);
     if (kit.id === 'venom') pct('Fuel', kit.gas.fuel / 100);
     if (kit.regrow) pct('Bloom pool', kit.regrow.pool / BLOOM.pool);

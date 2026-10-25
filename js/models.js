@@ -379,6 +379,62 @@ const DESIGNS = {
     return { muzzle: [0, 0.035, -0.24], sightY: 0.056 };
   },
 
+  // Chamber's Headhunter: a heavy gold-plated pistol, square-nosed, two glowing windows up front, a stepped
+  // black frame and an ivory grip. Reloads like the Sheriff (swing-out cylinder).
+  headhunter(k) {
+    k.prof([[0.03, 0.012], [0.03, 0.074], [-0.02, 0.08], [-0.25, 0.076], [-0.262, 0.06], [-0.262, 0.018], [-0.2, 0.012]], 0.036, 'body');
+    k.box(0.038, 0.012, 0.13, 'trim', 0, 0.03, -0.17);                 // the black band under the nose
+    k.box(0.038, 0.008, 0.05, 'trim', 0, 0.06, -0.06);                 // stepped cut on top
+    k.box(0.038, 0.016, 0.012, 'trim', 0, 0.05, -0.088);
+    for (const x of [-0.0185, 0.0185]) for (const z of [-0.195, -0.222]) k.box(0.002, 0.034, 0.012, 'glow', x, 0.05, z);
+    k.box(0.024, 0.01, 0.05, 'body', 0, 0.084, -0.02);                 // the raised rear sight block
+    k.box(0.006, 0.006, 0.01, 'glow', 0, 0.09, -0.04);
+    k.cyl(0.007, 0.03, 'metal', 0, 0.04, -0.27);
+    k.part('cyl', [0, 0.03, -0.01]);
+    k.cyl(0.026, 0.05, 'trim', 0, 0.03, -0.01, 8);
+    k.teeth(3, -0.03, 0.01, 0.054, 0.004, 0.006, 'metal', 0, 0.03);
+    k.part(null);
+    shell(k, 0.006, 0.04);
+    k.prof([[0.045, 0.0], [0.045, 0.02], [0.03, 0.022], [-0.06, 0.014], [-0.06, -0.006], [0.03, -0.02]], 0.03, 'trim');
+    k.prof([[0.03, -0.01], [0.078, -0.03], [0.11, -0.115], [0.066, -0.125], [0.03, -0.06], [0.005, -0.02]], 0.034, 'grip');
+    k.box(0.036, 0.004, 0.022, 'body', 0, -0.012, 0.04);                 // gold collar where the grip meets the frame
+    k.box(0.022, 0.005, 0.045, 'trim', 0, -0.03, 0.006);                 // trigger guard
+    k.box(0.006, 0.02, 0.006, 'body', 0, -0.016, -0.004, 0.3);           // gold trigger
+    return { muzzle: [0, 0.04, -0.285], sightY: 0.09 };
+  },
+
+  // Chamber's Tour de Force: a long gold rifle with a black spine, a violet-lit barrel shroud, a slim scope and
+  // an open, angular gold stock. Reloads like the Operator (bolt and box magazine).
+  tourdeforce(k) {
+    k.prof([[0.08, -0.03], [0.08, 0.05], [-0.3, 0.05], [-0.32, 0.02], [-0.32, -0.03]], 0.058, 'body');
+    k.box(0.06, 0.008, 0.36, 'trim', 0, 0.012, -0.12);
+    k.box(0.06, 0.006, 0.12, 'trim', 0, 0.042, -0.2);
+    k.prof([[-0.32, -0.024], [-0.32, 0.05], [-0.98, 0.046], [-0.98, -0.016]], 0.05, 'body');   // the shroud
+    k.box(0.052, 0.012, 0.64, 'trim', 0, 0.016, -0.65);
+    for (const z of [-0.74, -0.83, -0.92]) for (const x of [-0.0255, 0.0255]) k.box(0.002, 0.022, 0.06, 'glow', x, 0.03, z);
+    k.box(0.04, 0.003, 0.2, 'glow', 0, 0.0475, -0.86);
+    k.cyl(0.012, 0.04, 'metal', 0, 0.016, -1.0, 10);
+    k.part('bolt', [0.015, 0.035, 0.04]);
+    k.cyl(0.006, 0.05, 'metal', 0.035, 0.035, 0.04, 8, 0, 0, PI / 2);
+    k.cyl(0.011, 0.012, 'glow', 0.06, 0.035, 0.04, 10, 0, 0, PI / 2);
+    k.part(null);
+    k.part('mag');
+    k.box(0.03, 0.075, 0.05, 'trim', 0, -0.06, -0.12);
+    k.box(0.031, 0.006, 0.051, 'body', 0, -0.095, -0.12);
+    k.part(null);
+    shell(k, 0.008, 0.065);
+    k.box(0.036, 0.1, 0.046, 'trim', 0, -0.06, 0.06, -0.28);
+    k.box(0.026, 0.005, 0.05, 'metal', 0, -0.03, 0.02);
+    // Open stock: a gold frame around black cut-outs.
+    k.prof([[0.08, 0.044], [0.36, 0.036], [0.38, -0.11], [0.3, -0.11], [0.22, -0.045], [0.12, -0.045], [0.1, -0.08], [0.08, -0.08]], 0.05, 'body');
+    k.box(0.052, 0.03, 0.12, 'trim', 0, 0.0, 0.2);
+    k.box(0.052, 0.022, 0.05, 'trim', 0, -0.06, 0.32);
+    k.box(0.054, 0.15, 0.02, 'trim', 0, -0.035, 0.38);
+    rail(k, -0.26, 0.06, 0.05);
+    const sy = scope(k, -0.1, 0.058, 0.022, 0.26);
+    return { muzzle: [0, 0.016, -1.02], sightY: sy };
+  },
+
   stinger(k) {
     k.prof([[0.08, -0.004], [0.08, 0.05], [-0.19, 0.05], [-0.215, 0.03], [-0.215, -0.004], [-0.05, -0.014]], 0.046, 'body');
     k.box(0.047, 0.004, 0.16, 'glow', 0, 0.018, -0.08);
@@ -743,6 +799,13 @@ export function handsModel(color, item = 'orb') {
     thing = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.03, 0.16), glow);
     thing.position.set(0.01, 0.03, -0.09);
   }
+  if (item === 'beam') {
+    // Pointing: fist closed, index finger out, its tip lit (the beam starts there).
+    fingers.rotation.x = 1.3; fingers.position.set(0.01, 0.0, -0.04);
+    rb(0.016, 0.016, 0.075, glove, 0.03, 0.02, -0.09);
+    thing = new THREE.Mesh(new THREE.SphereGeometry(0.012, 10, 8), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: color, emissiveIntensity: 3 }));
+    thing.position.set(0.03, 0.02, -0.13);
+  }
   if (thing) right.add(thing);
   right.position.set(0.03, 0, 0);
   // left hand, slightly forward, for balance (and to pump while running)
@@ -751,18 +814,40 @@ export function handsModel(color, item = 'orb') {
   lb(0.06, 0.05, 0.08, glove, -0.01, 0.0, 0.02, -0.1);
   if (item === 'grab' || item === 'orb') { const aura = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), glow); aura.position.set(-0.01, 0.03, -0.03); left.add(aura); }
   left.position.set(-0.22, -0.01, 0.02);
-  const muzzle = new THREE.Object3D(); muzzle.position.set(0.03, 0.05, -0.05); g.add(muzzle);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0.03, 0.05, -0.05);
+  if (item === 'beam') { muzzle.position.set(0.03, 0.02, -0.13); right.add(muzzle); } else g.add(muzzle);
   g.userData = { muzzle, sightY: 0, parts: {}, hands: [], right, left, fingers, item };
   return g;
 }
 
+// Chamber's own guns: polished gold over black, whatever skin you run. Headhunter's windows glow ember
+// orange, Tour de Force's barrel shroud glows violet.
+const goldCache = new Map();
+function goldMaterials(glowColor) {
+  if (goldCache.has(glowColor)) return goldCache.get(glowColor);
+  const base = skinMaterials('standard');
+  const mats = {
+    ...base,
+    body: new THREE.MeshStandardMaterial({ color: 0xd9ad3c, roughness: 0.28, metalness: 0.95 }),
+    trim: new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 0.45, metalness: 0.5 }),
+    metal: new THREE.MeshStandardMaterial({ color: 0xb8892a, roughness: 0.35, metalness: 0.9 }),
+    grip: new THREE.MeshStandardMaterial({ color: glowColor === 0xff5a1f ? 0xece6da : 0x141416, roughness: 0.6, metalness: 0.1 }),
+    glow: new THREE.MeshStandardMaterial({ color: glowColor, roughness: 0.3, metalness: 0.1, emissive: glowColor, emissiveIntensity: 1.6 }),
+    lens: new THREE.MeshStandardMaterial({ color: 0x0a0a12, roughness: 0.05, metalness: 0.6, emissive: glowColor, emissiveIntensity: 0.3 }),
+    reticle: new THREE.MeshBasicMaterial({ color: glowColor }),
+  };
+  mats.tube = mats.trim.clone(); mats.tube.side = THREE.DoubleSide;
+  mats.tubeBody = mats.body.clone(); mats.tubeBody.side = THREE.DoubleSide;
+  goldCache.set(glowColor, mats);
+  return mats;
+}
+const OWN_LOOK = { headhunter: 0xff5a1f, tourdeforce: 0xb34dff };
+
 // Builds the first-person model for a weapon in a skin. userData: muzzle (Object3D), sightY (top of the sight
 // line in model units, before viewmodel scaling).
-const ALIAS = { headhunter: 'sheriff', tourdeforce: 'operator' }; // ability guns borrow a body
 export function gunModel(weaponId, skinId = 'standard', { noHands = false } = {}) {
-  weaponId = ALIAS[weaponId] || weaponId;
   const g = new THREE.Group();
-  const mats = skinMaterials(skinId);
+  const mats = OWN_LOOK[weaponId] ? goldMaterials(OWN_LOOK[weaponId]) : skinMaterials(skinId);
   const k = kit(g, mats);
   const melee = MELEE[weaponId];
   if (melee) k.part('w', melee.pivot); // the whole weapon, so inspects can spin it in the hand

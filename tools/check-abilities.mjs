@@ -290,7 +290,7 @@ const checks = [
     let shots = 0;
     while (!tur.removed && shots < 20) { g.fireBullets(p, p.gun, [dir([f[0], f[1] + 0.5, f[2]])]); shots++; }
     // A dome between p and b: b takes nothing until the dome has soaked up 500.
-    b.pos = __ahead(p, 9); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.hp = 100; b.armor = 0;
+    b.pos = __ahead(p, 9); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.hp = 9999; b.armor = 0; // tanky until after the slide
     const dome = g.addSmoke(b, __ahead(p, 5), g.time, { radius: 2.2, life: 12, kind: 'cove' });
     const hpBefore = b.hp;
     let n = 0;
@@ -556,6 +556,34 @@ const checks = [
       out.star = at24 === 0 && p.kit.starsLeft === 1;
     }
     return { pass: Object.values(out).every(Boolean), ...out };
+  }],
+  ['Overload starts a sprint with full energy and a fresh slide, fires while running and sliding, and kills refill it', async () => {
+    const g = await __start({ agent: 'volt' });
+    const p = g.player, k = p.kit, b = g.bots[0];
+    if (!__place(g, p, 16)) return { error: 'no open ground' };
+    __tick(g, 0.5);
+    k.energy = 30; k.slideAt = g.time + 6; // tired, slide on cooldown
+    k.ultPoints = k.ultCost; k.agent.abilities.x.use(k);
+    const sprinting = !!k.highGear && k.energy === 100 && k.slideAt === 0;
+    // Run and fire at a bot ahead.
+    b.pos = __ahead(p, 9); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.hp = 9999; b.armor = 0; // tanky until after the slide
+    p.input.fwd = 1; p.input.fire = true;
+    __tick(g, 0.6);
+    const speed = p.horizSpeed(), shots = p.stats.shots;
+    // Slide mid-Overload: the sprint carries on and the beam keeps firing.
+    p.input.crouch = true; g.tick(); p.input.crouch = false;
+    const slid = !!p.dash, stillSprinting = !!k.highGear, shotsBefore = p.stats.shots;
+    __tick(g, 0.3);
+    const firedSliding = p.stats.shots > shotsBefore;
+    b.hp = 20; p.input.fwd = 0; __tick(g, 0.4); // now the beam finishes them
+    { const e = p.eye(), t = b.eye(); p.yaw = Math.atan2(-(t[0] - e[0]), -(t[2] - e[2])); p.pitch = Math.atan2(t[1] - 0.3 - e[1], Math.hypot(t[0] - e[0], t[2] - e[2])); }
+    __tick(g, 1);
+    const killed = !b.alive;
+    const refilled = k.overdrive && k.overdrive.fuel > 92 && k.slideAt === 0; // ~90 by now without the kill, and the slide on cooldown
+    p.input.fire = false; p.input.fwd = 0;
+    __tick(g, 20.5);
+    const over = !k.overdrive && !k.highGear && p.gun === p.inv[p.slot];
+    return { pass: sprinting && speed > 8 && shots >= 3 && slid && stillSprinting && firedSliding && killed && refilled && over, sprinting, speed: +speed.toFixed(1), shots, slid, stillSprinting, firedSliding, killed, refilled, endsAfterMeter: over };
   }],
   ['Bot 5v5 (6 min): no errors, bots don\'t stay stuck on walls, bot flashes hit enemies more than their own side', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'fight' });

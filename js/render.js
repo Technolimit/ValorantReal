@@ -408,8 +408,9 @@ export class Renderer {
 
   hookEvents() {
     const g = this.game;
-    g.on('tracer', ({ who, gun, from, to, device }) => {
+    g.on('tracer', ({ who, gun, from, to, device, finger }) => {
       const own = who === g.player;
+      if (finger) this.laser(who, to); // Overload: a steady beam from the fingertip while it fires
       if (gun.def.melee) return;
       if (!own && gun.def.suppressed) return; // suppressed guns hide tracers from others
       const slot = this.tracerSlots[this.tracerNext];
@@ -418,8 +419,9 @@ export class Renderer {
       if (device) {
         slot.from.set(from[0], from[1], from[2]); // turret: from its own barrel
       } else if (own) {
-        // Start at the viewmodel muzzle, converted to world space.
-        slot.from.set(0.11, -0.1, -0.6).applyMatrix4(this.camera.matrixWorld);
+        // Start at the viewmodel muzzle (Overload: the fingertip), converted to world space.
+        if (finger) slot.from.copy(this.fingertip());
+        else slot.from.set(0.11, -0.1, -0.6).applyMatrix4(this.camera.matrixWorld);
       } else {
         slot.from.copy(this.characterMuzzle(who));
       }
@@ -1123,6 +1125,49 @@ export class Renderer {
     return { c, group, legs, body, head, gun, visor, held, heldKey: '', flash: 0, deathT: 0 };
   }
 
+  // Overload's beam: a glowing rod from the caster's fingertip (yours on screen, theirs at the hand) to where it
+  // hits, held while the beam keeps firing.
+  laser(who, to) {
+    this.lasers ||= new Map();
+    let l = this.lasers.get(who);
+    if (!l) {
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 1, 8, 1, true), new THREE.MeshBasicMaterial({ color: 0xe8fbff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0x3fb8ff, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }));
+      const rod = new THREE.Group(); rod.add(core, glow);
+      for (const m of [core, glow]) { m.rotation.x = Math.PI / 2; m.position.z = 0.5; m.frustumCulled = false; }
+      this.scene.add(rod);
+      l = { rod, to: new THREE.Vector3(), t: 0 };
+      this.lasers.set(who, l);
+    }
+    l.to.set(to[0], to[1], to[2]);
+    l.t = performance.now();
+  }
+
+  updateLasers() {
+    if (!this.lasers) return;
+    const now = performance.now();
+    for (const [who, l] of this.lasers) {
+      if (!this.game.combatants.includes(who)) { this.scene.remove(l.rod); this.lasers.delete(who); continue; } // left, or a new match
+      const on = now - l.t < 110 && who.alive && !!who.kit?.overdrive;
+      l.rod.visible = on;
+      if (!on) continue;
+      const from = who === this.game.player ? this.fingertip() : this.characterMuzzle(who);
+      const len = from.distanceTo(l.to);
+      l.rod.position.copy(from);
+      l.rod.lookAt(l.to);
+      l.rod.scale.set(1 + Math.random() * 0.3, 1 + Math.random() * 0.3, len); // a little flicker
+    }
+  }
+
+  // Where the first-person fingertip (Overload) is, in the world: its spot on screen, half a metre out.
+  fingertip() {
+    const m = this.vm.model?.userData.muzzle, cam = this.camera;
+    if (!m) return new THREE.Vector3(0.11, -0.1, -0.6).applyMatrix4(cam.matrixWorld);
+    const ndc = m.getWorldPosition(new THREE.Vector3()).project(this.vmCamera);
+    const dir = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(cam).sub(cam.position).normalize();
+    return cam.position.clone().addScaledVector(dir, 0.5);
+  }
+
   characterMuzzle(c) {
     const crouch = c.crouchAmount();
     const y = c.pos[1] + lerp(GUN_HEIGHT[0], GUN_HEIGHT[1], crouch);
@@ -1185,6 +1230,7 @@ export class Renderer {
     if (p) this.updateCamera(p, alpha, dt, look);
     this.updateCharacters(alpha, now);
     this.updateFx(dt, now);
+    this.updateLasers();
     this.updateSmokes();
     this.updateFx2();
     this.updateSpike();
@@ -1511,7 +1557,7 @@ export class Renderer {
     const blades = vp.kit?.blades;
     // Holding an ability (or sprinting / grabbing an orb): hands only, no gun.
     const kitc = vp.kit, armedAb = kitc?.armed && kitc.agent.abilities[kitc.armed.k];
-    const handItem = vp.st.channelUntil > this.game.time ? 'device' : armedAb ? (armedAb.item || 'orb') : kitc?.grab ? 'grab' : kitc?.highGear ? 'none' : null;
+    const handItem = vp.st.channelUntil > this.game.time ? 'device' : armedAb ? (armedAb.item || 'orb') : kitc?.grab ? 'grab' : kitc?.overdrive ? 'beam' : kitc?.highGear ? 'none' : null;
     const handsDef = handItem && { id: `hand:${kitc.id}:${handItem}`, hands: true, model: 'hands', color: vp.st.channelUntil > this.game.time ? 0xff4655 : parseInt(kitc.agent.color.slice(1), 16), item: handItem, melee: true };
     const def = blades ? BLADES : handsDef || gun.def;
     const kind = def.model;
@@ -1545,7 +1591,12 @@ export class Renderer {
     // Hands animations: pumping arms while sprinting, a reach forward when grabbing an orb, a gentle idle bob.
     if (def.hands) {
       const ud = vm.model.userData, t = performance.now() / 1000;
-      if (def.item === 'none') {
+      if (def.item === 'beam') {
+        // Overload: the right arm stays out, pointing; the left pumps while sprinting.
+        const ph = vm.bob * 1.4, run = kitc?.highGear ? 1 : 0;
+        ud.right.position.set(0.03, Math.sin(t * 9) * 0.002, 0);
+        ud.left.position.set(-0.22, -0.01 - Math.sin(ph) * 0.05 * run, 0.02 - Math.cos(ph) * 0.05 * run);
+      } else if (def.item === 'none') {
         const ph = vm.bob * 1.4;
         ud.right.position.set(0.03, Math.sin(ph) * 0.05, Math.cos(ph) * 0.05);
         ud.left.position.set(-0.22, -0.01 - Math.sin(ph) * 0.05, 0.02 - Math.cos(ph) * 0.05);
@@ -1657,7 +1708,7 @@ export class Renderer {
       ch.gun.position.set(0.17, lerp(GUN_HEIGHT[0], GUN_HEIGHT[1], cr), -0.35);
       ch.gun.scale.set(0.07, 0.1, 0.75);
       // Show the weapon they're actually holding, in their skin; an ability in hand shows nothing.
-      const heldDef = c.kit?.armed || c.kit?.blades ? null : c.gun?.def;
+      const heldDef = c.kit?.armed || c.kit?.blades || c.kit?.overdrive ? null : c.gun?.def;
       const heldId = heldDef ? this.modelOf(c, heldDef.id) : '';
       const heldSkin = heldDef ? this.skinOf(c, heldId) : '';
       const hk = heldDef ? heldId + ':' + heldSkin : '';
