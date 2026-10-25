@@ -449,6 +449,26 @@ const checks = [
     const burst = d.removed && g.smokes.length > 0, gone = fx().length === 0;
     return { pass: moved > 3 && follows && sizeShown && trailShown && burst && gone, moved: +moved.toFixed(2), meshFollowsOrb: follows, burstSizeShownWhileHeld: sizeShown, trailShown, burst, meshAndTrailRemoved: gone };
   }],
+  ['Watcher camera shows your own body; its tracking dart builds no new shaders mid-fight', async () => {
+    const g = await __start({ agent: 'lattice' });
+    const p = g.player, k = p.kit, r = window.__game.renderer, bot = g.bots[0];
+    if (!__place(g, p, 14)) return { error: 'no open ground' };
+    bot.pos = [p.pos[0], p.pos[1], p.pos[2] - 10]; bot.prevPos = [...bot.pos];
+    __tick(g, 1);
+    const frame = () => { g.tick(); r.render(1, 1 / 60, { dx: 0, dy: 0 }); };
+    frame();
+    const hiddenFirstPerson = !r.characters.get(p).group.visible;
+    p.pitch = -0.3; k.agent.abilities.e.use(k); k.agent.abilities.e.reuse(k);
+    const aim = (t) => { const c = k.cam.pos, dx = t[0] - c[0], dy = t[1] - c[1], dz = t[2] - c[2]; p.yaw = Math.atan2(-dx, -dz); p.pitch = Math.atan2(dy, Math.hypot(dx, dz)); };
+    aim([p.pos[0], p.pos[1] + 1, p.pos[2]]); frame();
+    const shownInCamera = r.characters.get(p).group.visible;
+    aim([bot.pos[0], bot.pos[1] + 1.2, bot.pos[2]]); frame();
+    const programs = r.renderer.info.programs.length;
+    p.input.fire = p.input.firePressed = true; frame(); p.input.fire = false;
+    for (let i = 0; i < 30; i++) frame();
+    const newShaders = r.renderer.info.programs.length - programs;
+    return { pass: hiddenFirstPerson && shownInCamera && !!k.cam.dart && newShaders === 0, hiddenFirstPerson, shownInCamera, dartHit: !!k.cam.dart, newShaders };
+  }],
   ['Bot 5v5 (6 min): no errors, bots don\'t stay stuck on walls, bot flashes hit enemies more than their own side', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'fight' });
     const s = { flashes: 0, self: 0, ally: 0, enemy: 0, errors: 0, rounds: 0 };
