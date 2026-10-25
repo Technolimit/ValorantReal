@@ -112,7 +112,8 @@ export class Game {
     }
     const primaries = BUY_GROUPS.filter(([g]) => g !== 'Sidearms').flatMap(([, ids]) => ids);
     const botSkins = SKIN_ORDER.filter(id => id !== 'standard' && !id.startsWith('custom-'));
-    const dmAgents = AGENT_ORDER.filter(a => a !== opts.agent).sort(() => Math.random() - 0.5);
+    // Bots picked theirs on the agent select screen (online), or get unused ones at random.
+    const dmAgents = opts.lineup?.some(s => s.bot) ? opts.lineup.filter(s => s.bot).map(s => s.a) : AGENT_ORDER.filter(a => a !== opts.agent).sort(() => Math.random() - 0.5);
     for (let i = 0; i < opts.botCount; i++) {
       const c = new Combatant(this, { name: BOT_NAMES[i % BOT_NAMES.length], isBot: true, color: BOT_COLORS[i % BOT_COLORS.length] });
       let primary;

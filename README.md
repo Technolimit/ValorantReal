@@ -14,12 +14,24 @@ Opening `index.html` straight from disk (`file://`) won't work: browsers block E
 It also works as-is on any static host (GitHub Pages, Netlify, an S3 bucket).
 
 `node tools/check-abilities.mjs` runs headless checks of ability interactions in Chromium (it needs
-`playwright`). Pass `--offline` to skip the two-tab online checks.
+`playwright`). Pass `--offline` to skip the two-tab online checks. `node tools/check-agent-select.mjs` checks the
+agent select: the pick rules, offline 5v5, and an online room with a player joining mid-match.
+
+Offline 5v5 uses the same pick screen: you lock in, then the nine bots pick.
 
 ## Online play (no server)
 
-Main menu → **Online**. One player hosts, the others join with the room code. Pick a mode and an agent;
+Main menu → **Online**. One player hosts, the others join with the room code. The host picks the mode;
 abilities work in both modes.
+
+- **Agent select:** the room opens on a Valorant-style pick screen. People who join show up in the team strip
+  and can lock in right away; when the host presses Start, a 60 s timer runs (it ends early once everyone has
+  locked in). An agent can only be locked once per team in 5v5, and once per match in deathmatch. Teammates see
+  what you're hovering; the other team only sees how many have locked in. When the people are done, bots pick
+  from the agents that are left (filling the roles their team lacks), and the match starts.
+- **Joining a match that's already running:** you pick on the deathmatch-style screen, with taken agents greyed
+  out (in 5v5, the agents of the people on the team you'll join; you take over a bot, preferably the one
+  already playing your pick).
 
 - **5v5 rounds** (Divide): the match always has ten players. Each joiner takes a bot's place on the team
   with fewer humans, so people are split evenly and bots fill the rest. When someone leaves, a bot takes
