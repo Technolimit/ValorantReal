@@ -10,7 +10,7 @@ import { SKINS, SKIN_ORDER, skinFor, swatch, isCustom, saveCustomSkin, deleteCus
 import { GunPreview } from './models.js';
 import { MELEE, MELEE_ORDER, isMelee, meleeId } from './melee.js';
 import { RELOAD_STYLE, RELOAD_SOUNDS } from './reloadanim.js';
-import { SLOTS, MAX_BYTES, loadClips, saveClip, deleteClip, clearClips } from './customsounds.js';
+import { SLOTS, MAX_BYTES, loadClips, saveClip, deleteClip, clearClips, loadGameSounds } from './customsounds.js';
 import { AGENTS, AGENT_ORDER, Kit } from './abilities.js';
 import { ROUND } from './rounds.js';
 import { Minimap } from './minimap.js';
@@ -39,6 +39,8 @@ const sound = new Sound();
 sound.setVolume(settings.volume);
 const clipNames = new Map(); // 'vandal:fire' -> file name, for the gun sounds list in settings
 loadClips().then((clips) => { for (const [key, c] of clips) { clipNames.set(key, c.name); sound.setClip(key, c.data); } });
+const gameClipNames = new Map(); // ...and the game's own files from sounds/index.json, which everyone hears
+loadGameSounds(WEAPONS).then((clips) => { for (const [key, c] of clips) { gameClipNames.set(key, c.name); sound.setClip(`${key}@game`, c.data); } });
 const hud = new Hud(game, renderer, settings);
 const rhud = new RoundHud(game);
 const minimap = new Minimap(game);
@@ -464,7 +466,7 @@ function buildSettings() {
 // Settings → Gun sounds: upload your own fire / reload / equip sound per gun, preview it, or go back to the default.
 function buildGunSounds() {
   const root = $('gun-sounds');
-  root.innerHTML = `<h3>Gun sounds</h3><p class="note">Upload your own sound for any gun: mp3, wav or ogg, up to ${MAX_BYTES / 1048576} MB. It's saved in this browser and plays whenever anyone fires that gun (reload and equip are just yours). ▶ plays the current sound.</p><p id="gun-sounds-msg" class="note warn" hidden></p>`;
+  root.innerHTML = `<h3>Gun sounds</h3><p class="note">Upload your own sound for any gun: mp3, wav or ogg, up to ${MAX_BYTES / 1048576} MB. It's saved in this browser and plays whenever anyone fires that gun (reload and equip are just yours). Blue buttons are the game's own sound files, which every player hears; your upload replaces them for you. ▶ plays the current sound.</p><p id="gun-sounds-msg" class="note warn" hidden></p>`;
   const msg = (t) => { const m = $('gun-sounds-msg'); m.textContent = t; m.hidden = !t; };
   const play = (id, slot) => {
     sound.init();
@@ -479,13 +481,13 @@ function buildGunSounds() {
     row.className = 'gs-row';
     row.innerHTML = `<span class="gs-gun">${WEAPONS[id].name}</span>`;
     for (const [slot, label] of SLOTS) {
-      const key = `${id}:${slot}`, name = clipNames.get(key);
+      const key = `${id}:${slot}`, name = clipNames.get(key), gameName = gameClipNames.get(key);
       const cell = document.createElement('span');
-      cell.className = 'gs-slot' + (name ? ' custom' : '');
+      cell.className = 'gs-slot' + (name ? ' custom' : gameName ? ' game' : '');
       const file = document.createElement('input');
       file.type = 'file'; file.accept = 'audio/*,.mp3,.wav,.ogg,.m4a'; file.hidden = true;
       const up = document.createElement('button');
-      up.className = 'mini'; up.textContent = label; up.title = name ? `${label}: ${name} (click to replace)` : `${label}: default sound (click to upload your own)`;
+      up.className = 'mini'; up.textContent = label; up.title = name ? `${label}: ${name} (click to replace)` : gameName ? `${label}: the game's ${gameName} (click to upload your own)` : `${label}: default sound (click to upload your own)`;
       up.onclick = () => file.click();
       const test = document.createElement('button');
       test.className = 'mini'; test.textContent = '▶'; test.title = `Play the ${label.toLowerCase()} sound`;
@@ -493,7 +495,7 @@ function buildGunSounds() {
       cell.append(file, up, test);
       if (name) {
         const reset = document.createElement('button');
-        reset.className = 'mini'; reset.textContent = '✕'; reset.title = 'Back to the default sound';
+        reset.className = 'mini'; reset.textContent = '✕'; reset.title = gameName ? `Back to the game's ${gameName}` : 'Back to the default sound';
         reset.onclick = async () => { await sound.setClip(key, null); clipNames.delete(key); deleteClip(key).catch(() => {}); buildGunSounds(); };
         cell.append(reset);
       }

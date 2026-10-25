@@ -189,7 +189,9 @@ export class Sound {
   constructor() {
     this.ctx = null;
     this.volume = 0.6;
-    this.clips = new Map(); // your own uploaded sounds, 'vandal:fire' -> AudioBuffer (see customsounds.js)
+    // Sound files that replace the synth: 'vandal:fire' is your own upload (this browser only), 'vandal:fire@game'
+    // the game's own file from sounds/index.json (everyone). Yours wins. See customsounds.js.
+    this.clips = new Map(); // key -> AudioBuffer
     this.clipData = new Map(); // ...and their file bytes, kept until there's an AudioContext to decode them
   }
 
@@ -240,6 +242,11 @@ export class Sound {
       if (this.clipData.get(key) === data) this.clips.set(key, buf);
       return buf;
     });
+  }
+
+  // The file to play for a gun slot, if any: your upload first, then the game's.
+  clip(key) {
+    return this.clips.get(key) || this.clips.get(`${key}@game`);
   }
 
   playClip(buf, dest, at = 0) {
@@ -362,7 +369,7 @@ export class Sound {
   gunshot(def, pos, gun) {
     if (!this.ctx) return;
     const s = GUN_SOUNDS[def.id] || GUN_SOUNDS[MODEL_SOUND[def.model]];
-    const clip = this.clips.get(`${def.id}:fire`);
+    const clip = this.clip(`${def.id}:fire`);
     if (!s && !clip) return;
     const c = this.ctx;
     const kind = def.suppressed ? 'suppressed' : 'gun';
@@ -484,7 +491,7 @@ export class Sound {
   // steps: [[share of duration, 'click' | 'thunk'], ...] from reloadanim.js
   // id: the gun, for your own uploaded reload sound (played once at the start instead of the clicks).
   reload(duration, steps = [[0.1, 'click'], [0.5, 'thunk'], [0.85, 'click']], id) {
-    const clip = this.ctx && this.clips.get(`${id}:reload`);
+    const clip = this.ctx && this.clip(`${id}:reload`);
     if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
     for (const [f, kind] of steps) {
       const at = duration * f;
@@ -501,7 +508,7 @@ export class Sound {
 
   equip(id) {
     if (!this.ctx) return;
-    const clip = this.clips.get(`${id}:equip`);
+    const clip = this.clip(`${id}:equip`);
     if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
     this.noiseHit({ dest: this.master, lp: 1500, hp: 400, decay: 0.08, gain: 0.12 });
     this.click(0.1, 0.18);
