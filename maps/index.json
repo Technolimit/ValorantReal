@@ -1,32 +1,9 @@
 {
- "maps": [
-  {
-   "id": "arena",
-   "name": "Range",
-   "file": "arena.json",
-   "modes": [
-    "dm"
-   ],
-   "blurb": "The open training range."
-  },
-  {
-   "id": "foundry",
-   "name": "Foundry",
-   "file": "foundry.json",
-   "modes": [
-    "dm"
-   ],
-   "blurb": "Compact three-lane map, authored in JSON."
-  },
-  {
-   "id": "divide",
-   "name": "Divide",
-   "file": "divide.json",
-   "modes": [
-    "dm",
-    "rounds"
-   ],
-   "blurb": "Full 5v5 map with sites, ropes and barriers."
-  }
- ]
+  "about": "The maps the game offers. Each entry points at a map file in this folder; see MAPS.md for the format.",
+  "materials": "materials.json",
+  "maps": [
+    { "id": "arena", "name": "Range", "file": "arena.json", "modes": ["dm"], "blurb": "The open training range." },
+    { "id": "foundry", "name": "Foundry", "file": "foundry.json", "modes": ["dm", "rounds"], "blurb": "Compact three-lane grid map, deathmatch or 5v5." },
+    { "id": "divide", "name": "Divide", "file": "divide.json", "modes": ["dm", "rounds"], "blurb": "Full 5v5 map with sites, ropes and barriers." }
+  ]
 }

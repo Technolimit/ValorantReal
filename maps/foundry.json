@@ -1,134 +1,97 @@
 {
- "format": "grid",
- "version": 1,
- "id": "foundry",
- "name": "Foundry",
- "modes": [
-  "dm"
- ],
- "about": "A compact three-lane deathmatch map authored entirely in JSON (no code).",
- "cell": 2,
- "legend": {
-  "#": {
-   "mat": "plaster",
-   "h": 5,
-   "pen": false
+  "$schema": "./map.schema.json",
+  "format": "tapfire-map",
+  "version": 2,
+  "id": "foundry",
+  "name": "Foundry",
+  "about": "A compact three-lane map made from a character grid. Deathmatch, and 5v5 with sites A (north-west) and B (north-east).",
+  "modes": ["dm", "rounds"],
+  "environment": {
+    "sky": "#9fb5c4",
+    "fog": { "near": 60, "far": 160 },
+    "sun": { "color": "#fff3e0", "intensity": 2.2, "from": [-30, 60, 20], "shadows": true },
+    "ambient": { "sky": "#dbe7f3", "ground": "#5a554c", "intensity": 1.3 },
+    "ground": { "mat": "tile" },
+    "lights": []
   },
-  "c": {
-   "mat": "crate",
-   "h": 1.0,
-   "pen": true
+  "physics": { "gravity": 22, "jumpSpeed": 6.95 },
+  "rules": {
+    "rounds": {
+      "buyTime": 30,
+      "roundTime": 100,
+      "spikeTime": 45,
+      "plantTime": 4,
+      "defuseTime": 7,
+      "defuseHalfway": 3.5,
+      "roundEndTime": 6,
+      "roundsToWin": 13,
+      "halftimeAfter": 12
+    },
+    "economy": {
+      "startCredits": 800,
+      "maxCredits": 9000,
+      "winReward": 3000,
+      "lossRewards": [1900, 2400, 2900],
+      "killReward": 200,
+      "plantReward": 300,
+      "saveReward": 1000,
+      "overtimeCredits": 5000
+    },
+    "deathmatch": { "respawnTime": 3, "healOnKill": true }
   },
-  "C": {
-   "mat": "crate",
-   "h": 2.0,
-   "pen": true
+  "grid": {
+    "layout": [
+      "##############################",
+      "#s.....#d.d.d.d.d.#.......s..#",
+      "#......#...c..c...#..........#",
+      "#..PP4321.........1234PP.....#",
+      "#..PP.....######......PP..c..#",
+      "#AAccAAAA.######......BBBBCBB#",
+      "#AAAAAAAA.######....hhBBBBBBB#",
+      "#AAwAAsAA...........hhBBBsBBB#",
+      "#AAwAAAAA..C....C.....BBBBBBB#",
+      "#####~~~~##########~~~~#######",
+      "#........#........#..........#",
+      "#..c.....w...s....w.....c....#",
+      "#........#........#..........#",
+      "#..s.....##..cc..##.......s..#",
+      "#....hh..............hh......#",
+      "#######====######====#########",
+      "#..........#....#............#",
+      "#..C...c...#....#...c...C....#",
+      "#..........w.a..w............#",
+      "#....s..a.a.a.a.s........s...#",
+      "#..hh......c....c......hh....#",
+      "#.........4321..1234.........#",
+      "#..s......PPPP..PPPP.......s.#",
+      "##############################"
+    ],
+    "legend": {
+      "1": { "mat": "stone", "h": 0.4, "pen": false },
+      "2": { "mat": "stone", "h": 0.8, "pen": false },
+      "3": { "mat": "stone", "h": 1.2, "pen": false },
+      "4": { "mat": "stone", "h": 1.6, "pen": false },
+      "#": { "mat": "plaster", "h": 5, "pen": false },
+      "c": { "mat": "crate", "h": 1, "pen": true },
+      "C": { "mat": "crate", "h": 2, "pen": true },
+      "h": { "mat": "half", "h": 1.2, "pen": false },
+      "w": { "mat": "wood", "h": 2.8, "pen": true, "thin": 0.3 },
+      "P": { "mat": "stone", "h": 2, "pen": false },
+      ".": {},
+      "s": { "spawn": true },
+      "a": { "spawn": "atk" },
+      "d": { "spawn": "def" },
+      "A": { "site": "A" },
+      "B": { "site": "B" },
+      "=": { "barrier": "atk" },
+      "~": { "barrier": "def" }
+    }
   },
-  "h": {
-   "mat": "half",
-   "h": 1.2,
-   "pen": false
-  },
-  "w": {
-   "mat": "wood",
-   "h": 2.8,
-   "pen": true,
-   "thin": 0.3
-  },
-  "P": {
-   "mat": "stone",
-   "h": 2.0,
-   "pen": false,
-   "walk": 2.0
-  },
-  "1": {
-   "mat": "stone",
-   "h": 0.4,
-   "pen": false,
-   "walk": 0.4
-  },
-  "2": {
-   "mat": "stone",
-   "h": 0.8,
-   "pen": false,
-   "walk": 0.8
-  },
-  "3": {
-   "mat": "stone",
-   "h": 1.2,
-   "pen": false,
-   "walk": 1.2
-  },
-  "4": {
-   "mat": "stone",
-   "h": 1.6,
-   "pen": false,
-   "walk": 1.6
-  },
-  ".": {
-   "walk": 0
-  },
-  "s": {
-   "walk": 0,
-   "spawn": true
-  }
- },
- "floor": "tile",
- "sky": 10466500,
- "fog": [
-  60,
-  160
- ],
- "labels": [
-  {
-   "text": "NORTH",
-   "cell": [
-    14,
-    2
-   ],
-   "y": 0.02
-  },
-  {
-   "text": "HALL",
-   "cell": [
-    14,
-    11
-   ],
-   "y": 0.02
-  },
-  {
-   "text": "SOUTH",
-   "cell": [
-    14,
-    19
-   ],
-   "y": 0.02
-  }
- ],
- "layout": [
-  "##############################",
-  "#s.....#..........#.......s..#",
-  "#......#...c..c...#..........#",
-  "#..PP4321.........1234PP.....#",
-  "#..PP.....######......PP..c..#",
-  "#..cc.....######..........C..#",
-  "#.........######....hh.......#",
-  "#..w..s.............hh...s...#",
-  "#..w.......C....C............#",
-  "#####....##########....#######",
-  "#........#........#..........#",
-  "#..c.....w...s....w.....c....#",
-  "#........#........#..........#",
-  "#..s.....##..cc..##.......s..#",
-  "#....hh..............hh......#",
-  "#######....######....#########",
-  "#..........#....#............#",
-  "#..C...c...#....#...c...C....#",
-  "#..........w....w............#",
-  "#....s..........s........s...#",
-  "#..hh......c....c......hh....#",
-  "#.........4321..1234.........#",
-  "#..s......PPPP..PPPP.......s.#",
-  "##############################"
- ]
+  "labels": [
+    { "text": "NORTH", "cell": [14, 2], "y": 0.02 },
+    { "text": "HALL", "cell": [14, 11], "y": 0.02 },
+    { "text": "SOUTH", "cell": [14, 19], "y": 0.02 },
+    { "text": "A", "cell": [4, 6] },
+    { "text": "B", "cell": [25, 6] }
+  ]
 }
