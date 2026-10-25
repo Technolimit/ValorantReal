@@ -191,12 +191,12 @@ function toggleAbilityGun(kit, id) {
   return true;
 }
 
-// Where a placed smoke goes: along the aim, `kit.dist` metres out. Normally it stops in front of the first
-// wall; in through-walls mode (kit.phase) it ignores walls. Dropped onto the floor below, centred 2 m up.
+// Where a placed smoke goes: along the aim, `kit.dist` metres out, straight through walls (or, with
+// kit.stopAtWalls, in front of the first wall). Dropped onto the floor below, centred 2 m up.
 function smokeTarget(kit, radius) {
   const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
   let t = kit.dist ?? 16;
-  if (!kit.phase) { const hit = g.world.raycast(eye, d, t); if (hit) t = Math.max(1.5, hit.t - radius * 0.5); }
+  if (kit.stopAtWalls) { const hit = g.world.raycast(eye, d, t); if (hit) t = Math.max(1.5, hit.t - radius * 0.5); }
   const p = [eye[0] + d[0] * t, eye[1] + d[1] * t, eye[2] + d[2] * t];
   const top = Math.max(p[1], eye[1]) + 0.5; // aiming at the floor can put the point underground
   const f = g.world.raycast([p[0], top, p[2]], [0, -1, 0], 60);
@@ -336,8 +336,8 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Shade', desc: 'Hold the orb: your view follows the smoke out through walls, and the sphere shows exactly where it will form. Hold right click to push it farther (up to 70 m), press R to let the marker pass through walls, left click to cast. Lasts 15 s.', charges: 2, cooldown: 30,
-        armHint: 'LEFT CLICK: CAST · HOLD RIGHT CLICK: FARTHER · R: THROUGH WALLS', shadowSight: true,
+        name: 'Shade', desc: 'Hold the orb: your view follows the smoke out through walls, and the sphere shows exactly where it will form. It passes through walls: hold right click to push it farther (up to 70 m), press R to make it stop at the first wall instead, left click to cast. Lasts 15 s.', charges: 2, cooldown: 30,
+        armHint: 'LEFT CLICK: CAST · HOLD RIGHT CLICK: FARTHER · R: STOP AT WALLS', shadowSight: true,
         smokePreview: 3.8, distance: { min: 4, max: 70, start: 16, speed: 22 },
         preview(kit) { return smokeTarget(kit, 3.8); },
         use(kit) {
@@ -1663,10 +1663,10 @@ export class Kit {
       }
       if (a.rotate && inp.altPressed) { this.rot = !this.rot; inp.altPressed = false; } // right click rotates the preview
       if (a.distance) {
-        // Hold right click to push the marker out (wraps back in at max range); R toggles through-walls.
+        // Hold right click to push the marker out (wraps back in at max range); R makes it stop at walls.
         if (this.dist === undefined || this.distFor !== k) { this.dist = a.distance.start; this.distFor = k; }
         if (inp.alt) { this.dist += a.distance.speed / 128; if (this.dist > a.distance.max) this.dist = a.distance.min; }
-        if (inp.reload && !this.prevReload) this.phase = !this.phase;
+        if (inp.reload && !this.prevReload) this.stopAtWalls = !this.stopAtWalls;
         this.prevReload = inp.reload;
         inp.altPressed = false;
       }

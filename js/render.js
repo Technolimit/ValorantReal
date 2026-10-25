@@ -271,7 +271,10 @@ export class Renderer {
       wg.add(pl);
     }
     this.nearFog = null;
-    this.shadowSight = null; // the materials it tinted belonged to the old map
+    this.shadowSight = null;
+    if (this.xray) { this.scene.remove(this.xray); this.xray.geometry.dispose(); this.xray = null; } // outlines of the old map
+    for (const m of this.silhouettes?.values() || []) this.scene.remove(m);
+    this.silhouettes = new Map();
     this.scene.background = new THREE.Color(env.sky);
     this.scene.fog = env.fog ? new THREE.Fog(env.fog.color, env.fog.near, env.fog.far) : null;
 
@@ -806,10 +809,10 @@ export class Renderer {
     pv.sphere.visible = !!pos && !!a.smokePreview;
     if (!pos) return;
     if (a.smokePreview) {
-      // Smoke placement: sphere at the target, purple normally, gold when passing through walls.
+      // Smoke placement: sphere at the target, in the agent's colour; gold when it stops at walls.
       pv.sphere.position.set(...pos);
       pv.sphere.scale.setScalar(a.smokePreview);
-      const c = kit.phase ? 0xffd27a : col;
+      const c = kit.stopAtWalls ? 0xffd27a : col;
       pv.sphere.material.color.setHex(c); pv.sphere.children[0].material.color.setHex(c);
       return;
     }
@@ -942,13 +945,13 @@ export class Renderer {
     }
     this.fxAdd(g, () => (d.removed ? 0 : d.until), (now) => {
       g.position.set(...d.pos);
+      g.visible = !(this.shadowSight && this.game.isEnemy(this.game.player, d.owner)); // shadow sight shows no enemy gadgets
       if (d.kind === 'drone') g.rotation.y = Math.atan2(-d.dir[0], -d.dir[2]);
       if (d.kind === 'boombot' || d.kind === 'decoy' || d.kind === 'tiger' || d.kind === 'prowler' || d.kind === 'gate') g.rotation.y = Math.atan2(-d.dir[0], -d.dir[2]);
       if (d.kind === 'hawk') g.rotation.set(0, Math.atan2(-d.dir[0], -d.dir[2]), 0);
-      if (d.kind === 'wire') { g.position.set(...d.pos); g.visible = true; }
-      if (d.kind === 'cam') { const ow = d.owner; g.rotation.set(0, ow.yaw, 0); g.visible = !(ow.kit?.view === d); }
-      if (d.kind === 'tiger' || d.kind === 'sdrone' || d.kind === 'owl') g.visible = !(d.owner.kit?.pilot === d);
-      if (d.kind === 'shade') g.visible = d.owner !== this.game.player; // your view is already inside it
+      if (d.kind === 'cam') { const ow = d.owner; g.rotation.set(0, ow.yaw, 0); g.visible &&= !(ow.kit?.view === d); }
+      if (d.kind === 'tiger' || d.kind === 'sdrone' || d.kind === 'owl') g.visible &&= !(d.owner.kit?.pilot === d);
+      if (d.kind === 'shade') g.visible &&= d.owner !== this.game.player; // your view is already inside it
       if (d.kind === 'sdrone' || d.kind === 'owl') g.rotation.set(0, Math.atan2(-d.dir[0], -d.dir[2]), 0);
       if (g.userData.spin) for (const m of g.userData.spin) m.rotation.y += 0.03;
       if (d.kind === 'leer') { const e = this.camera.position; g.lookAt(e.x, e.y, e.z); }
@@ -1152,22 +1155,63 @@ export class Renderer {
     }
   }
 
-  // Shadow sight (aiming Shade): every surface of the map turns to translucent violet glass on a dark sky.
+  // Shadow sight (aiming Shade): the map turns into violet outlines on a dark sky, so the view can follow the
+  // smoke through any wall and still read the layout. You and your teammates show as silhouettes; enemies and
+  // their gadgets don't show at all.
   setShadowSight(on) {
     if (!!this.shadowSight === on) return;
     if (on) {
-      const mats = new Set();
-      this.worldGroup?.traverse(o => { if (o.material) for (const m of [o.material].flat()) mats.add(m); });
-      this.shadowSight = { bg: this.scene.background, fog: this.scene.fog, mats: [...mats].map(m => ({ m, transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite, color: m.color?.getHex() })) };
-      for (const { m } of this.shadowSight.mats) { m.transparent = true; m.opacity = 0.3; m.depthWrite = false; m.color?.setHex(0x9a7cff); m.needsUpdate = true; }
-      this.scene.background = new THREE.Color(0x150d33);
-      this.scene.fog = null;
+      this.xray ||= this.buildXray();
+      this.scene.add(this.xray);
+      this.shadowSight = { bg: this.scene.background, fog: this.scene.fog };
+      this.worldGroup.visible = false;
+      if (this.barrierGroup) this.barrierGroup.visible = false;
+      this.scene.background = new THREE.Color(0x0d0820);
+      this.scene.fog = new THREE.Fog(0x0d0820, 20, 60);
     } else {
       const s = this.shadowSight;
-      for (const { m, transparent, opacity, depthWrite, color } of s.mats) { m.transparent = transparent; m.opacity = opacity; m.depthWrite = depthWrite; if (color !== undefined) m.color.setHex(color); m.needsUpdate = true; }
+      this.scene.remove(this.xray);
+      this.worldGroup.visible = true;
+      if (this.barrierGroup) this.barrierGroup.visible = true;
       this.scene.background = s.bg;
       this.scene.fog = s.fog;
       this.shadowSight = null;
+    }
+    this.updateSilhouettes(on);
+  }
+
+  // Every edge of the map's solid boxes as one set of lines. Floors get a faint grid-free outline too.
+  buildXray() {
+    const v = [];
+    for (const b of this.game.world.boxes) {
+      if (b.temp || b.passable) continue;
+      const [x0, y0, z0] = b.min, [x1, y1, z1] = b.max;
+      const c = [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]];
+      for (const [a, e] of [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]]) v.push(...c[a], ...c[e]);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+    return new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xb69cff, transparent: true, opacity: 0.85 }));
+  }
+
+  // You and your teammates as glowing shapes, seen through everything, while shadow sight is on.
+  updateSilhouettes(on) {
+    const me = this.game.player;
+    for (const c of this.game.combatants) {
+      let m = this.silhouettes.get(c);
+      const show = on && c.alive && !this.game.isEnemy(me, c);
+      if (!show) { if (m) m.visible = false; continue; }
+      if (!m) {
+        m = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.15, 4, 10), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.6, depthTest: false, depthWrite: false }));
+        m.renderOrder = 998;
+        this.scene.add(m);
+        this.silhouettes.set(c, m);
+      }
+      const h = c.height || 1.8;
+      m.visible = true;
+      m.material.color.setHex(c === me ? 0xffffff : 0x4fd1c5);
+      m.scale.set(1, h / 1.8, 1);
+      m.position.set(c.pos[0], c.pos[1] + h / 2, c.pos[2]);
     }
   }
 
@@ -1331,6 +1375,8 @@ export class Renderer {
       const t = p.kit.previewPos, d = dirFromAngles(p.yaw, p.pitch);
       const back = Math.min(Math.hypot(t[0] - x, t[1] - eyeY, t[2] - z), held.smokePreview * 3.5 + 4);
       cam.position.set(t[0] - d[0] * back, t[1] - d[1] * back + 0.6, t[2] - d[2] * back);
+      this.scene.fog.near = back + 6; this.scene.fog.far = back + 55; // outlines fade with distance from the smoke
+      this.updateSilhouettes(true);
     }
     this.updatePreview(p);
     if (spec) {
