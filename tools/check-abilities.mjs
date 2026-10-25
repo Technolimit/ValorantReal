@@ -612,7 +612,7 @@ if (!offline) {
   for (const p of [H, C]) { p.on('pageerror', e => errors.push(String(e))); await p.goto(url); await p.waitForFunction(() => window.__game); await p.addScriptTag({ content: PAGE_HELPERS }); }
   const form = (agent) => {
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
-    set('net-transport', 'local'); set('net-room', 'CHECKS'); set('net-mode', 'dm'); set('net-agent', agent); set('net-name', agent);
+    set('net-transport', 'local'); set('net-join-transport', 'local'); set('net-room', 'CHECKS'); set('net-code', 'CHECKS'); set('net-mode', 'dm'); set('net-agent', agent); set('net-name', agent);
     Object.assign(window.__game.settings, { botCount: 1, botMode: 'static', map: 'arena', agent });
   };
   await H.evaluate(form, 'cinder'); await C.evaluate(form, 'thistle');

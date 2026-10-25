@@ -249,9 +249,6 @@ th { color: var(--muted); font-weight: 500; }
 .buttons button { padding: 10px 20px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: var(--text); cursor: pointer; letter-spacing: 1px; text-transform: uppercase; font-size: 13px; }
 .buttons button:hover { border-color: var(--text); }
 .buttons button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 18px; font-size: 13px; margin: 0; }
-.keys dt { color: var(--muted); }
-.keys dd { margin: 0; }
 
 #settings-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 6px 26px; }
 #settings-form h3 { font-size: 12px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin: 12px 0 6px; }
@@ -260,14 +257,15 @@ th { color: var(--muted); font-weight: 500; }
 .row select option { background: var(--bg); }
 .row input[type=checkbox] { justify-self: start; }
 .row output { color: var(--muted); font-size: 12px; }
-#gun-sounds h3 { font-size: 12px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin: 18px 0 6px; }
-.gs-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 4px 26px; margin-bottom: 10px; }
-.gs-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; padding: 3px 0; }
-.gs-gun { flex: 0 0 72px; }
-.gs-slot { display: inline-flex; gap: 2px; }
-.gs-slot .mini { padding: 4px 7px; }
-.gs-slot.custom .mini:first-of-type { border-color: var(--accent); color: var(--accent); }
-.gs-slot.game .mini:first-of-type { border-color: #6aa7ff; color: #6aa7ff; }
+#keybinds h3 { font-size: 12px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin: 18px 0 6px; }
+#keybinds h4 { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin: 8px 0 4px; font-weight: 500; }
+.kb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 0 26px; margin-bottom: 10px; }
+.kb-row { display: grid; grid-template-columns: 1fr 120px; align-items: center; gap: 8px; font-size: 13px; padding: 2px 0; }
+.kb-key { padding: 4px 8px; background: rgba(255, 255, 255, 0.06); color: var(--text); border: 1px solid var(--line); cursor: pointer; font: inherit; font-size: 12px; }
+.kb-key:hover { border-color: var(--text); }
+.kb-key.changed { border-color: #4fd1c5; }
+.kb-key.wait { border-color: var(--accent); color: var(--accent); }
+.kb-fixed { color: var(--muted); font-size: 12px; text-align: center; }
 
 /* ---------- Online, maps, skin editor ---------- */
 .form { display: grid; grid-template-columns: 130px 1fr; gap: 8px 12px; align-items: center; font-size: 13px; margin: 6px 0 4px; }
@@ -277,6 +275,18 @@ th { color: var(--muted); font-weight: 500; }
 .inline { display: flex; gap: 8px; } .inline > :first-child { flex: 1; }
 .inline button, .mini { padding: 6px 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: var(--text); cursor: pointer; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
 .inline button:hover, .mini:hover { border-color: var(--text); }
+.srv-tabs { display: flex; gap: 0; margin: 0 0 14px; border-bottom: 1px solid var(--line); }
+.srv-tabs button { padding: 10px 18px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; letter-spacing: 1px; text-transform: uppercase; font-size: 13px; }
+.srv-tabs button.sel { color: var(--text); border-bottom-color: var(--accent); }
+.srv-head, .srv-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.3fr) 70px 90px; gap: 10px; align-items: center; }
+.srv-head { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; padding: 10px 10px 4px; }
+#srv-list { display: grid; gap: 6px; margin-bottom: 4px; max-height: 36vh; overflow: auto; }
+.srv-row { padding: 8px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); font-size: 13px; }
+.srv-row b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srv-row small { color: var(--muted); font-size: 11.5px; }
+.srv-row .full { color: var(--accent); }
+.srv-row button:disabled { opacity: 0.4; cursor: default; }
+@media (max-width: 560px) { .srv-head { display: none; } .srv-row { grid-template-columns: 1fr auto; } .srv-row > :nth-child(2), .srv-row > :nth-child(3) { grid-column: 1; } .srv-row > :last-child { grid-column: 2; grid-row: 1 / span 3; } }
 #online-status { min-height: 1.4em; font-size: 13px; color: #4fd1c5; }
 #online-status.err { color: var(--accent); }
 #netbadge { position: absolute; bottom: 92px; left: 24px; font-size: 12px; background: rgba(0, 0, 0, 0.45); padding: 5px 10px; border-left: 3px solid #4fd1c5; text-shadow: 0 1px 2px #000; }
@@ -523,53 +533,60 @@ th { color: var(--muted); font-weight: 500; }
       <button id="menu-settings">Settings</button>
     </div>
     <p class="loadout">Map: <b id="menu-map"></b> <small>(Maps to change or import one)</small></p>
-    <dl class="keys">
-      <dt>Move</dt><dd>W A S D</dd>
-      <dt>Walk</dt><dd>Shift</dd>
-      <dt>Crouch</dt><dd>Ctrl</dd>
-      <dt>Jump</dt><dd>Space</dd>
-      <dt>Fire / Alt fire</dt><dd>Left / right mouse</dd>
-      <dt>Reload</dt><dd>R</dd>
-      <dt>Plant / defuse spike</dt><dd>Hold F (5v5)</dd>
-      <dt>Buy</dt><dd>B (5v5: during the buy phase, in spawn)</dd>
-      <dt>Weapons</dt><dd>1 2 3, wheel</dd>
-      <dt>Abilities</dt><dd>C Q E, X ultimate (see agent select)</dd>
-      <dt>Change agent</dt><dd>F2 (mid-match too)</dd>
-      <dt>Loadout</dt><dd>B (deathmatch)</dd>
-      <dt>Inspect weapon</dt><dd>Y (again: next inspect, hold: examine with the mouse)</dd>
-      <dt>Full map</dt><dd>M</dd>
-      <dt>Drop / pick up weapon</dt><dd>G / F (walk over a gun to take it into an empty slot)</dd>
-      <dt>Scores</dt><dd>Tab</dd>
-      <dt>Debug readout</dt><dd>F3 or `</dd>
-    </dl>
+    <p class="note">Controls and keybinds are under <b>Settings</b>.</p>
     <p id="touch-note" class="note warn" hidden>This game needs a mouse and keyboard. Open it on a computer to play.</p>
     <p class="note">Sensitivity uses the same scale as Valorant, so you can bring yours over. Stop moving before you shoot: rifles are only accurate below about a quarter of run speed. Every gun has a fixed spray pattern: the overlay at the bottom right shows it next to where your shots landed.</p>
   </div>
 </div>
 
 <div id="online" class="overlay" hidden>
-  <div class="panel">
-    <h2>Online match</h2>
-    <p class="note">No game server: one player hosts in their browser and the others join with the room code. The host picks the mode and the map (under Maps). Everyone picks an agent on the agent select screen, then bots pick from what's left. In 5v5, players are split evenly across the two teams and bots fill the empty slots.</p>
+  <div class="panel wide">
+    <h2>Servers</h2>
+    <div class="srv-tabs">
+      <button id="srv-tab-join" class="sel" data-tab="join">Join a server</button>
+      <button id="srv-tab-create" data-tab="create">Create server</button>
+    </div>
     <div class="form">
       <label for="net-name">Your name</label><input id="net-name" maxlength="16">
       <label for="net-color">Colour</label><input id="net-color" type="color">
-      <label for="net-transport">Connection</label>
-      <select id="net-transport">
-        <option value="local">This browser: tabs and windows (BroadcastChannel)</option>
-        <option value="peer">Internet, peer to peer (PeerJS / WebRTC)</option>
-      </select>
-      <label for="net-mode">Mode (host)</label>
-      <select id="net-mode"><option value="dm">Deathmatch</option><option value="rounds">5v5 Rounds (bots fill empty slots)</option></select>
-      <label for="net-room">Room code</label><span class="inline"><input id="net-room" maxlength="12" autocomplete="off"><button id="net-newroom">New</button></span>
     </div>
+
+    <section id="srv-join">
+      <div class="srv-head"><span>Server</span><span>Mode · map</span><span>Players</span><span></span></div>
+      <div id="srv-list"></div>
+      <p id="srv-empty" class="note">No servers open in this browser right now. Create one, or join a friend's server with its code below.</p>
+      <div class="form">
+        <label for="net-code">Join by code</label>
+        <span class="inline"><input id="net-code" maxlength="12" autocomplete="off" placeholder="e.g. K3X9QD"><button id="net-join">Join</button></span>
+        <label for="net-join-transport">Connection</label>
+        <select id="net-join-transport">
+          <option value="peer">Internet (another computer)</option>
+          <option value="local">This browser (another tab)</option>
+        </select>
+      </div>
+      <div class="buttons"><button id="srv-refresh">Refresh</button></div>
+    </section>
+
+    <section id="srv-create" hidden>
+      <div class="form">
+        <label for="net-server">Server name</label><input id="net-server" maxlength="32">
+        <label for="net-mode">Mode</label>
+        <select id="net-mode"><option value="dm">Deathmatch</option><option value="rounds">5v5 Rounds (bots fill empty slots)</option></select>
+        <label for="net-map">Map</label><select id="net-map"></select>
+        <label for="net-max">Max players</label><select id="net-max"></select>
+        <label for="net-transport">Who can join</label>
+        <select id="net-transport">
+          <option value="peer">Anyone with the code (internet, PeerJS)</option>
+          <option value="local">This browser only (tabs and windows)</option>
+        </select>
+        <label for="net-room">Room code</label><span class="inline"><input id="net-room" maxlength="12" autocomplete="off"><button id="net-newroom">New</button></span>
+      </div>
+      <div class="buttons"><button id="net-host" class="primary">Create server</button></div>
+    </section>
+
     <p id="online-status"></p>
-    <div class="buttons">
-      <button id="net-host" class="primary">Host</button>
-      <button id="net-join">Join</button>
-      <button id="online-back">Back</button>
-    </div>
-    <p class="note">BroadcastChannel only reaches other tabs of this browser on this site (great for testing; put the windows side by side, since a hidden host tab slows down). PeerJS connects different computers: its public broker only introduces the browsers, then gameplay is sent directly between them.</p>
+    <div class="buttons"><button id="online-back">Back</button></div>
+    <p class="note">There's no game server: whoever creates a server hosts it in their own browser, and everyone picks an agent on the agent select screen once they're in. The list shows servers open in other tabs of this browser. Servers on other computers can't be listed without a central server, so share the room code instead (the host sees it on screen while hosting).</p>
   </div>
 </div>
 
@@ -607,7 +624,7 @@ th { color: var(--muted); font-weight: 500; }
   <div class="panel wide">
     <h2>Settings</h2>
     <div id="settings-form"></div>
-    <section id="gun-sounds"></section>
+    <section id="keybinds"></section>
     <div class="buttons">
       <button id="settings-back" class="primary">Back</button>
       <button id="settings-reset">Reset to defaults</button>

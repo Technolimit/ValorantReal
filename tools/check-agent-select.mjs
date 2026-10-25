@@ -95,7 +95,7 @@ await P.close();
 // ---- online: host + two people on the pick screen, then one more mid-match ----
 const form = (o) => {
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
-  set('net-transport', 'local'); set('net-room', 'PICKS'); set('net-mode', o.mode); set('net-name', o.name);
+  set('net-transport', 'local'); set('net-join-transport', 'local'); set('net-room', 'PICKS'); set('net-code', 'PICKS'); set('net-mode', o.mode); set('net-name', o.name);
   Object.assign(window.__game.settings, { botCount: 3, botMode: 'static', map: 'divide' });
 };
 const H = await open(), C = await open(), D = await open(), E = await open(); // E joins mid-match (loaded now: tabs load slowly once matches run)

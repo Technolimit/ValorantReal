@@ -249,7 +249,7 @@ export class SelectScreen {
     this.state = state;
     const rounds = state.mode === 'rounds';
     this.$('sel-map').textContent = state.mapName || state.map;
-    this.$('sel-mode').textContent = rounds ? '5v5 rounds' : 'Deathmatch';
+    this.$('sel-mode').textContent = (rounds ? '5v5 rounds' : 'Deathmatch') + (state.room ? ` · Room code ${state.room}` : '');
     // Someone locked what I was looking at: move to a free agent.
     const m = this.mine();
     if (m?.locked && this.sel !== m.a) { this.sel = m.a; this.drawInfo(); }

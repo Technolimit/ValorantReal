@@ -4,13 +4,14 @@ import { Renderer } from './render.js';
 import { Sound } from './audio.js';
 import { Hud } from './hud.js';
 import { loadSettings, saveSettings, DEFAULTS } from './settings.js';
+import { ACTIONS, FIXED, DEFAULT_BINDS, actionFor, rebind, keyLabel } from './keybinds.js';
 import { DT, YAW_PER_COUNT } from './config.js';
 import { WEAPONS, BUY_GROUPS } from './weapons.js';
 import { SKINS, SKIN_ORDER, skinFor, swatch, isCustom, saveCustomSkin, deleteCustomSkin, skinCode, parseSkinCode, sanitizeSkin, registerSkin, PATTERNS } from './skins.js';
 import { GunPreview } from './models.js';
 import { MELEE, MELEE_ORDER, isMelee, meleeId } from './melee.js';
 import { RELOAD_STYLE, RELOAD_SOUNDS } from './reloadanim.js';
-import { SLOTS, MAX_BYTES, loadClips, saveClip, deleteClip, clearClips, loadGameSounds } from './customsounds.js';
+import { loadGameSounds } from './customsounds.js';
 import { AGENTS, AGENT_ORDER, Kit } from './abilities.js';
 import { ROUND } from './rounds.js';
 import { Minimap } from './minimap.js';
@@ -18,6 +19,7 @@ import { RoundHud } from './roundhud.js';
 import { MAPS, loadMapIndex, preloadMap, mapList, mapInfo, mapJSON, addMap, removeCustomMap, supportsMode, upgradeMap, stringifyMap } from './map.js';
 import { NetSession, roomCode } from './net.js';
 import { Lobby, SelectScreen, emblem } from './agentselect.js';
+import { ServerDirectory } from './servers.js';
 
 const DEG = Math.PI / 180;
 const $ = (id) => document.getElementById(id);
@@ -37,10 +39,8 @@ const canvas = $('view');
 const renderer = new Renderer(canvas, game, settings);
 const sound = new Sound();
 sound.setVolume(settings.volume);
-const clipNames = new Map(); // 'vandal:fire' -> file name, for the gun sounds list in settings
-loadClips().then((clips) => { for (const [key, c] of clips) { clipNames.set(key, c.name); sound.setClip(key, c.data); } });
-const gameClipNames = new Map(); // ...and the game's own files from sounds/index.json, which everyone hears
-loadGameSounds(WEAPONS).then((clips) => { for (const [key, c] of clips) { gameClipNames.set(key, c.name); sound.setClip(`${key}@game`, c.data); } });
+// The game's own sound files from sounds/index.json, which everyone hears.
+loadGameSounds(WEAPONS).then((clips) => { for (const [key, c] of clips) sound.setClip(`${key}@game`, c.data); });
 const hud = new Hud(game, renderer, settings);
 const rhud = new RoundHud(game);
 const minimap = new Minimap(game);
@@ -160,56 +160,53 @@ function resume() {
 }
 
 function show(id) {
+  if (id === 'pause') $('pause-agent').textContent = `Change agent (${key('agent')})`;
   for (const o of ['menu', 'pause', 'settings', 'skins', 'agents', 'select', 'end', 'online', 'maps']) $(o).hidden = o !== id;
   $('hud').hidden = !running;
 }
 
 // ---- input ----
-const CROUCH_KEYS = ['ControlLeft']; // C is the smoke ability now
-const WALK_KEYS = ['ShiftLeft', 'ShiftRight'];
-const GAME_KEYS = new Set(['KeyM', 'KeyG', 'KeyY', 'KeyF', 'Tab', 'Space', 'F2', 'F3', 'Backquote', 'ControlLeft', 'KeyB', 'KeyW', 'KeyA', 'KeyS', 'KeyD']);
+// Keys come from settings.binds (Settings → Keybinds, see keybinds.js).
+const key = (action) => keyLabel(settings.binds[action]);
 
 addEventListener('keydown', (e) => {
   if (!running || paused) return;
-  if (GAME_KEYS.has(e.code) || e.ctrlKey) e.preventDefault();
+  const act = actionFor(settings.binds, e.code);
+  if (act || e.ctrlKey) e.preventDefault();
   if (e.repeat) return;
   keys.add(e.code);
   const p = game.player, inp = p.input;
-  if (e.code === 'KeyB') { toggleBuy(); return; }
-  if (e.code === 'KeyM') { minimap.big = !minimap.big; return; }
-  if (e.code === 'KeyY') { // press again to chain the next inspect, hold to examine
+  if (act === 'buy') { toggleBuy(); return; }
+  if (act === 'map') { minimap.big = !minimap.big; return; }
+  if (act === 'inspect') { // press again to chain the next inspect, hold to examine
     const before = renderer.inspecting;
     renderer.inspect();
     if (renderer.inspecting && renderer.inspecting !== before) sound.inspect(renderer.inspecting.gun.def.id);
     return;
   }
-  if (e.code === 'KeyG') { if (p.alive) game.dropGun(p, p.slot, true); return; }
-  if (e.code === 'F2') { if (!net.active) openAgents(true); return; } // change agent mid-match (offline only: other players' copies keep your agent)
-  if (e.code === 'Tab') { $('scoreboard').hidden = false; return; }
-  if (e.code === 'F3' || e.code === 'Backquote') { settings.debug = !settings.debug; saveSettings(settings); return; }
-  if (WALK_KEYS.includes(e.code) && settings.walkMode === 'toggle') walkToggled = !walkToggled;
-  if (CROUCH_KEYS.includes(e.code) && settings.crouchMode === 'toggle') crouchToggled = !crouchToggled;
+  if (act === 'drop') { if (p.alive) game.dropGun(p, p.slot, true); return; }
+  if (act === 'agent') { if (!net.active) openAgents(true); return; } // change agent mid-match (offline only: other players' copies keep your agent)
+  if (act === 'scores') { $('scoreboard').hidden = false; return; }
+  if (act === 'debug') { settings.debug = !settings.debug; saveSettings(settings); return; }
+  if (act === 'walk' && settings.walkMode === 'toggle') walkToggled = !walkToggled;
+  if (act === 'crouch' && settings.crouchMode === 'toggle') crouchToggled = !crouchToggled;
   if (!p.alive) {
     // Some agents can still act while dead (Thistle's smokes and her ultimate).
-    if (p.kit?.agent.deadCast && game.mode) { if (e.code === 'KeyE') inp.abE = true; if (e.code === 'KeyX') inp.abX = true; }
+    if (p.kit?.agent.deadCast && game.mode && (act === 'abE' || act === 'abX')) inp[act] = true;
     return;
   }
-  if (e.code === 'Space') inp.jump = true;
-  if (e.code === 'KeyR') inp.reload = true;
-  if (e.code === 'Digit1') p.equip('primary', game.time);
-  if (e.code === 'Digit2') p.equip('secondary', game.time);
-  if (e.code === 'Digit3') p.equip('melee', game.time);
+  if (act === 'jump') inp.jump = true;
+  if (act === 'reload') inp.reload = true;
+  if (act === 'primary' || act === 'secondary' || act === 'melee') p.equip(act, game.time);
   // Agent abilities
-  if (e.code === 'KeyQ') inp.abQ = true;
-  if (e.code === 'KeyE') inp.abE = true;
-  if (e.code === 'KeyC') inp.abC = true;
-  if (e.code === 'KeyX') inp.abX = true;
+  if (act === 'abC' || act === 'abQ' || act === 'abE' || act === 'abX') inp[act] = true;
 });
 
 addEventListener('keyup', (e) => {
   keys.delete(e.code);
-  if (e.code === 'Tab') $('scoreboard').hidden = true;
-  if (e.code === 'KeyY') renderer.inspectRelease();
+  const act = actionFor(settings.binds, e.code);
+  if (act === 'scores') $('scoreboard').hidden = true;
+  if (act === 'inspect') renderer.inspectRelease();
 });
 
 addEventListener('blur', releaseInputs);
@@ -273,15 +270,15 @@ addEventListener('wheel', (e) => {
 
 function playerInput() {
   const p = game.player, i = p.input;
-  const k = (c) => keys.has(c);
+  const k = (action) => keys.has(settings.binds[action]);
   if (!p.alive) { i.fwd = i.side = 0; i.fire = i.alt = false; return; }
-  i.fwd = (k('KeyW') ? 1 : 0) - (k('KeyS') ? 1 : 0);
-  i.side = (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0);
-  i.walk = settings.walkMode === 'toggle' ? walkToggled : WALK_KEYS.some(k);
-  i.crouch = settings.crouchMode === 'toggle' ? crouchToggled : CROUCH_KEYS.some(k);
-  i.jumpHeld = k('Space');
-  i.use = k('KeyF'); // plant / defuse
-  i.abCHeld = k('KeyC'); i.abQHeld = k('KeyQ'); i.abEHeld = k('KeyE'); // steerable abilities
+  i.fwd = (k('fwd') ? 1 : 0) - (k('back') ? 1 : 0);
+  i.side = (k('right') ? 1 : 0) - (k('left') ? 1 : 0);
+  i.walk = settings.walkMode === 'toggle' ? walkToggled : k('walk');
+  i.crouch = settings.crouchMode === 'toggle' ? crouchToggled : k('crouch');
+  i.jumpHeld = k('jump');
+  i.use = k('use'); // plant / defuse
+  i.abCHeld = k('abC'); i.abQHeld = k('abQ'); i.abEHeld = k('abE'); // steerable abilities
   i.fire = mouse[0] && !hud.buyOpen;
   i.alt = mouse[2] && !hud.buyOpen;
 }
@@ -427,7 +424,7 @@ const SCHEMA = [
     ['showImpacts', 'Bullet holes', 'checkbox'],
     ['impactSeconds', 'Bullet holes last (s)', 'range', { min: 1, max: 30, step: 1 }],
     ['damageNumbers', 'Damage numbers', 'checkbox'],
-    ['debug', 'Debug readout (F3 or `)', 'checkbox'],
+    ['debug', 'Debug readout', 'checkbox'],
   ]],
 ];
 
@@ -472,67 +469,57 @@ function buildSettings() {
   }
 }
 
-// Settings → Gun sounds: upload your own fire / reload / equip sound per gun, preview it, or go back to the default.
-function buildGunSounds() {
-  const root = $('gun-sounds');
-  root.innerHTML = `<h3>Gun sounds</h3><p class="note">Upload your own sound for any gun: mp3, wav or ogg, up to ${MAX_BYTES / 1048576} MB. It's saved in this browser and plays whenever anyone fires that gun (reload, equip and inspect are just yours). Blue buttons are the game's own sound files, which every player hears; your upload replaces them for you. ▶ plays the current sound.</p><p id="gun-sounds-msg" class="note warn" hidden></p>`;
-  const msg = (t) => { const m = $('gun-sounds-msg'); m.textContent = t; m.hidden = !t; };
-  const play = (id, slot) => {
-    sound.init();
-    if (slot === 'fire') sound.gunshot(WEAPONS[id], null, {});
-    else if (slot === 'reload') sound.reload(WEAPONS[id].reload, RELOAD_SOUNDS[RELOAD_STYLE[id]], id);
-    else if (slot === 'inspect') sound.inspect(id);
-    else sound.equip(id);
-  };
-  const list = document.createElement('div');
-  list.className = 'gs-list';
-  for (const [, ids] of BUY_GROUPS) for (const id of ids) {
-    const row = document.createElement('div');
-    row.className = 'gs-row';
-    row.innerHTML = `<span class="gs-gun">${WEAPONS[id].name}</span>`;
-    for (const [slot, label] of SLOTS) {
-      const key = `${id}:${slot}`, name = clipNames.get(key), gameName = gameClipNames.get(key);
-      const cell = document.createElement('span');
-      cell.className = 'gs-slot' + (name ? ' custom' : gameName ? ' game' : '');
-      const file = document.createElement('input');
-      file.type = 'file'; file.accept = 'audio/*,.mp3,.wav,.ogg,.m4a'; file.hidden = true;
-      const up = document.createElement('button');
-      up.className = 'mini'; up.textContent = label; up.title = name ? `${label}: ${name} (click to replace)` : gameName ? `${label}: the game's ${gameName} (click to upload your own)` : `${label}: default sound (click to upload your own)`;
-      up.onclick = () => file.click();
-      const test = document.createElement('button');
-      test.className = 'mini'; test.textContent = '▶'; test.title = `Play the ${label.toLowerCase()} sound`;
-      test.onclick = () => play(id, slot);
-      cell.append(file, up, test);
-      if (name) {
-        const reset = document.createElement('button');
-        reset.className = 'mini'; reset.textContent = '✕'; reset.title = gameName ? `Back to the game's ${gameName}` : 'Back to the default sound';
-        reset.onclick = async () => { await sound.setClip(key, null); clipNames.delete(key); deleteClip(key).catch(() => {}); buildGunSounds(); };
-        cell.append(reset);
-      }
-      file.onchange = async () => {
-        const f = file.files[0];
-        if (!f) return;
-        if (f.size > MAX_BYTES) { msg(`${f.name} is ${(f.size / 1048576).toFixed(1)} MB; the limit is ${MAX_BYTES / 1048576} MB.`); return; }
-        const data = await f.arrayBuffer();
-        sound.init();
-        try { await sound.setClip(key, data); } catch { await sound.setClip(key, null); msg(`Couldn't read ${f.name} as audio. Try an mp3, wav or ogg file.`); return; }
-        clipNames.set(key, f.name);
-        try { await saveClip(key, { name: f.name, data }); msg(''); } catch { msg('Playing it this session, but this browser wouldn\'t save it (storage blocked or full).'); }
-        buildGunSounds();
-        if (!$('gun-sounds-msg').textContent) play(id, slot);
+// Settings → Keybinds: click a key, then press the new one (Esc cancels). A key already in use swaps over.
+let capture = null; // { action, btn } while waiting for a key
+function buildKeybinds(note = '') {
+  const root = $('keybinds');
+  root.innerHTML = `<h3>Keybinds</h3><p class="note" id="kb-note">${escHtml(note) || 'Click a key to change it, then press the new key. Saved in this browser.'}</p>`;
+  const grid = document.createElement('div');
+  grid.className = 'kb-grid';
+  for (const [title, list] of ACTIONS) {
+    const sec = document.createElement('section');
+    sec.innerHTML = `<h4>${title}</h4>`;
+    for (const [action, label] of list) {
+      const row = document.createElement('div');
+      row.className = 'kb-row';
+      const btn = document.createElement('button');
+      btn.className = 'kb-key' + (settings.binds[action] !== DEFAULT_BINDS[action] ? ' changed' : '');
+      btn.textContent = key(action);
+      btn.dataset.action = action;
+      btn.onclick = () => {
+        if (capture) capture.btn.textContent = key(capture.action);
+        capture = { action, btn };
+        btn.textContent = 'Press a key…';
+        btn.classList.add('wait');
       };
-      row.appendChild(cell);
+      row.innerHTML = `<span>${label}</span>`;
+      row.appendChild(btn);
+      sec.appendChild(row);
     }
-    list.appendChild(row);
+    grid.appendChild(sec);
   }
-  root.appendChild(list);
-  if (clipNames.size) {
-    const all = document.createElement('button');
-    all.className = 'mini'; all.textContent = 'Reset all gun sounds';
-    all.onclick = async () => { for (const key of clipNames.keys()) sound.setClip(key, null); clipNames.clear(); clearClips().catch(() => {}); buildGunSounds(); };
-    root.appendChild(all);
-  }
+  const fixed = document.createElement('section');
+  fixed.innerHTML = '<h4>Fixed</h4>' + FIXED.map(([l, k]) => `<div class="kb-row"><span>${l}</span><span class="kb-fixed">${k}</span></div>`).join('');
+  grid.appendChild(fixed);
+  root.appendChild(grid);
+  const reset = document.createElement('button');
+  reset.className = 'mini'; reset.textContent = 'Reset keybinds';
+  reset.onclick = () => { capture = null; settings.binds = { ...DEFAULT_BINDS }; saveSettings(settings); buildKeybinds('Keybinds are back to the defaults.'); };
+  root.appendChild(reset);
 }
+
+addEventListener('keydown', (e) => {
+  if (!capture || $('settings').hidden) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const { action } = capture;
+  capture = null;
+  if (e.code === 'Escape') { buildKeybinds(); return; }
+  const label = ACTIONS.flatMap(([, l]) => l).find(([a]) => a === action)[1];
+  const other = rebind(settings.binds, action, e.code);
+  saveSettings(settings);
+  const otherLabel = other && ACTIONS.flatMap(([, l]) => l).find(([a]) => a === other)[1];
+  buildKeybinds(other ? `${keyLabel(e.code)} was on ${otherLabel}, so that's on ${key(other)} now.` : `${label}: ${keyLabel(e.code)}.`);
+}, true);
 
 function applySettings(key) {
   if (key === 'volume') sound.setVolume(settings.volume);
@@ -544,8 +531,9 @@ function applySettings(key) {
 
 function openSettings(from) {
   settingsReturn = from;
+  capture = null;
   buildSettings();
-  buildGunSounds();
+  buildKeybinds();
   show('settings');
 }
 
@@ -718,10 +706,10 @@ function selectAgent(id) {
     <div class="agent-hero">${emblem(a.emblem, a.color)}<div><h3>${a.name}</h3><div class="role">${a.role}</div></div></div>
     <p class="agent-blurb">${a.blurb}</p>
     <div class="ab-list">
-      ${row('C', ab.c, tag(ab.c))}
-      ${row('Q', ab.q, tag(ab.q))}
-      ${row('E', ab.e, tag(ab.e))}
-      ${row('X', ab.x, `${ab.x.points} kills`)}
+      ${row(key('abC'), ab.c, tag(ab.c))}
+      ${row(key('abQ'), ab.q, tag(ab.q))}
+      ${row(key('abE'), ab.e, tag(ab.e))}
+      ${row(key('abX'), ab.x, `${ab.x.points} kills`)}
       ${a.passive ? row('—', a.passive, 'passive') : ''}
     </div>
     <div class="lock"><button id="agent-back">Back</button><button id="agent-lock" class="primary">Lock in</button></div>`;
@@ -790,6 +778,7 @@ async function matchFromPick(start) {
 let autoAgent = null; // automated checks: lock this agent as soon as a pick screen opens
 
 function lobbyState(state, me, host) {
+  state = { ...state, room: net.room }; // shown on the pick screen so the host can share it
   if ($('select').hidden || localPick) { localPick && clearInterval(localPick.timer); localPick = null; select.show(state, me, { host, preferred: settings.agent }); show('select'); }
   else select.update(state);
   const mine = state.players.find(p => p.n === me);
@@ -848,11 +837,13 @@ $('settings-back').onclick = () => show(settingsReturn);
 $('settings-reset').onclick = () => {
   const loadout = settings.loadout;
   const skins = settings.skins, melee = settings.melee;
-  Object.assign(settings, DEFAULTS, { loadout, skins, melee });
+  Object.assign(settings, DEFAULTS, { loadout, skins, melee, binds: { ...DEFAULT_BINDS } });
   saveSettings(settings);
   for (const k of Object.keys(DEFAULTS)) applySettings(k);
   hud.chKey = '';
+  capture = null;
   buildSettings();
+  buildKeybinds();
 };
 $('again').onclick = () => startMatch();
 $('end-menu').onclick = toMenu;
@@ -889,30 +880,101 @@ function netProfile() {
   return { name: settings.netName, color: parseInt(settings.netColor.slice(1), 16), loadout: { ...settings.loadout }, skins: { ...settings.skins }, skinDefs, melee: meleeId(settings.melee) };
 }
 
-function readOnlineForm() {
+function readProfile() {
   settings.netName = $('net-name').value.trim().slice(0, 16) || 'Player';
   settings.netColor = $('net-color').value;
-  settings.netTransport = $('net-transport').value;
-  if ($('net-mode').value) settings.mode = $('net-mode').value;
-  const room = $('net-room').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  saveSettings(settings);
-  return { transport: settings.netTransport, room };
 }
 
-function openOnline() {
+const cleanRoom = (r) => String(r || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+// Create server: name, mode, map, max players, who can join, room code.
+function readCreateForm() {
+  readProfile();
+  settings.netTransport = $('net-transport').value;
+  if ($('net-mode').value) settings.mode = $('net-mode').value;
+  if ($('net-map').value) settings.map = $('net-map').value;
+  settings.netMax = parseInt($('net-max').value, 10) || 10;
+  settings.netServer = $('net-server').value.trim().slice(0, 32);
+  saveSettings(settings);
+  const server = { name: settings.netServer || `${settings.netName}'s server`, max: settings.netMax };
+  return { transport: settings.netTransport, room: cleanRoom($('net-room').value), server };
+}
+
+function readJoinForm() {
+  readProfile();
+  settings.netTransport = $('net-join-transport').value;
+  saveSettings(settings);
+  return { transport: settings.netTransport, room: cleanRoom($('net-code').value) };
+}
+
+// Maps that can run the chosen mode, the current one selected.
+function fillServerMaps() {
+  const mode = $('net-mode').value, sel = $('net-map');
+  const maps = mapList().filter(m => mode !== 'rounds' || m.modes.includes('rounds'));
+  const want = maps.some(m => m.id === settings.map) ? settings.map : mode === 'rounds' && maps.some(m => m.id === 'divide') ? 'divide' : maps[0]?.id;
+  sel.innerHTML = '';
+  for (const m of maps) sel.add(new Option(m.name, m.id));
+  if (want) sel.value = want;
+}
+
+function serverTab(tab) {
+  for (const t of ['join', 'create']) { $('srv-tab-' + t).classList.toggle('sel', t === tab); $('srv-' + t).hidden = t !== tab; }
+  if (tab === 'join') servers.refresh();
+}
+
+function openOnline(tab = 'join') {
   $('net-name').value = settings.netName;
   $('net-color').value = settings.netColor;
-  $('net-transport').value = settings.netTransport;
+  $('net-transport').value = $('net-join-transport').value = settings.netTransport;
   $('net-mode').value = settings.mode;
+  fillServerMaps();
+  const max = $('net-max');
+  if (!max.options.length) for (let n = 2; n <= 10; n++) max.add(new Option(String(n), String(n)));
+  max.value = String(settings.netMax);
+  $('net-server').value = settings.netServer;
+  $('net-server').placeholder = `${settings.netName}'s server`;
   if (!$('net-room').value) $('net-room').value = roomCode();
   netStatus(net.active ? `In room ${net.room}` : '');
+  serverTab(tab);
   show('online');
+  serverListKey = '';
+  buildServerList();
+}
+
+// The server list: rooms hosted in other tabs of this browser (see servers.js).
+const servers = new ServerDirectory(() => net.serverInfo());
+servers.onchange = () => { if (!$('online').hidden) buildServerList(); };
+
+let serverListKey = '';
+function buildServerList() {
+  const list = $('srv-list'), all = servers.servers();
+  // Hosts re-announce every second: only redraw when something changed, so a Join button stays put under the mouse.
+  const listKey = JSON.stringify([net.room, net.active, all.map(({ seen, ...s }) => s)]);
+  if (listKey === serverListKey && list.isConnected) return;
+  serverListKey = listKey;
+  list.innerHTML = '';
+  $('srv-empty').hidden = all.length > 0;
+  for (const s of all) {
+    const full = s.players >= s.max, mine = net.active && net.room === s.room;
+    const row = document.createElement('div');
+    row.className = 'srv-row';
+    row.innerHTML = `<div><b>${escHtml(s.name)}</b><small>Code ${escHtml(s.room)}${s.transport === 'peer' ? ' · internet' : ''}</small></div>`
+      + `<div>${s.mode === 'rounds' ? '5v5 Rounds' : 'Deathmatch'} · ${escHtml(s.map)}<br><small>${s.phase === 'pick' ? 'Agent select' : 'Match running'}</small></div>`
+      + `<div class="${full ? 'full' : ''}">${s.players}/${s.max}</div>`;
+    const join = document.createElement('button');
+    join.className = 'mini';
+    join.textContent = mine ? 'Yours' : full ? 'Full' : 'Join';
+    join.disabled = full || mine;
+    join.onclick = () => joinOnline({ room: s.room, transport: s.transport });
+    row.appendChild(join);
+    list.appendChild(row);
+  }
 }
 
 // The room opens on the agent select screen. `lobby: false` (automated checks) starts the match right away
 // and people join it with the deathmatch-style picker.
 async function hostOnline({ lobby = true } = {}) {
-  const { transport, room } = readOnlineForm();
+  const { transport, room, server } = readCreateForm();
   if (!room) { netStatus('Pick a room code first', true); return false; }
   const rounds = settings.mode === 'rounds';
   const id = rounds && !supportsMode(settings.map, 'rounds') ? 'divide' : settings.map;
@@ -921,14 +983,14 @@ async function hostOnline({ lobby = true } = {}) {
     try { await preloadMap(id); } catch (err) { netStatus(err.message, true); return false; }
     if (running) { running = false; game.state = 'idle'; }
     try {
-      await net.host({ transport, room, profile: netProfile(), mapJSON: mj(), lobby: new Lobby({ mode: settings.mode, map: id, mapName: MAPS[id] || id, botCount: settings.botCount }) });
+      await net.host({ transport, room, server, profile: netProfile(), mapJSON: mj(), lobby: new Lobby({ mode: settings.mode, map: id, mapName: MAPS[id] || id, botCount: settings.botCount }) });
     } catch (err) { netStatus(err.message, true); net.close(); return false; }
     return true;
   }
   const ok = await startMatch({ online: true, mode: settings.mode, map: id, noResume: true });
   if (!ok) return false;
   try {
-    await net.host({ transport, room, profile: netProfile(), mapJSON: mj() });
+    await net.host({ transport, room, server, profile: netProfile(), mapJSON: mj() });
   } catch (err) {
     netStatus(err.message, true);
     toMenu();
@@ -939,10 +1001,12 @@ async function hostOnline({ lobby = true } = {}) {
   return true;
 }
 
-async function joinOnline({ agent = null } = {}) {
+// Join the code typed in, or `room` over `transport` (a server picked from the list).
+async function joinOnline({ agent = null, room: pick = null, transport: via = null } = {}) {
   autoAgent = AGENTS[agent] ? agent : null;
   joining = null;
-  const { transport, room } = readOnlineForm();
+  let { transport, room } = readJoinForm();
+  if (pick) { room = cleanRoom(pick); transport = via || transport; }
   if (!room) { netStatus('Enter the host\'s room code', true); return; }
   if (running) toMenu();
   try {
@@ -972,7 +1036,12 @@ async function joinedMatch(w) {
   $('pause-hint').textContent = 'Joined. Click Resume to play.';
 }
 
-$('menu-online').onclick = openOnline;
+$('menu-online').onclick = () => openOnline();
+$('srv-tab-join').onclick = () => serverTab('join');
+$('srv-tab-create').onclick = () => serverTab('create');
+$('srv-refresh').onclick = () => servers.refresh();
+$('net-mode').onchange = fillServerMaps;
+$('net-code').onkeydown = (e) => { if (e.key === 'Enter') joinOnline(); };
 $('online-back').onclick = () => show(running ? 'pause' : 'menu');
 $('net-newroom').onclick = () => { $('net-room').value = roomCode(); };
 $('net-host').onclick = () => hostOnline();
@@ -1228,8 +1297,8 @@ function inspectHint() {
   const el = $('inspecthint');
   el.hidden = !i;
   if (!i) return;
-  el.innerHTML = i.examine ? `<b>Examine</b>move the mouse to turn it · release <kbd>Y</kbd> to put it back`
-    : `<b>${escHtml(i.name)}</b>${i.count > 1 ? `${i.idx + 1}/${i.count}<kbd>Y</kbd>next` : ''}<kbd>hold Y</kbd>examine`;
+  el.innerHTML = i.examine ? `<b>Examine</b>move the mouse to turn it · release <kbd>${key('inspect')}</kbd> to put it back`
+    : `<b>${escHtml(i.name)}</b>${i.count > 1 ? `${i.idx + 1}/${i.count}<kbd>${key('inspect')}</kbd>next` : ''}<kbd>hold ${key('inspect')}</kbd>examine`;
 }
 
 function frame(t) {

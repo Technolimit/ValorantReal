@@ -189,8 +189,8 @@ export class Sound {
   constructor() {
     this.ctx = null;
     this.volume = 0.6;
-    // Sound files that replace the synth: 'vandal:fire' is your own upload (this browser only), 'vandal:fire@game'
-    // the game's own file from sounds/index.json (everyone). Yours wins. See customsounds.js.
+    // Sound files that replace the synth: 'vandal:fire@game' is the game's own file from sounds/index.json
+    // (see customsounds.js). A plain 'vandal:fire' clip, if one is set, wins over it.
     this.clips = new Map(); // key -> AudioBuffer
     this.clipData = new Map(); // ...and their file bytes, kept until there's an AudioContext to decode them
   }

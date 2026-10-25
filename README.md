@@ -25,8 +25,15 @@ Offline 5v5 uses the same pick screen: you lock in, then the nine bots pick.
 
 ## Online play (no server)
 
-Main menu → **Online**. One player hosts, the others join with the room code. The host picks the mode;
-abilities work in both modes.
+Main menu → **Online** opens the server screen.
+
+- **Create server:** name it, pick the mode, map and max players (2 to 10), and who can join (anyone with
+  the code over the internet, or tabs of this browser). Your browser hosts it; the room code shows on the pick screen.
+- **Join a server:** servers open in other tabs of this browser are listed (hosts announce themselves on a
+  BroadcastChannel, `js/servers.js`). Servers on other computers can't be listed without a central server
+  that keeps the list, so you join those with the host's room code.
+
+Abilities work in both modes.
 
 - **Agent select:** the room opens on a Valorant-style pick screen. People who join show up in the team strip
   and can lock in right away; when the host presses Start, a 60 s timer runs (it ends early once everyone has

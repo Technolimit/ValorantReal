@@ -169,9 +169,11 @@ export class NetSession {
   // ---- lifecycle ----
   // With a `lobby` (agentselect.js) the room opens on the pick screen and the match starts later, from
   // startFromLobby(). Without one the host's match is already running and people join it directly.
-  async host({ transport, room, profile, mapJSON, lobby = null }) {
+  // `server` is what the server browser shows ({ name, max }); max caps the people in the room, host included.
+  async host({ transport, room, profile, mapJSON, lobby = null, server = {} }) {
     this.close();
-    this.room = room; this.profile = profile; this.mapJSON = mapJSON;
+    this.room = room; this.profile = profile; this.mapJSON = mapJSON; this.transport = transport;
+    this.server = { name: cleanName(server.name || `${profile.name}'s server`, 32), max: clampInt(server.max ?? 10, 2, 10) };
     this.t = transport === 'peer' ? new PeerTransport(room, this.nid, true) : new LocalTransport(room, this.nid);
     this.cb.onStatus(transport === 'peer' ? 'Connecting to the PeerJS broker…' : 'Opening room…');
     await this.t.open();
@@ -458,7 +460,7 @@ export class NetSession {
       const p = this.peers.get(id);
       if (p) { if (m.k === 'hello') this.t.send(this.welcome(id, p), id); return; }
       // Joining mid-match: pick an agent first (the ones in use are greyed out), then join with it.
-      if (this.rounds && this.joinTeam() < 0) { this.t.send({ k: 'full' }, id); return; }
+      if ((this.rounds && this.joinTeam() < 0) || this.humanCount() >= this.server.max) { this.t.send({ k: 'full' }, id); return; }
       const taken = this.takenForJoiner();
       if (m.k === 'peek' || !AGENTS[m.agent] || taken.includes(m.agent)) { this.t.send(this.pickInfo(taken, m.k === 'hello' && !!m.agent, m.k === 'hello'), id); return; }
       this.admit(id, m);
@@ -532,6 +534,19 @@ export class NetSession {
     return p;
   }
 
+  // People in the room, host included.
+  humanCount() { return this.lobby ? this.lobby.humans.length : 1 + this.peers.size; }
+
+  // What the server browser lists for this room (servers.js).
+  serverInfo() {
+    if (this.role !== 'host') return null;
+    const g = this.game, L = this.lobby;
+    return {
+      room: this.room, transport: this.transport, name: this.server.name, max: this.server.max, players: this.humanCount(),
+      mode: L ? L.mode : this.rounds ? 'rounds' : 'dm', map: L ? L.mapName : g.map?.name || g.map?.id || '', phase: L ? 'pick' : 'playing',
+    };
+  }
+
   // 5v5: the team a mid-match joiner goes on (fewer people, ties to team 0), or -1 if no bot is left to replace.
   joinTeam() {
     const g = this.game, humans = [0, 0];
@@ -559,7 +574,7 @@ export class NetSession {
     if (m.k === 'hello') {
       if (!L.get(id)) {
         if (!L.open) { this.t.send({ k: 'wait' }, id); return; } // the pick is finishing: they join the match once it starts
-        if (!L.add(id, cleanName(m.name))) { this.t.send({ k: 'full' }, id); return; }
+        if (this.humanCount() >= this.server.max || !L.add(id, cleanName(m.name))) { this.t.send({ k: 'full' }, id); return; }
         this.cb.onStatus(`${cleanName(m.name)} joined room ${this.room}`);
       }
       this.lobbyPeers.set(id, { profile: m, seenWall: performance.now() });
@@ -764,7 +779,7 @@ export class NetSession {
   clientRecv(m) {
     const g = this.game;
     if (this.role === 'joining' || this.role === 'lobby' || this.role === 'picking') {
-      if (m.k === 'full' && m.to === this.nid) { this.cb.onStatus('That match is full (ten players)'); this.close(); return; }
+      if (m.k === 'full' && m.to === this.nid) { this.cb.onStatus('That server is full'); this.close(); return; }
       if (m.k === 'bye' && m.from === this.hostId) { this.hostGone(); return; }
       if (m.k === 'wait' && m.to === this.nid) { clearTimeout(this.joinDeadline); this.joinDeadline = setTimeout(() => this.noHost(), 12000); return; }
       if (m.k === 'lobby' && this.role !== 'picking' && m.s?.players?.some(p => p.n === this.nid)) { this.enterLobby(m); return; }
@@ -1078,7 +1093,7 @@ export function netStep(c, dt) {
   c.lastFootY = c.pos[1];
 }
 
-const cleanName = (n) => String(n || 'Player').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 16) || 'Player';
+const cleanName = (n, len = 16) => String(n || 'Player').replace(/[\u0000-\u001f]/g, '').trim().slice(0, len) || 'Player';
 const cleanColor = (n) => (Number.isInteger(n) && n >= 0 && n <= 0xffffff ? n : 0x6aa7ff);
 
 // Another player's skins: preset ids are used as they are; their custom skins are registered under a
