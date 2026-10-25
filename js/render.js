@@ -1078,10 +1078,28 @@ export class Renderer {
   syncCharacters() {
     for (const ch of this.characters.values()) this.scene.remove(ch.group);
     this.characters.clear();
-    for (const c of this.game.combatants) {
-      if (c === this.game.player) continue;
-      this.characters.set(c, this.makeCharacter(c));
+    // Your own body too: it is only drawn while your view is somewhere else (camera, piloted gadget, Nightwalk).
+    for (const c of this.game.combatants) this.characters.set(c, this.makeCharacter(c));
+    this.warmShaders();
+  }
+
+  // Compile the shaders that otherwise first build mid-fight (reveal glow, pulse rings) at match start,
+  // so the first tracking dart or reveal doesn't hitch the frame.
+  warmShaders() {
+    const geo = new THREE.BoxGeometry(0.01, 0.01, 0.01), keep = [];
+    const ring = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    keep.push(ring);
+    for (const ch of this.characters.values()) {
+      // A revealed body: the same materials, see-through and drawn over walls.
+      const m = ch.body.material.clone(); m.depthTest = false; m.transparent = true; m.opacity = 0.9;
+      keep.push(new THREE.Mesh(geo, m));
+      break;
     }
+    // A real (off-screen) draw, not renderer.compile: see-through double-sided meshes are drawn in two passes,
+    // back faces then front, and each pass has its own shader.
+    for (const m of keep) { m.position.set(0, -500, 0); m.frustumCulled = false; this.scene.add(m); }
+    this.renderer.render(this.scene, this.camera);
+    for (const m of keep) this.scene.remove(m); // not disposed: disposing a material throws its shader away too
   }
 
   makeCharacter(c) {
@@ -1420,6 +1438,7 @@ export class Renderer {
     // Nightwalk: while channelling, your view is already at the destination; your body stays behind.
     const shade = p.alive && p.kit?.shadow?.phase === 'channel' ? { pos: p.kit.shadow.dest, kind: 'shade' } : null;
     const ride = p.alive && (p.kit?.pilot || p.kit?.view || shade);
+    this.riding = !!ride;
     if (ride) cam.position.set(ride.pos[0], ride.pos[1] + (ride.kind === 'cam' || ride.kind === 'sdrone' || ride.kind === 'owl' ? 0 : ride.kind === 'shade' ? 1.7 : 0.7), ride.pos[2]);
     // Shade: the view flies out with the smoke marker, through walls, and the world turns to shadow so you
     // can see where it will land (characters are hidden: it shows the map, not enemies).
@@ -1606,6 +1625,7 @@ export class Renderer {
     this.bloomSet = pk?.id === 'fawn' && this.game.player.alive && (pk.regrow || pk.charges.c > 0) ? new Set(bloomTargets(this.game.player)) : null;
     for (const ch of this.characters.values()) {
       const c = ch.c;
+      if (c === this.game.player && !(c.alive && this.riding)) { ch.group.visible = false; continue; } // first person: no body of your own
       if (!c.alive) {
         if (ch.deathT) {
           const t = (now - ch.deathT) / 450;
