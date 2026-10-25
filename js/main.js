@@ -8,6 +8,7 @@ import { DT, YAW_PER_COUNT } from './config.js';
 import { WEAPONS, BUY_GROUPS } from './weapons.js';
 import { SKINS, SKIN_ORDER, skinFor, swatch, isCustom, saveCustomSkin, deleteCustomSkin, skinCode, parseSkinCode, sanitizeSkin, registerSkin, PATTERNS } from './skins.js';
 import { GunPreview } from './models.js';
+import { MELEE, MELEE_ORDER, isMelee, meleeId } from './melee.js';
 import { RELOAD_STYLE, RELOAD_SOUNDS } from './reloadanim.js';
 import { AGENTS, AGENT_ORDER, Kit } from './abilities.js';
 import { ROUND } from './rounds.js';
@@ -66,7 +67,7 @@ const look = { dx: 0, dy: 0 };
 const isPlayer = (who) => who === game.player;
 
 // ---- sound hooks ----
-game.on('shot', ({ who, gun }) => sound.gunshot(gun.def, isPlayer(who) ? null : who.eye()));
+game.on('shot', ({ who, gun }) => sound.gunshot(gun.def, isPlayer(who) ? null : who.eye(), gun));
 game.on('footstep', ({ who }) => sound.footstep(isPlayer(who) ? null : who.pos, isPlayer(who)));
 game.on('land', ({ who }) => sound.land(isPlayer(who) ? null : who.pos, isPlayer(who)));
 game.on('hit', ({ attacker, target, part, killed, dot }) => {
@@ -165,7 +166,7 @@ addEventListener('keydown', (e) => {
   const p = game.player, inp = p.input;
   if (e.code === 'KeyB') { toggleBuy(); return; }
   if (e.code === 'KeyM') { minimap.big = !minimap.big; return; }
-  if (e.code === 'KeyY') { renderer.inspect(); return; }
+  if (e.code === 'KeyY') { renderer.inspect(); return; } // press again to chain the next inspect, hold to examine
   if (e.code === 'KeyG') { if (p.alive) game.dropGun(p, p.slot, true); return; }
   if (e.code === 'F2') { if (!net.active) openAgents(true); return; } // change agent mid-match (offline only: other players' copies keep your agent)
   if (e.code === 'Tab') { $('scoreboard').hidden = false; return; }
@@ -192,6 +193,7 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => {
   keys.delete(e.code);
   if (e.code === 'Tab') $('scoreboard').hidden = true;
+  if (e.code === 'KeyY') renderer.inspectRelease();
 });
 
 addEventListener('blur', releaseInputs);
@@ -229,6 +231,8 @@ document.addEventListener('mousemove', (e) => {
   }
   const p = game.player;
   if (!p || !p.alive) return;
+  // Examining a weapon (inspect held): the mouse turns the weapon, not you.
+  if (renderer.examining()) { renderer.examineLook(e.movementX, e.movementY * (settings.invertY ? -1 : 1)); return; }
   const gun = p.gun;
   const zoom = gun.adsT > 0.5 ? gun.targetZoom() : 1;
   // Same scale as Valorant: 0.07 degrees per count times sensitivity; zoomed views scale by 1/zoom.
@@ -491,7 +495,7 @@ function closeSkins() {
 function buildSkinWeapons() {
   const nav = $('skin-weapons');
   nav.innerHTML = '';
-  const groups = [...BUY_GROUPS, ['Melee', ['knife']]];
+  const groups = [...BUY_GROUPS, ['Melee', MELEE_ORDER]];
   for (const [title, ids] of groups) {
     const h = document.createElement('h3');
     h.textContent = title;
@@ -499,15 +503,24 @@ function buildSkinWeapons() {
     for (const id of ids) {
       const b = document.createElement('button');
       b.dataset.id = id;
-      b.innerHTML = `<span>${WEAPONS[id].name}</span><small>${escHtml(SKINS[skinFor(settings, id)].name)}</small>`;
+      const worn = isMelee(id) && meleeId(settings.melee) === id ? ' · <em>equipped</em>' : '';
+      b.innerHTML = `<span>${weaponName(id)}</span><small>${escHtml(SKINS[skinFor(settings, id)].name)}${worn}</small>`;
       b.onclick = () => selectSkinWeapon(id);
       nav.appendChild(b);
     }
   }
 }
 
+// Weapons and melee types share the skin menu (the knife is both).
+const weaponName = (id) => MELEE[id]?.name || WEAPONS[id]?.name || id;
+
 function selectSkinWeapon(id) {
+  // Picking a melee type in the menu equips it (it's what shows in your knife slot).
+  if (isMelee(id) && meleeId(settings.melee) !== id) { settings.melee = id; saveSettings(settings); skinWeapon = id; buildSkinWeapons(); }
   skinWeapon = id;
+  inspectIdx = 0;
+  $('skin-inspect').hidden = !isMelee(id);
+  $('skin-inspect').textContent = 'Play inspect';
   for (const b of $('skin-weapons').querySelectorAll('button')) b.classList.toggle('sel', b.dataset.id === id);
   const grid = $('skin-grid');
   grid.innerHTML = '';
@@ -528,8 +541,8 @@ function selectSkinWeapon(id) {
 
 function showSkin(id, sid) {
   preview.show(id, sid);
-  $('skin-title').textContent = `${SKINS[sid].name} ${WEAPONS[id].name}`;
-  $('skin-sub').textContent = SKINS[sid].blurb;
+  $('skin-title').textContent = `${SKINS[sid].name} ${weaponName(id)}`;
+  $('skin-sub').textContent = isMelee(id) && sid === 'standard' ? MELEE[id].blurb : SKINS[sid].blurb;
 }
 
 function applySkin(id, sid) {
@@ -545,7 +558,7 @@ $('pause-agent').onclick = () => openAgents(true);
 $('skins-back').onclick = closeSkins;
 $('skin-all').onclick = () => {
   const sid = skinFor(settings, skinWeapon);
-  for (const id of Object.keys(WEAPONS)) { if (sid === 'standard') delete settings.skins[id]; else settings.skins[id] = sid; }
+  for (const id of [...Object.keys(WEAPONS), ...MELEE_ORDER]) { if (sid === 'standard') delete settings.skins[id]; else settings.skins[id] = sid; }
   saveSettings(settings);
   buildSkinWeapons();
   selectSkinWeapon(skinWeapon);
@@ -557,6 +570,15 @@ $('skin-reset').onclick = () => {
   selectSkinWeapon(skinWeapon);
 };
 addEventListener('keydown', (e) => { if (e.code === 'Escape' && !$('skins').hidden) closeSkins(); });
+// Melee types: play their inspects on the showcase, one after another.
+let inspectIdx = 0;
+$('skin-inspect').onclick = () => {
+  const list = MELEE[skinWeapon]?.inspects;
+  if (!list) return;
+  const ins = list[inspectIdx++ % list.length];
+  preview.inspect(ins);
+  $('skin-inspect').textContent = `Inspect: ${ins.name} (${(inspectIdx - 1) % list.length + 1}/${list.length})`;
+};
 
 // ---- agent select ----
 let pickedAgent = settings.agent;
@@ -746,8 +768,8 @@ $('quit').onclick = toMenu;
 $('settings-back').onclick = () => show(settingsReturn);
 $('settings-reset').onclick = () => {
   const loadout = settings.loadout;
-  const skins = settings.skins;
-  Object.assign(settings, DEFAULTS, { loadout, skins });
+  const skins = settings.skins, melee = settings.melee;
+  Object.assign(settings, DEFAULTS, { loadout, skins, melee });
   saveSettings(settings);
   for (const k of Object.keys(DEFAULTS)) applySettings(k);
   hud.chKey = '';
@@ -785,7 +807,7 @@ function updateNetBadge() {
 function netProfile() {
   const skinDefs = {};
   for (const sid of Object.values(settings.skins)) if (isCustom(sid) && SKINS[sid]) skinDefs[sid] = SKINS[sid];
-  return { name: settings.netName, color: parseInt(settings.netColor.slice(1), 16), loadout: { ...settings.loadout }, skins: { ...settings.skins }, skinDefs };
+  return { name: settings.netName, color: parseInt(settings.netColor.slice(1), 16), loadout: { ...settings.loadout }, skins: { ...settings.skins }, skinDefs, melee: meleeId(settings.melee) };
 }
 
 function readOnlineForm() {
@@ -1007,7 +1029,7 @@ function openEditor(id = null) {
     settings.skins[skinWeapon] = sid;
     saveSettings(settings);
     closeEditor();
-    skinStatus(`Saved "${SKINS[sid].name}" and put it on the ${WEAPONS[skinWeapon].name}.`);
+    skinStatus(`Saved "${SKINS[sid].name}" and put it on the ${weaponName(skinWeapon)}.`);
   };
   $('ed-cancel').onclick = closeEditor;
   $('ed-random').onclick = () => {
@@ -1027,7 +1049,7 @@ function openEditor(id = null) {
 function previewDraft() {
   registerSkin('__draft', sanitizeSkin(editing.def), { temporary: true });
   preview.show(skinWeapon, '__draft');
-  $('skin-title').textContent = `${editing.def.name} ${WEAPONS[skinWeapon].name}`;
+  $('skin-title').textContent = `${editing.def.name} ${weaponName(skinWeapon)}`;
   $('skin-sub').textContent = editing.def.blurb;
 }
 
@@ -1117,6 +1139,20 @@ try {
   };
 } catch { /* no workers: hidden tabs just pause */ }
 
+// While inspecting: which inspect is playing and what the key does next.
+let inspectKey = '';
+function inspectHint() {
+  const i = renderer.inspectInfo();
+  const key = i ? `${i.name}|${i.idx}|${i.examine}` : '';
+  if (key === inspectKey) return;
+  inspectKey = key;
+  const el = $('inspecthint');
+  el.hidden = !i;
+  if (!i) return;
+  el.innerHTML = i.examine ? `<b>Examine</b>move the mouse to turn it · release <kbd>Y</kbd> to put it back`
+    : `<b>${escHtml(i.name)}</b>${i.count > 1 ? `${i.idx + 1}/${i.count}<kbd>Y</kbd>next` : ''}<kbd>hold Y</kbd>examine`;
+}
+
 function frame(t) {
   requestAnimationFrame(frame);
   let dt = (t - last) / 1000;
@@ -1128,6 +1164,7 @@ function frame(t) {
     renderer.render(Math.min(1, acc / DT), dt, look);
     hud.specTarget = renderer.specTarget;
     hud.update(dt, look);
+    inspectHint();
     spikeBeeps(); rhud.update(dt);
     minimap.update();
     sound.setListener(game.player.eye(), game.player.yaw);

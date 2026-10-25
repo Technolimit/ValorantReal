@@ -17,6 +17,8 @@ It also works as-is on any static host (GitHub Pages, Netlify, an S3 bucket).
 `playwright`). Pass `--offline` to skip the two-tab online checks. `node tools/check-agent-select.mjs` checks the
 agent select: the pick rules, offline 5v5, and an online room with a player joining mid-match. `node tools/check-spike.mjs`
 checks that bots carry the spike out of spawn and plant it on Divide.
+`node tools/render-guns.mjs [out-dir]` renders every gun's firing sound to WAV (through the game's own synth) so
+you can listen to and compare them outside the game.
 
 Offline 5v5 uses the same pick screen: you lock in, then the nine bots pick.
 
@@ -77,3 +79,9 @@ the game (stored in the browser's localStorage). **Maps → Download** saves any
 metallic for each part, 13 procedural patterns with their own colours, and glow. Custom skins are saved in
 localStorage and can be shared as a `TFSKIN1.…` code or exported/imported as JSON. Bots wear random
 presets, and other online players see your skins.
+
+**Melee types** (Skins → Melee): Tactical Knife, Hatchet, Katana, Karambit, Balisong, Kunai and Arc Blade.
+Picking one equips it in your knife slot (they all hit like the knife; it's cosmetic), and each takes any
+finish. Each has three inspects (`js/melee.js`): press **Y** to inspect, press it again mid-inspect to chain
+into the next one, and hold it to examine the weapon with the mouse. The skin menu's *Play inspect* button
+previews them. Bots carry random melee types, and other online players see yours.

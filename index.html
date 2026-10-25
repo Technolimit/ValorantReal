@@ -100,6 +100,9 @@ button { font: inherit; }
 #veil { position: absolute; inset: 0; background: radial-gradient(circle, rgba(196, 214, 228, 0.88), rgba(150, 170, 190, 0.97)); opacity: 0; }
 #speedlines { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle, transparent 45%, rgba(220, 240, 255, 0.35) 75%, rgba(220, 240, 255, 0.6)); }
 #pickhint { position: absolute; left: 50%; top: calc(50% + 46px); transform: translateX(-50%); font-size: 13px; letter-spacing: 1px; text-shadow: 0 1px 3px #000; background: rgba(0,0,0,0.4); padding: 4px 10px; border-radius: 3px; }
+#inspecthint { position: absolute; left: 50%; top: calc(50% + 78px); transform: translateX(-50%); font-size: 12px; letter-spacing: 1px; text-shadow: 0 1px 3px #000; color: var(--muted); white-space: nowrap; }
+#inspecthint b { color: var(--text); letter-spacing: 2px; margin-right: 10px; text-transform: uppercase; }
+#inspecthint kbd { font: 700 11px system-ui, sans-serif; border: 1px solid var(--line); padding: 0 4px; margin: 0 3px 0 8px; color: var(--text); }
 #pickhint kbd { font: 700 12px system-ui, sans-serif; border: 1px solid var(--line); padding: 0 5px; margin-right: 6px; }
 #minimap { position: absolute; left: 16px; top: 14px; width: 210px; height: 210px; background: rgba(10, 16, 24, 0.55); border: 1px solid var(--line); border-radius: 4px; }
 #minimap.big { left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(8, 12, 18, 0.88); box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35); z-index: 5; }
@@ -437,6 +440,7 @@ th { color: var(--muted); font-weight: 500; }
   <canvas id="spray" hidden></canvas>
   <canvas id="minimap" hidden></canvas>
   <div id="pickhint" hidden></div>
+  <div id="inspecthint" hidden></div>
   <pre id="debug" hidden></pre>
   <div id="death" hidden>
     <div id="death-title"></div>
@@ -490,7 +494,7 @@ th { color: var(--muted); font-weight: 500; }
       <dt>Abilities</dt><dd>C Q E, X ultimate (see agent select)</dd>
       <dt>Change agent</dt><dd>F2 (mid-match too)</dd>
       <dt>Loadout</dt><dd>B (deathmatch)</dd>
-      <dt>Inspect weapon</dt><dd>Y</dd>
+      <dt>Inspect weapon</dt><dd>Y (again: next inspect, hold: examine with the mouse)</dd>
       <dt>Full map</dt><dd>M</dd>
       <dt>Drop / pick up weapon</dt><dd>G / F (walk over a gun to take it into an empty slot)</dd>
       <dt>Scores</dt><dd>Tab</dd>
@@ -583,7 +587,7 @@ th { color: var(--muted); font-weight: 500; }
         <div id="skin-editor" hidden></div>
         <div class="skin-actions" id="skin-actions">
           <button id="skin-all">Use this skin on every weapon</button><button id="skin-reset">Reset all to Standard Issue</button>
-          <button id="skin-new">New custom skin</button><button id="skin-edit" hidden>Edit</button><button id="skin-delete" hidden>Delete</button>
+          <button id="skin-inspect" hidden>Play inspect</button><button id="skin-new">New custom skin</button><button id="skin-edit" hidden>Edit</button><button id="skin-delete" hidden>Delete</button>
           <button id="skin-share">Copy share code</button><button id="skin-paste">Paste share code</button>
           <button id="skin-export">Export file</button><label class="mini" for="skin-import" style="display:inline-flex;align-items:center">Import file<input id="skin-import" type="file" accept=".json,application/json" hidden></label>
         </div>

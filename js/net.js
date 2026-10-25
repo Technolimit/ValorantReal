@@ -23,6 +23,7 @@ import { applyCast } from './botkit.js';
 import { Bot, BOT_NAMES } from './bot.js';
 import { TEAM_COLORS } from './rounds.js';
 import { sanitizeSkin, registerSkin, SKINS } from './skins.js';
+import { MELEE, meleeId } from './melee.js';
 import { takenAgents } from './agentselect.js';
 
 // TIMEOUT: silence that counts as gone. LOAD_TIMEOUT: a joiner's first message can take this long, since it
@@ -647,6 +648,7 @@ export class NetSession {
     c.remote = true; c.nid = nid;
     c.skinMap = importSkins(nid, info.skins, info.skinDefs);
     c.netSkins = { skins: info.skins, skinDefs: info.skinDefs };
+    if (info.melee !== undefined || !c.isBot) c.meleeType = meleeId(info.melee);
     c.kit = new Kit(c, AGENTS[info.agent] ? info.agent : 'zephyr');
   }
 
@@ -731,6 +733,7 @@ export class NetSession {
       a: c.kit?.id || null, t: c.team ?? 0,
       skins: c === g.player ? this.profile.skins : c.netSkins?.skins || c.skinMap,
       skinDefs: c === g.player ? this.profile.skinDefs : c.netSkins?.skinDefs,
+      m: c === g.player ? this.profile.melee : c.meleeType,
     }));
   }
 
@@ -914,7 +917,7 @@ export class NetSession {
       let c = this.byNid.get(r.n);
       if (!c) {
         c = new Combatant(g, { name: cleanName(r.name), isBot: !!r.bot, color: cleanColor(r.color) });
-        this.dress(c, r.n, { skins: r.skins, skinDefs: r.skinDefs, agent: r.a });
+        this.dress(c, r.n, { skins: r.skins, skinDefs: r.skinDefs, agent: r.a, melee: r.m });
         c.loadout = { primary: null, secondary: 'classic' };
         c.alive = false;
         g.combatants.push(c);
@@ -1082,8 +1085,8 @@ const cleanColor = (n) => (Number.isInteger(n) && n >= 0 && n <= 0xffffff ? n : 
 function importSkins(nid, skins, defs) {
   const out = {};
   if (!skins || typeof skins !== 'object') return out;
-  for (const [weapon, sid] of Object.entries(skins).slice(0, 40)) {
-    if (!WEAPONS[weapon] || typeof sid !== 'string') continue;
+  for (const [weapon, sid] of Object.entries(skins).slice(0, 60)) {
+    if ((!WEAPONS[weapon] && !MELEE[weapon]) || typeof sid !== 'string') continue;
     if (SKINS[sid] && !sid.startsWith('custom-')) { out[weapon] = sid; continue; }
     const def = defs?.[sid] && sanitizeSkin(defs[sid]);
     if (!def) continue;

@@ -3,6 +3,7 @@ import { priceOf } from './prices.js';
 import { WEAPONS, BUY_GROUPS } from './weapons.js';
 import { PLAYER, TICK_RATE } from './config.js';
 import { patternPreview } from './gun.js';
+import { MELEE } from './melee.js';
 import { AGENTS, SMOKE, BLADES, BEAMS, insideSlab, bloomTargets, BLOOM } from './abilities.js';
 
 const DEG = Math.PI / 180;
@@ -146,7 +147,7 @@ export class Hud {
     else if (beams) { this.set('mag', beams.left); this.set('reserve', ` / ${BEAMS.count}`); }
     else if (def.melee) { this.set('mag', '—'); this.set('reserve', ''); }
     else { this.set('mag', gun.mag); this.set('reserve', ` / ${gun.reserve}`); }
-    this.set('wname', blades ? BLADES.name : beams ? BEAMS.name : def.name);
+    this.set('wname', blades ? BLADES.name : beams ? BEAMS.name : def.id === 'knife' ? MELEE[this.renderer.meleeOf(sv)].name : def.name);
     this.updateShadowMap(p);
     // "F: pick up" when looking at a dropped gun.
     const look = p.alive && this.game.drops?.length ? this.game.dropInView(p) : null;
