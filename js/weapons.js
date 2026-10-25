@@ -38,7 +38,7 @@ export const WEAPONS = {
   // Sidearms
   classic: {
     name: 'Classic', cat: 'Sidearm', slot: 'secondary', cost: 0, model: 'pistol', auto: false,
-    rate: 6.75, mag: 12, reserve: 36, reload: 1.75, equip: 0.75, pen: 'low', move: LIGHT_MOVE,
+    rate: 6.75, mag: 12, reserve: 36, reload: 2.25, equip: 0.75, pen: 'low', move: LIGHT_MOVE,
     dmg: [[30, 78, 26, 22], [50, 66, 22, 18]],
     spread: { hip: 0.4, ads: 0.4, run: 1.1, walk: 0.75, air: 3.0, deadzone: 0.3 },
     fe: { max: 1.6, start: 1, end: 5 }, recovery: 0.22,
@@ -65,7 +65,7 @@ export const WEAPONS = {
   },
   ghost: {
     name: 'Ghost', cat: 'Sidearm', slot: 'secondary', cost: 500, model: 'pistol', auto: false, suppressed: true,
-    rate: 6.75, mag: 15, reserve: 45, reload: 1.5, equip: 0.75, pen: 'medium', move: LIGHT_MOVE,
+    rate: 6.75, mag: 15, reserve: 45, reload: 2.25, equip: 0.75, pen: 'medium', move: LIGHT_MOVE,
     dmg: [[30, 105, 30, 25], [50, 87, 25, 21]],
     spread: { hip: 0.3, ads: 0.2, run: 1.6, walk: 1.0, air: 3.5, deadzone: 0.3 },
     fe: { max: 1.2, start: 1, end: 5 }, recovery: 0.22,
@@ -105,7 +105,7 @@ export const WEAPONS = {
   // Shotguns
   bucky: {
     name: 'Bucky', cat: 'Shotgun', slot: 'primary', cost: 850, model: 'shotgun', auto: false,
-    rate: 1.1, mag: 5, reserve: 10, reload: 2.5, perRound: { first: 0.3, each: 0.44 }, equip: 1.0, pen: 'low', move: LIGHT_MOVE, pellets: 15,
+    rate: 1.1, mag: 5, reserve: 10, reload: 2.5, perRound: { first: 0.3, each: 0.5 }, equip: 1.0, pen: 'low', move: LIGHT_MOVE, pellets: 15,
     dmg: [[8, 40, 20, 17], [12, 26, 13, 11], [50, 18, 9, 7]],
     spread: { hip: 3.0, ads: 3.0, run: 0.5, walk: 0.3, air: 1.5, deadzone: 0.3 },
     fe: { max: 0, start: 0, end: 1 }, recovery: 0.5,
@@ -114,7 +114,7 @@ export const WEAPONS = {
   },
   judge: {
     name: 'Judge', cat: 'Shotgun', slot: 'primary', cost: 1850, model: 'shotgun', auto: true,
-    rate: 3.5, mag: 7, reserve: 21, reload: 2.2, equip: 1.0, pen: 'medium', move: LIGHT_MOVE, pellets: 12,
+    rate: 3.5, mag: 7, reserve: 21, reload: 2.25, equip: 1.0, pen: 'medium', move: LIGHT_MOVE, pellets: 12,
     dmg: [[10, 34, 17, 14], [15, 26, 13, 11], [50, 20, 10, 8]],
     spread: { hip: 2.5, ads: 2.5, run: 0.5, walk: 0.3, air: 1.5, deadzone: 0.3 },
     fe: { max: 0.6, start: 1, end: 4 }, recovery: 0.4,
