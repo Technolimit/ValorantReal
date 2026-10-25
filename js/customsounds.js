@@ -2,7 +2,7 @@
 // Keys look like 'vandal:fire'. Values: { name, data: ArrayBuffer }.
 
 const DB = 'tapfire-sounds', STORE = 'clips';
-export const SLOTS = [['fire', 'Fire'], ['reload', 'Reload'], ['equip', 'Equip']];
+export const SLOTS = [['fire', 'Fire'], ['reload', 'Reload'], ['equip', 'Equip'], ['inspect', 'Inspect']];
 export const MAX_BYTES = 4 * 1024 * 1024;
 
 let dbp = null;

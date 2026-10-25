@@ -503,7 +503,7 @@ export class Sound {
   // A reload sound file, fitted to the reload: a clip up to 15% too long is sped up to fit, anything left over
   // fades out as the reload finishes, and a cancelled reload (weapon swap) cuts it off.
   reloadClip(clip, duration) {
-    this.stopReload();
+    this.stopAction();
     const c = this.ctx, t = c.currentTime, g = c.createGain();
     g.gain.value = 0.6;
     g.connect(this.master);
@@ -515,13 +515,26 @@ export class Sound {
       g.gain.linearRampToValueAtTime(0.0001, t + duration);
       src.stop(t + duration + 0.02);
     }
-    this.reloading = { src, g };
+    this.action = { src, g };
   }
 
-  stopReload() {
-    if (!this.reloading || !this.ctx) return;
-    const { src, g } = this.reloading, t = this.ctx.currentTime;
-    this.reloading = null;
+  // Inspect sound for a gun, if it has a file (inspects are quiet, so it plays a little louder). Shooting or
+  // swapping cuts it off.
+  inspect(id) {
+    const clip = this.ctx && this.clip(`${id}:inspect`);
+    if (!clip) return;
+    this.stopAction();
+    const g = this.ctx.createGain();
+    g.gain.value = 1.1;
+    g.connect(this.master);
+    this.action = { src: this.playClip(clip, g), g };
+  }
+
+  // Stop the reload or inspect sound that's playing.
+  stopAction() {
+    if (!this.action || !this.ctx) return;
+    const { src, g } = this.action, t = this.ctx.currentTime;
+    this.action = null;
     g.gain.cancelScheduledValues(t);
     g.gain.setValueAtTime(g.gain.value, t);
     g.gain.linearRampToValueAtTime(0.0001, t + 0.04);
@@ -536,7 +549,7 @@ export class Sound {
 
   equip(id) {
     if (!this.ctx) return;
-    this.stopReload(); // swapping weapons cancels the reload
+    this.stopAction(); // swapping weapons cancels the reload or inspect
     const clip = this.clip(`${id}:equip`);
     if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
     this.noiseHit({ dest: this.master, lp: 1500, hp: 400, decay: 0.08, gain: 0.12 });

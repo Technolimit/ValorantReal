@@ -72,7 +72,7 @@ const look = { dx: 0, dy: 0 };
 const isPlayer = (who) => who === game.player;
 
 // ---- sound hooks ----
-game.on('shot', ({ who, gun }) => sound.gunshot(gun.def, isPlayer(who) ? null : who.eye(), gun));
+game.on('shot', ({ who, gun }) => { if (isPlayer(who)) sound.stopAction(); sound.gunshot(gun.def, isPlayer(who) ? null : who.eye(), gun); });
 game.on('footstep', ({ who }) => sound.footstep(isPlayer(who) ? null : who.pos, isPlayer(who)));
 game.on('land', ({ who }) => sound.land(isPlayer(who) ? null : who.pos, isPlayer(who)));
 game.on('hit', ({ attacker, target, part, killed, dot }) => {
@@ -173,7 +173,12 @@ addEventListener('keydown', (e) => {
   const p = game.player, inp = p.input;
   if (e.code === 'KeyB') { toggleBuy(); return; }
   if (e.code === 'KeyM') { minimap.big = !minimap.big; return; }
-  if (e.code === 'KeyY') { renderer.inspect(); return; } // press again to chain the next inspect, hold to examine
+  if (e.code === 'KeyY') { // press again to chain the next inspect, hold to examine
+    const before = renderer.inspecting;
+    renderer.inspect();
+    if (renderer.inspecting && renderer.inspecting !== before) sound.inspect(renderer.inspecting.gun.def.id);
+    return;
+  }
   if (e.code === 'KeyG') { if (p.alive) game.dropGun(p, p.slot, true); return; }
   if (e.code === 'F2') { if (!net.active) openAgents(true); return; } // change agent mid-match (offline only: other players' copies keep your agent)
   if (e.code === 'Tab') { $('scoreboard').hidden = false; return; }
@@ -466,12 +471,13 @@ function buildSettings() {
 // Settings → Gun sounds: upload your own fire / reload / equip sound per gun, preview it, or go back to the default.
 function buildGunSounds() {
   const root = $('gun-sounds');
-  root.innerHTML = `<h3>Gun sounds</h3><p class="note">Upload your own sound for any gun: mp3, wav or ogg, up to ${MAX_BYTES / 1048576} MB. It's saved in this browser and plays whenever anyone fires that gun (reload and equip are just yours). Blue buttons are the game's own sound files, which every player hears; your upload replaces them for you. ▶ plays the current sound.</p><p id="gun-sounds-msg" class="note warn" hidden></p>`;
+  root.innerHTML = `<h3>Gun sounds</h3><p class="note">Upload your own sound for any gun: mp3, wav or ogg, up to ${MAX_BYTES / 1048576} MB. It's saved in this browser and plays whenever anyone fires that gun (reload, equip and inspect are just yours). Blue buttons are the game's own sound files, which every player hears; your upload replaces them for you. ▶ plays the current sound.</p><p id="gun-sounds-msg" class="note warn" hidden></p>`;
   const msg = (t) => { const m = $('gun-sounds-msg'); m.textContent = t; m.hidden = !t; };
   const play = (id, slot) => {
     sound.init();
     if (slot === 'fire') sound.gunshot(WEAPONS[id], null, {});
     else if (slot === 'reload') sound.reload(WEAPONS[id].reload, RELOAD_SOUNDS[RELOAD_STYLE[id]], id);
+    else if (slot === 'inspect') sound.inspect(id);
     else sound.equip(id);
   };
   const list = document.createElement('div');
