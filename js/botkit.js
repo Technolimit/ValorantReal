@@ -45,7 +45,7 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
 
 export function castable(bot, k, drawing = false) {
   const me = bot.me, kit = me.kit, g = bot.game, now = g.time;
-  if (!kit || !me.alive || kit.busy() || (kit.armed && !drawing) || kit.mapPick || me.st.channelUntil > now || me.st.stunUntil > now || me.st.disarmUntil > now) return false;
+  if (!kit || !me.alive || kit.busy() || (kit.armed && !drawing) || kit.mapPick || me.st.channelUntil > now || me.st.stunUntil > now || me.st.disarmUntil > now || me.st.suppressUntil > now) return false;
   if (g.mode?.phase === 'buy' && !buyPhaseAllows(kit.id, k)) return false;
   if (g.mode?.phase === 'end') return false;
   if (k === 'x') return kit.ultPoints >= kit.ultCost && !kit.rebirth;

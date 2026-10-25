@@ -269,7 +269,7 @@ export class Game {
     this.emit('flash', { pos, owner });
   }
 
-  // Area effect that applies a status to enemies within r of pos: stun, near(sight), reveal.
+  // Area effect that applies a status to enemies within r of pos: stun, near(sight), reveal, suppress.
   pulse(owner, pos, r, type, dur, color, needSight = false) {
     const now = this.time;
     for (const c of this.combatants) {
@@ -279,6 +279,7 @@ export class Game {
       if (type === 'stun') { c.st.stunUntil = now + dur; c.st.slowUntil = now + dur; c.st.slowAmt = 0.4; }
       if (type === 'near') c.st.nearUntil = now + dur;
       if (type === 'reveal') c.st.revealUntil = now + dur;
+      if (type === 'suppress') { c.st.suppressUntil = now + dur; c.st.revealUntil = now + dur; }
       if (type === 'vuln') { c.st.vulnUntil = now + dur; c.st.revealUntil = now + dur; }
       if (type === 'hold') { c.st.slowUntil = now + dur; c.st.slowAmt = 0.95; c.st.revealUntil = now + dur; }
       if (type === 'hinder') c.st.hinderUntil = now + dur;

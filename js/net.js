@@ -592,6 +592,7 @@ export class NetSession {
     const mode = this.game.mode, now = this.game.time, sp = mode.spike;
     return {
       ph: mode.phase, pe: r3(mode.phaseEnd - now), r: mode.round, sc: [...mode.score], ss: mode.startSide,
+      ob: mode.orbs?.map(o => [o.taken ? 1 : 0, r3(o.prog), o.by?.nid || null]),
       sp: sp ? { st: sp.state, pos: sp.pos?.map(r3) || null, car: sp.carrier?.nid || null, pp: r3(sp.plantProg || 0), dp: r3(sp.defuseProg || 0), df: sp.defuser?.nid || null, site: sp.site, pa: r3(now - (sp.plantedAt || 0)), hd: !!sp.halfDone } : null,
       lr: mode.lastResult || null,
     };

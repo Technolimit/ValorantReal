@@ -1134,6 +1134,7 @@ export class Renderer {
     this.updateSmokes();
     this.updateFx2();
     this.updateSpike();
+    this.updateOrbs();
     this.updateNearsight(p);
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
@@ -1245,6 +1246,36 @@ export class Renderer {
       g.userData.light.visible = on;
       g.userData.glow.intensity = inten;
     }
+  }
+
+  // Ultimate orbs: a floating, spinning crystal on a small base until someone takes it.
+  updateOrbs() {
+    const orbs = this.game.mode?.orbs || [];
+    if (this.orbList !== orbs) { // new round or new map: rebuild
+      for (const o of this.orbObjs || []) this.scene.remove(o);
+      this.orbList = orbs;
+      this.orbObjs = orbs.map(o => {
+        const g = new THREE.Group();
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 0.08, 16), new THREE.MeshStandardMaterial({ color: 0x2b2f36, metalness: 0.5, roughness: 0.5 }));
+        base.position.y = 0.04;
+        const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.2), new THREE.MeshStandardMaterial({ color: 0x9be8ff, emissive: 0x4fd1ff, emissiveIntensity: 1.4, transparent: true, opacity: 0.9 }));
+        const glow = new THREE.PointLight(0x4fd1ff, 1.5, 5);
+        glow.position.y = 0.9;
+        g.add(base, gem, glow);
+        g.userData = { gem };
+        g.position.set(...o.pos);
+        this.scene.add(g);
+        return g;
+      });
+    }
+    const t = this.game.time;
+    orbs.forEach((o, i) => {
+      const g = this.orbObjs[i];
+      g.visible = !o.taken;
+      const gem = g.userData.gem;
+      gem.position.y = 0.9 + Math.sin(t * 2 + i) * 0.06;
+      gem.rotation.y = t * (o.prog > 0 ? 6 : 1.5); // spins up while someone takes it
+    });
   }
 
   renderIdle(t) {

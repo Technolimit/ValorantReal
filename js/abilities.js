@@ -1420,23 +1420,23 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'knife', name: 'Zero Point', desc: 'Hold the knife, left click to throw it (30 m). It sticks to the first surface and after 1 s pulses 15 m: enemies caught are revealed (and suppressed) for 8 s.', charges: 1, cooldown: 40,
+        item: 'knife', name: 'Zero Point', desc: 'Hold the knife, left click to throw it (30 m). It sticks to the first surface and after 1 s pulses 15 m: enemies caught are revealed and suppressed (no abilities) for 8 s.', charges: 1, cooldown: 40,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 30, { back: 0.15 });
           const ft = flight(o.eye(), pos, 22), g = o.game;
           g.emit('throw', { who: o, from: o.eye(), to: pos, time: ft, color: 0x6fa8ff });
           later(kit, ft, () => g.addDevice({ kind: 'zknife', owner: o, pos, life: 2 }));
-          later(kit, ft + 1, () => g.pulse(o, pos, 15, 'reveal', 8, 0x6fa8ff));
+          later(kit, ft + 1, () => g.pulse(o, pos, 15, 'suppress', 8, 0x6fa8ff));
         },
       },
       x: {
-        name: 'Overload', desc: 'Overload for 12 s: pulses every 2 s reveal enemies within 30 m, you fire 10% faster — and if you would die, you go down instead and reboot 3 s later at full health.', points: 7,
+        name: 'Overload', desc: 'Overload for 12 s: pulses every 2 s reveal and suppress enemies within 30 m, you fire 10% faster — and if you would die, you go down instead and reboot 3 s later at full health.', points: 7,
         use(kit) {
           const o = kit.owner, g = o.game;
           kit.nullUntil = kit.now + 12;
           kit.nullSaved = false;
           kit.nullArmor = o.armor; // comes back with the shields it had, not free ones
-          for (let t = 0; t < 12; t += 2) mine(kit, t, () => g.pulse(o, o.eye(), 30, 'reveal', 2.5, 0x6fa8ff));
+          for (let t = 0; t < 12; t += 2) mine(kit, t, () => g.pulse(o, o.eye(), 30, 'suppress', 2.5, 0x6fa8ff));
           g.emit('ability', { who: o, type: 'ult' });
         },
       },
@@ -1627,6 +1627,11 @@ export class Kit {
       inp.abQ = inp.abE = inp.abC = inp.abX = false;
       inp.fire = inp.firePressed = inp.altPressed = false;
       this.armed = null;
+    }
+    if (o.st.suppressUntil > now) { // suppressed: guns work, abilities don't
+      if (inp.abQ || inp.abE || inp.abC || inp.abX) g.emit('abilityLocked', { who: o, key: 'suppressed' });
+      inp.abQ = inp.abE = inp.abC = inp.abX = false;
+      if (this.armed) { this.armed = null; o.equip(o.slot, now, true); }
     }
     for (const k of ['q', 'e', 'c']) {
       if (!inp['ab' + k.toUpperCase()]) continue;

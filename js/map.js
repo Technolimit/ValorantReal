@@ -2,7 +2,7 @@
 //
 //   "tapfire-map" v2  everything about a map in one file: solid boxes and/or a character grid, materials,
 //                     sky, fog, sun and lights, spawns for deathmatch and both 5v5 teams, spike sites,
-//                     barriers, ropes, signs, trees, decoration, labels, bot positions and rule tweaks.
+//                     barriers, ultimate orbs, ropes, signs, trees, decoration, labels, bot positions and rule tweaks.
 //                     Bot navigation is worked out from the geometry when the map loads, so any edit to
 //                     the boxes just works.
 //   "grid" / "baked" v1  the older formats; still loaded as before.
@@ -216,7 +216,7 @@ function environmentOf(e = {}, legacy = {}) {
 
 // Friendly rule names in the JSON -> the game's tuning tables (see Game.applyRules).
 const RULE_KEYS = {
-  rounds: { buyTime: 'buy', firstBuyTime: 'firstBuy', roundTime: 'round', spikeTime: 'spike', plantTime: 'plant', defuseTime: 'defuse', defuseHalfway: 'defuseHalf', roundEndTime: 'end', roundsToWin: 'toWin', halftimeAfter: 'half' },
+  rounds: { buyTime: 'buy', firstBuyTime: 'firstBuy', roundTime: 'round', spikeTime: 'spike', plantTime: 'plant', defuseTime: 'defuse', defuseHalfway: 'defuseHalf', orbTime: 'orb', roundEndTime: 'end', roundsToWin: 'toWin', halftimeAfter: 'half' },
   economy: { startCredits: 'start', maxCredits: 'max', winReward: 'win', lossRewards: 'loss', killReward: 'kill', plantReward: 'plant', saveReward: 'save', overtimeCredits: 'ot' },
   deathmatch: { respawnTime: 'respawn', healOnKill: 'healOnKill' },
   physics: { gravity: 'gravity', jumpSpeed: 'jumpVelocity' },
@@ -294,7 +294,7 @@ function buildV2(j) {
   for (const d of j.decor || []) decor.push({ ...boxOf(d), color: colorNum(d.color), glow: !!d.glow });
 
   // ---- the character grid ----
-  const gridSpawns = { dm: [], atk: [], def: [] }, siteCells = {}, barrierRects = [];
+  const gridSpawns = { dm: [], atk: [], def: [] }, siteCells = {}, barrierRects = [], gridOrbs = [];
   if (grid) {
     const { layout, legend } = grid;
     const gw = layout[0].length, gh = layout.length;
@@ -320,6 +320,7 @@ function buildV2(j) {
       const d = def(x, z), c = { x: gx + (x + 0.5) * CELL, z: gz + (z + 0.5) * CELL };
       if (d.spawn) (gridSpawns[d.spawn === 'atk' || d.spawn === 'def' ? d.spawn : 'dm']).push(c);
       if (d.site) (siteCells[d.site] ||= []).push([c.x - CELL / 2, c.z - CELL / 2, c.x + CELL / 2, c.z + CELL / 2]);
+      if (d.orb) gridOrbs.push(c);
     }
   }
   const ground = j.environment?.ground;
@@ -397,6 +398,8 @@ function buildV2(j) {
   if (teamSpawns?.atk.length && teamSpawns.def.length) m.teamSpawns = teamSpawns;
   if (Object.keys(sites).length) m.sites = sites;
   if (barriers.length) m.barriers = barriers;
+  const orbs = [...(j.ultOrbs || []).filter(o => num(o.x) && num(o.z)), ...gridOrbs];
+  if (orbs.length) m.ultOrbs = orbs.map(o => [o.x, placeY(o), o.z]);
 
   // ---- navigation: from the geometry, unless the file spells it out ----
   const nav = j.nav && typeof j.nav === 'object' ? j.nav : {};

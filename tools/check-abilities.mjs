@@ -1,4 +1,4 @@
-// Headless checks for how abilities interact (flashes, smokes, death, detain, nearsight, phasing, online).
+// Headless checks for how abilities interact (flashes, smokes, death, detain, suppression, ult orbs, online).
 //   npm i -D playwright && npx playwright install chromium   (once)
 //   node tools/check-abilities.mjs            all checks
 //   node tools/check-abilities.mjs --offline  skip the two-tab online checks
@@ -233,6 +233,52 @@ const checks = [
     const s = g.smokes[g.smokes.length - 1];
     const off = s ? Math.hypot(s.pos[0] - pv[0], s.pos[1] - pv[1], s.pos[2] - pv[2]) : null;
     return { pass: off !== null && off < 1e-6, offset: off };
+  }],
+  ['Zero Point suppresses: no abilities for 8 s, guns still work', async () => {
+    const g = await __start({ agent: 'override' });
+    const o = g.player, b = g.bots[0];
+    __tick(g, 1);
+    if (!__place(g, o, 12)) return { error: 'no open ground' };
+    b.pos = __ahead(o, 6); b.pos[1] = o.pos[1]; b.prevPos = [...b.pos];
+    o.kit.agent.abilities.e.use(o.kit); // the knife lands near b and pulses
+    __tick(g, 3);
+    const botSuppressed = b.st.suppressUntil > g.time;
+    // Now the other way round: the human is suppressed.
+    o.st.suppressUntil = g.time + 8;
+    o.kit.charges.c = 1;
+    const shots = o.stats.shots;
+    o.input.abC = true; g.tick();
+    for (let i = 0; i < 40; i++) { o.input.fire = o.input.firePressed = true; g.tick(); }
+    o.input.fire = false;
+    const blocked = o.kit.charges.c === 1 && !o.kit.armed, fired = o.stats.shots > shots;
+    __tick(g, 8);
+    o.input.abC = true; g.tick();
+    const after = !!o.kit.armed || o.kit.charges.c === 0;
+    return { pass: botSuppressed && blocked && fired && after, botSuppressed, abilityBlocked: blocked, gunFired: fired, worksAfter: after };
+  }],
+  ['Ultimate orbs: both 5v5 maps have two reachable orbs; holding F for 3 s gives a point; they come back next round', async () => {
+    const out = {};
+    for (const map of ['divide', 'foundry']) {
+      const g = await __start({ mode: 'rounds', map });
+      const m = g.map, orbs = g.mode.orbs || [];
+      const len = (from, to) => { const p = m.findPath(m.nearestWalkable(...m.cellOf(from[0], from[2])), m.nearestWalkable(...m.cellOf(to[0], to[2]))); return p ? p.length : null; };
+      const reach = orbs.map(o => ({ onFloor: Math.abs((g.floorAt(o.pos[0], o.pos[2], o.pos[1] + 0.5)?.[1] ?? -99) - o.pos[1]) < 0.05, atk: len([m.teamSpawns.atk[0].x, 0, m.teamSpawns.atk[0].z], o.pos), def: len([m.teamSpawns.def[0].x, 0, m.teamSpawns.def[0].z], o.pos) }));
+      out[map] = { orbs: orbs.length, reach };
+    }
+    const g = await __start({ mode: 'rounds', map: 'divide' });
+    __tick(g, 31); // buy phase over
+    const p = g.player, orb = g.mode.orbs[0];
+    p.kit.ultPoints = 0; p.hp = 1e6; // a stray shot shouldn't add a death point
+    p.pos = [...orb.pos]; p.prevPos = [...orb.pos]; p.vel = [0, 0, 0];
+    for (let i = 0; i < 128 * 2; i++) { p.input.use = true; g.tick(); }
+    const early = p.kit.ultPoints;
+    for (let i = 0; i < 128 * 1.2; i++) { p.input.use = true; g.tick(); }
+    p.input.use = false;
+    const got = p.kit.ultPoints, taken = orb.taken;
+    g.mode.endRound('atk', 'eliminated'); __tick(g, 8);
+    const back = g.mode.orbs.every(o => !o.taken);
+    const maps = Object.values(out).every(r => r.orbs === 2 && r.reach.every(x => x.onFloor && x.atk && x.def));
+    return { pass: maps && early === 0 && got === 1 && taken && back, ...out, pointsAt2s: early, pointsAt3s: got, orbTaken: taken, backNextRound: back };
   }],
   ['Bot 5v5 (6 min): no errors, bot flashes hit enemies more than their own side', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'fight' });
