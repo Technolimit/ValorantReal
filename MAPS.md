@@ -21,7 +21,7 @@ To ship a map with the game instead, put the file in `maps/` and add a line for 
 - Lists use square brackets `[ ]`, groups use curly brackets `{ }`, and items are separated by commas. A comma after
   the **last** item breaks the file, which is the most common mistake.
 - Colours are written like on the web: `"#ff4655"`.
-- Distances are in metres. A player is about 2 m tall; a normal wall is 5 to 8 m.
+- Distances are in metres (see Scale below).
 
 ## Where things are: x, y and z
 
@@ -36,6 +36,23 @@ use two numbers, `[x, z]`.
 
 To find a spot, stand there in the game and look at the minimap, or open the map file and look at the numbers of a
 wall you know.
+
+## Scale
+
+Build to real Valorant proportions and the game feels right:
+
+| Thing | Size |
+| --- | --- |
+| Player | 1.96 m tall standing (eyes at 1.82 m), 1.40 m crouched, 0.69 m wide |
+| Head | about 0.25 m |
+| Highest step you walk up | 0.45 m (higher needs a jump: about 1.1 m) |
+| Doorway | at least 2.5 m tall, 2 m or more wide |
+| Low ceiling (tunnels, vents) | at least 2.05 m, or bots won't walk under it |
+| Crate cover | 1 m (crouch cover) or 2 m (full cover) |
+| A full 5v5 map like Divide | about 120 × 120 m of floor; about 100 m from spawn to spawn |
+
+A grid square is 2 m, so a 60 × 60 grid is a full-size 5v5 map. To make a box-built map bigger or smaller,
+`node tools/scale-map.mjs maps/my-map.json 0.9` multiplies every position and size (0.9 = 10% smaller).
 
 ## Two ways to build: a character grid, or boxes
 

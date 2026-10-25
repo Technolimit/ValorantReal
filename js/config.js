@@ -6,8 +6,8 @@ export const CELL = 2; // map grid cell size
 
 // Body size. Riot hasn't published hitbox dimensions; these follow the community figures: every agent
 // shares one hitbox at a reported 1.96 m in-game height, and the head is about 13% of that (~0.25 m).
-// Bodies are scaled up 8% to fit the map's proportions; the head keeps its real size.
-const BODY_K = 1.08;
+// Maps are built to the same scale (see MAPS.md), so bodies use those figures as they are.
+const BODY_K = 1;
 const STAND_H = +(1.96 * BODY_K).toFixed(3);
 const CROUCH_H = +(1.4 * BODY_K).toFixed(3);
 const HEAD_H = 0.255;
