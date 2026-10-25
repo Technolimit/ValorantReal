@@ -226,6 +226,14 @@ export class NetSession {
       const ra = attacker.reportFor(target); ra.dealt += amount; ra.dealtHits++; ra[info.part]++;
       g.emit('hit', { attacker, target, part: info.part, amount, dealt: amount, point: info.point, killed: false, def: info.def, wallbang: info.wallbang, dot: false });
     };
+    // Shootable utility: the host keeps its health. A client reports its own hits; the host tells
+    // everyone when something breaks.
+    const hitUtil = g.hitUtil.bind(g);
+    g.hitUtil = (it, amount, shooter) => {
+      if (this.role !== 'client') return hitUtil(it, amount, shooter);
+      if (shooter === g.player && it.owner?.nid) this.t.send({ k: 'uhit', o: it.owner.nid, kind: it.kind, pos: it.pos.map(r3), amount: Math.round(amount), life: this.life }, this.hostId);
+    };
+    g.on('utilBroken', (it) => { if (this.role === 'host' && it.owner?.nid) this.t.send({ k: 'ubrk', o: it.owner.nid, kind: it.kind, pos: it.pos.map(r3) }); });
     // Dropped guns: the host owns them; a client's own drops and pickups go through it.
     const dropGun = g.dropGun.bind(g), pickUp = g.pickUp.bind(g);
     g.dropGun = (c, slot, toss = true) => {
@@ -456,6 +464,10 @@ export class NetSession {
       g.drops.push(d);
       if (c.inv[def.slot]?.def === def) c.inv[def.slot] = null;
       g.emit('drop', d); // -> broadcast with an id
+    } else if (m.k === 'uhit') {
+      if (m.life !== p.life || !c.alive || !Array.isArray(m.pos) || !m.pos.every(Number.isFinite)) return;
+      const it = g.findUtil(this.byNid.get(m.o), String(m.kind), m.pos);
+      if (it && g.isEnemy(c, it.owner)) g.hitUtil(it, Math.max(0, Math.min(Number(m.amount) || 0, 160)), c);
     } else if (m.k === 'take') {
       const d = g.drops.find(x => x.nid === m.id);
       if (!d) return;
@@ -592,6 +604,7 @@ export class NetSession {
     const mode = this.game.mode, now = this.game.time, sp = mode.spike;
     return {
       ph: mode.phase, pe: r3(mode.phaseEnd - now), r: mode.round, sc: [...mode.score], ss: mode.startSide,
+      ob: mode.orbs?.map(o => [o.taken ? 1 : 0, r3(o.prog), o.by?.nid || null]),
       sp: sp ? { st: sp.state, pos: sp.pos?.map(r3) || null, car: sp.carrier?.nid || null, pp: r3(sp.plantProg || 0), dp: r3(sp.defuseProg || 0), df: sp.defuser?.nid || null, site: sp.site, pa: r3(now - (sp.plantedAt || 0)), hd: !!sp.halfDone } : null,
       lr: mode.lastResult || null,
     };
@@ -648,7 +661,10 @@ export class NetSession {
       if (item && !m.err) g.mode.applyPurchase(item, !!m.sell, clampInt(m.cr, 0, 99999));
       this.cb.onBuy(m.err || null);
     } else if (m.k === 'drop') this.addNetDrop(m);
-    else if (m.k === 'pick') {
+    else if (m.k === 'ubrk') {
+      const it = Array.isArray(m.pos) && g.findUtil(this.byNid.get(m.o), String(m.kind), m.pos);
+      if (it) g.breakUtil(it);
+    } else if (m.k === 'pick') {
       const d = g.drops.find(x => x.nid === m.id);
       if (d) { g.drops.splice(g.drops.indexOf(d), 1); g.emit('pickup', d); }
     } else if (m.k === 'end') {

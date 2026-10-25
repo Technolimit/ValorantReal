@@ -111,6 +111,13 @@ export class Minimap {
       x.fillStyle = 'rgba(210,210,225,0.45)';
       x.beginPath(); x.arc(p[0], p[1], Math.max(3 * k, s.radius * this.scale), 0, Math.PI * 2); x.fill();
     }
+    // Ultimate orbs still on the map: small cyan dots.
+    for (const o of g.mode?.orbs || []) {
+      if (o.taken) continue;
+      const p = this.toMap(o.pos[0], o.pos[2]);
+      x.fillStyle = '#4fd1ff'; x.strokeStyle = 'rgba(0,0,0,0.75)'; x.lineWidth = 1;
+      x.beginPath(); x.arc(p[0], p[1], 2.6 * k, 0, Math.PI * 2); x.fill(); x.stroke();
+    }
     // Spike.
     const sp = g.mode?.spike;
     if (sp) {

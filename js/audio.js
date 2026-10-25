@@ -30,6 +30,13 @@ export class Sound {
     comp.threshold.value = -14;
     comp.ratio.value = 4;
     this.master.connect(comp).connect(ctx.destination);
+    // Everyone else's sounds go through here, so a deafen can muffle them without touching your own.
+    this.world = ctx.createGain();
+    this.muffle = ctx.createBiquadFilter();
+    this.muffle.type = 'lowpass';
+    this.muffle.frequency.value = 22000;
+    this.world.connect(this.muffle).connect(this.master);
+    this.deaf = false;
     const len = ctx.sampleRate * 2;
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
@@ -55,6 +62,15 @@ export class Sound {
     }
   }
 
+  // Deafened (Paranoia, Seize, Nightfall): other people's sounds drop to a dull murmur.
+  setDeaf(on) {
+    if (!this.ctx || on === this.deaf) return;
+    this.deaf = on;
+    const t = this.ctx.currentTime;
+    this.world.gain.setTargetAtTime(on ? 0.12 : 1, t, on ? 0.05 : 0.3);
+    this.muffle.frequency.setTargetAtTime(on ? 350 : 22000, t, on ? 0.05 : 0.3);
+  }
+
   // Output node: straight to master for your own sounds, through a panner for everyone else's.
   out(pos) {
     if (!pos) return this.master;
@@ -66,7 +82,7 @@ export class Sound {
     p.maxDistance = 120;
     if (p.positionX) { p.positionX.value = pos[0]; p.positionY.value = pos[1]; p.positionZ.value = pos[2]; }
     else p.setPosition(pos[0], pos[1], pos[2]);
-    p.connect(this.master);
+    p.connect(this.world);
     return p;
   }
 

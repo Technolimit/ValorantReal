@@ -61,7 +61,7 @@ export class Hud {
     });
     g.on('respawn', ({ who }) => { if (who === g.player) $('death').hidden = true; });
     g.on('start', () => { if (g.player.kit) this.buildAbilities(g.player.kit.id); });
-    g.on('abilityLocked', ({ who }) => { if (who === g.player && performance.now() - (this.lockMsgAt || 0) > 600) { this.lockMsgAt = performance.now(); this.center('<small>CAN\'T USE THAT UNTIL THE ROUND STARTS</small>'); } });
+    g.on('abilityLocked', ({ who, key }) => { if (who === g.player && performance.now() - (this.lockMsgAt || 0) > 600) { this.lockMsgAt = performance.now(); this.center(key === 'suppressed' ? '<small>SUPPRESSED · NO ABILITIES</small>' : '<small>CAN\'T USE THAT UNTIL THE ROUND STARTS</small>'); } });
     g.on('abilityFail', ({ who }) => { if (who === g.player) this.center('<small>CAN\'T PLACE THAT THERE</small>'); });
   }
 
@@ -178,6 +178,8 @@ export class Hud {
     else if (kit?.hawk && !kit.hawk.removed) mode = 'LANTERN HAWK · PRESS E TO BURST';
     else if (kit?.gate && !kit.gate.removed) mode = 'RIFTWALK READY · PRESS E TO TELEPORT';
     else if (p.st.disarmUntil > g.time) mode = `DETAINED · ${(p.st.disarmUntil - g.time).toFixed(1)}s`;
+    else if (p.st.suppressUntil > g.time) mode = `SUPPRESSED · ${(p.st.suppressUntil - g.time).toFixed(1)}s`;
+    else if (p.st.deafUntil > g.time) mode = `DEAFENED · ${(p.st.deafUntil - g.time).toFixed(1)}s`;
     else if (p.st.intangibleUntil > g.time) mode = 'VANISHED';
     else if (kit && g.time < kit.empressUntil) mode = `RAVENOUS · ${(kit.empressUntil - g.time).toFixed(0)}s`;
     else if (kit?.orbs?.length) mode = 'SOUL ORB · Q FEAST · E VANISH';
@@ -304,6 +306,7 @@ export class Hud {
         ready = have > 0 || (k === 'c' && !!kit.regrow);
         if (kit.ready[k] && AB[k].cooldown) frac = kit.cooldownLeft(k, now) / AB[k].cooldown;
       }
+      if (p.st.suppressUntil > now) ready = false; // suppressed: every ability greys out
       const flash = now - kit.lastUse[k] < 0.15;
       const heal = k === 'c' && kit.id === 'fawn' && ready && p.alive ? bloomTargets(p).length : 0; // Bloom: someone to heal?
       const key = `${have}|${ready}|${flash}|${frac.toFixed(2)}|${!!kit.blades}|${heal}`;

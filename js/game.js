@@ -13,6 +13,16 @@ import { SKIN_ORDER } from './skins.js';
 
 const TURRET = { id: 'sentry', name: 'Sentry', cat: 'Ability', dmg: [[50, 0, 0, 0]] };
 const BOOMER = { id: 'boomer', name: 'Boomer', cat: 'Ability', dmg: [[50, 0, 0, 0]] };
+// Utility enemies can shoot down, as in Valorant: health, and a hit sphere (centre height above pos, radius).
+export const SHOOTABLE = {
+  turret: { hp: 125, y: 0.5, r: 0.45 }, alarm: { hp: 20, y: 0.25, r: 0.3 }, swarm: { hp: 20, y: 0.1, r: 0.25 },
+  cam: { hp: 15, y: 0, r: 0.22 }, wire: { hp: 20, y: 0, r: 0.22 }, boombot: { hp: 100, y: 0.25, r: 0.35 },
+  tiger: { hp: 100, y: 0.5, r: 0.5 }, decoy: { hp: 1, y: 1, r: 0.45 }, zknife: { hp: 1, y: 0, r: 0.22 },
+  prowler: { hp: 1, y: 0.4, r: 0.35 }, haunt: { hp: 1, y: 0.3, r: 0.3 }, owl: { hp: 1, y: 0, r: 0.3 },
+  gate: { hp: 1, y: 0.15, r: 0.3 }, shade: { hp: 1, y: 1, r: 0.5 }, // Riftwalk's rift, Nightwalk's shade
+  lockdown: { hp: 150, y: 0.5, r: 0.5 }, // the device, while it charges
+  cove: { hp: 500 }, // Lagoon's water dome: stops every bullet until it breaks
+};
 // The tuning a map's "rules" and "physics" can change, as shipped; every match starts from these.
 const BASE_RULES = { rounds: { ...ROUND }, economy: { ...ECON, loss: [...ECON.loss] }, deathmatch: { ...MATCH }, physics: { gravity: PLAYER.gravity, jumpVelocity: PLAYER.jumpVelocity } };
 const BOT_COLORS = [0xff4655, 0xffb547, 0xc86bff, 0x4fd1c5, 0xff7ab8, 0x9be15d, 0x6aa7ff, 0xf28c38, 0xe0e0e0, 0x8e7dff];
@@ -190,6 +200,7 @@ export class Game {
 
   addSmoke(owner, pos, now, { radius = SMOKE.radius, life = SMOKE.life, color = 0xcfdbe6, kind = 'smoke', nest = false, slab = null } = {}) {
     const s = { owner, pos, born: now, until: now + life, radius, color, kind, nest, slab };
+    if (SHOOTABLE[kind]) s.hp = SHOOTABLE[kind].hp;
     this.smokes.push(s);
     this.emit('smoke', s);
     return s;
@@ -199,6 +210,7 @@ export class Game {
   // Zones: fire (damage enemies, heal the owner), trap (first enemy in gets slowed + revealed),
   // lockdown (arms after a delay, disarms and slows everyone inside).
   addZone(z, now) {
+    if (SHOOTABLE[z.kind]) z.hp = SHOOTABLE[z.kind].hp;
     z.born = now;
     z.until = now + z.life;
     this.zones.push(z);
@@ -269,21 +281,32 @@ export class Game {
     this.emit('flash', { pos, owner });
   }
 
-  // Area effect that applies a status to enemies within r of pos: stun, near(sight), reveal.
-  pulse(owner, pos, r, type, dur, color, needSight = false) {
-    const now = this.time;
+  // Area effect that applies a status to enemies within r of pos: stun, near(sight), reveal, suppress, deaf.
+  // Join several with '+' ('hold+deaf'). Gives back everyone it caught.
+  pulse(owner, pos, r, types, dur, color, needSight = false) {
+    const now = this.time, hit = [];
     for (const c of this.combatants) {
       if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
       if (Math.hypot(c.pos[0] - pos[0], c.pos[1] + 1 - pos[1], c.pos[2] - pos[2]) > r) continue;
       if (needSight && !this.world.lineOfSight(pos, c.eye()) && !this.world.lineOfSight(pos, [c.pos[0], c.pos[1] + 1, c.pos[2]])) continue;
-      if (type === 'stun') { c.st.stunUntil = now + dur; c.st.slowUntil = now + dur; c.st.slowAmt = 0.4; }
-      if (type === 'near') c.st.nearUntil = now + dur;
-      if (type === 'reveal') c.st.revealUntil = now + dur;
-      if (type === 'vuln') { c.st.vulnUntil = now + dur; c.st.revealUntil = now + dur; }
-      if (type === 'hold') { c.st.slowUntil = now + dur; c.st.slowAmt = 0.95; c.st.revealUntil = now + dur; }
-      if (type === 'hinder') c.st.hinderUntil = now + dur;
+      hit.push(c);
+      for (const type of types.split('+')) this.status(c, type, dur);
     }
-    this.emit('pulse', { pos, r, type, color, owner });
+    this.emit('pulse', { pos, r, type: types.split('+')[0], color, owner });
+    return hit;
+  }
+
+  // One named status on c for dur seconds.
+  status(c, type, dur) {
+    const now = this.time;
+    if (type === 'deaf') c.st.deafUntil = now + dur;
+    if (type === 'stun') { c.st.stunUntil = now + dur; c.st.slowUntil = now + dur; c.st.slowAmt = 0.4; }
+    if (type === 'near') c.st.nearUntil = now + dur;
+    if (type === 'reveal') c.st.revealUntil = now + dur;
+    if (type === 'suppress') { c.st.suppressUntil = now + dur; c.st.revealUntil = now + dur; }
+    if (type === 'vuln') { c.st.vulnUntil = now + dur; c.st.revealUntil = now + dur; }
+    if (type === 'hold') { c.st.slowUntil = now + dur; c.st.slowAmt = 0.95; c.st.revealUntil = now + dur; }
+    if (type === 'hinder') c.st.hinderUntil = now + dur;
   }
 
   // Area damage with falloff from max (centre) to min (edge); needs a clear line to the target's body.
@@ -300,7 +323,7 @@ export class Game {
 
   // Status on every enemy within `width` of the segment a-b, straight through walls.
   lineEffect(owner, a, b, width, type, dur) {
-    const now = this.time, ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     const len2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2;
     for (const c of this.combatants) {
       if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
@@ -309,10 +332,7 @@ export class Game {
       t = Math.max(0, Math.min(1, t));
       const d = Math.hypot(a[0] + ab[0] * t - p[0], a[1] + ab[1] * t - p[1], a[2] + ab[2] * t - p[2]);
       if (d > width) continue;
-      if (type === 'near') c.st.nearUntil = now + dur;
-      if (type === 'stun') { c.st.stunUntil = now + dur; c.st.slowUntil = now + dur; c.st.slowAmt = 0.4; }
-      if (type === 'vuln') { c.st.vulnUntil = now + dur; c.st.revealUntil = now + dur; }
-      if (type === 'hinder') c.st.hinderUntil = now + dur;
+      for (const t of type.split('+')) this.status(c, t, dur);
     }
   }
 
@@ -441,6 +461,7 @@ export class Game {
 
   // Placed gadgets: drone (flies and tags), alarm (chases and makes Vulnerable), turret, swarm (hidden).
   addDevice(d) {
+    if (SHOOTABLE[d.kind]) d.hp = SHOOTABLE[d.kind].hp;
     d.born = this.time;
     d.until = this.time + d.life;
     d.next = d.next || 0;
@@ -580,6 +601,7 @@ export class Game {
         }
       } else if (d.kind === 'decoy' || d.kind === 'gate' || d.kind === 'tiger' || d.kind === 'prowler') {
         // Ground runners. Steered ones follow the owner's aim.
+        if (d.still) continue; // a rift left in place
         if (d.steer && d.owner.alive) { const yaw = d.owner.yaw; d.dir = [-Math.sin(yaw), 0, -Math.cos(yaw)]; }
         let sp = d.kind === 'gate' ? 5 : d.kind === 'decoy' ? 6 : d.kind === 'tiger' ? 8 : 9;
         if (d.kind === 'prowler') {
@@ -661,7 +683,7 @@ export class Game {
           let t = ((c.pos[0] - d.pos[0]) * ax + (c.pos[2] - d.pos[2]) * az) / len2;
           if (t < 0 || t > 1) continue;
           const px = d.pos[0] + ax * t - c.pos[0], pz = d.pos[2] + az * t - c.pos[2];
-          if (Math.hypot(px, pz) > 0.45 || Math.abs(c.pos[1] + 0.3 - d.pos[1]) > 0.8) continue;
+          if (Math.hypot(px, pz) > 0.45 || d.pos[1] < c.pos[1] - 0.05 || d.pos[1] > c.pos[1] + c.height) continue; // the wire has to cross the body
           // Tethered: revealed and held, then stunned.
           c.st.revealUntil = now + 5; c.st.slowUntil = now + 2; c.st.slowAmt = 0.9;
           c.st.stunUntil = now + 5;
@@ -838,6 +860,15 @@ export class Game {
     const perTarget = new Map();
     for (const d of dirs) {
       const res = this.trace(shooter, o, d, budget);
+      const block = this.utilOnRay(shooter, o, d, res.endT);
+      if (block) {
+        // Utility in the way takes the shot (and its damage) instead of whoever is behind it.
+        const end = [o[0] + d[0] * block.t, o[1] + d[1] * block.t, o[2] + d[2] * block.t];
+        this.emit('tracer', { who: shooter, gun, from: o, to: end });
+        this.emit('impact', { who: shooter, point: end, normal: [-d[0], -d[1], -d[2]], util: block.it });
+        if (this.isEnemy(shooter, block.it.owner)) this.hitUtil(block.it, damageAt(def, block.t)[2] * res.mult, shooter);
+        continue;
+      }
       const end = [o[0] + d[0] * res.endT, o[1] + d[1] * res.endT, o[2] + d[2] * res.endT];
       this.emit('tracer', { who: shooter, gun, from: o, to: end });
       for (const imp of res.impacts) {
@@ -860,6 +891,51 @@ export class Game {
       this.damage(target, shooter, Math.round(acc.dmg), { part, def, dist: acc.dist, point: acc.point, wallbang: acc.wallbang });
     }
     this.noise(shooter, def.suppressed ? 25 : 60);
+  }
+
+  // The nearest shootable utility a shot from o along d meets before maxT: enemy devices and charging
+  // Lockdowns, and any Lagoon dome (it stops everyone's bullets, from inside too).
+  utilOnRay(shooter, o, d, maxT) {
+    let best = null;
+    const test = (it, c, r, inside) => {
+      const vx = c[0] - o[0], vy = c[1] - o[1], vz = c[2] - o[2], tc = vx * d[0] + vy * d[1] + vz * d[2];
+      const d2 = vx * vx + vy * vy + vz * vz - tc * tc;
+      if (d2 > r * r) return;
+      const th = Math.sqrt(r * r - d2);
+      let t = tc - th;
+      if (t < 0) { if (!inside) return; t = tc + th; } // shooting out of a dome
+      if (t > 0 && t < maxT && (!best || t < best.t)) best = { t, it };
+    };
+    for (const x of this.devices) {
+      const s = SHOOTABLE[x.kind];
+      if (s && !x.removed && x.hp > 0 && this.isEnemy(shooter, x.owner)) test(x, [x.pos[0], x.pos[1] + s.y, x.pos[2]], s.r, false);
+    }
+    for (const z of this.zones) {
+      const s = SHOOTABLE[z.kind];
+      if (s && z.hp > 0 && !z.fired && this.time < z.until && this.isEnemy(shooter, z.owner)) test(z, [z.pos[0], z.pos[1] + s.y, z.pos[2]], s.r, false);
+    }
+    for (const sm of this.smokes) if (sm.kind === 'cove' && sm.hp > 0 && this.time < sm.until) test(sm, sm.pos, sm.radius, true);
+    return best;
+  }
+
+  // Damage a piece of utility (the host decides; see net.js); at 0 health it's gone.
+  hitUtil(it, amount, shooter) {
+    if (!(it.hp > 0) || amount <= 0) return;
+    it.hp -= amount;
+    if (it.hp <= 0) this.breakUtil(it);
+  }
+
+  breakUtil(it) {
+    it.hp = 0;
+    if (this.devices.includes(it)) it.removed = true;
+    else it.until = this.time; // a zone or a dome ends now
+    this.emit('utilBroken', it);
+  }
+
+  // A device, zone or dome by owner, kind and rough position (for online messages).
+  findUtil(owner, kind, pos) {
+    const near = (x) => x.owner === owner && x.kind === kind && Math.hypot(x.pos[0] - pos[0], x.pos[1] - pos[1], x.pos[2] - pos[2]) < 2.5;
+    return this.devices.find(x => !x.removed && near(x)) || this.zones.find(near) || this.smokes.find(near) || null;
   }
 
   trace(shooter, o, d, budget) {

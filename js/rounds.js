@@ -10,6 +10,7 @@
 //     ultimate points to zero.
 //   * Dead players stay dead until the next round. Survivors keep their weapons and remaining shields.
 //     Unused ability charges carry over; the signature ability (E) refills every round.
+//   * Ultimate orbs come back every round: hold F on one for 3 s for 1 ultimate point.
 import { WEAPONS } from './weapons.js';
 import { Gun } from './gun.js';
 import { Combatant } from './entity.js';
@@ -17,7 +18,7 @@ import { Bot, BOT_NAMES } from './bot.js';
 import { Kit, AGENTS, AGENT_ORDER } from './abilities.js';
 import { PLAYER, DT } from './config.js';
 
-export const ROUND = { buy: 30, round: 100, spike: 45, plant: 4, defuse: 7, defuseHalf: 3.5, end: 6, toWin: 13, half: 12, firstBuy: 30 };
+export const ROUND = { buy: 30, round: 100, spike: 45, plant: 4, defuse: 7, defuseHalf: 3.5, orb: 3, end: 6, toWin: 13, half: 12, firstBuy: 30 };
 export const ECON = { start: 800, max: 9000, win: 3000, loss: [1900, 2400, 2900], kill: 200, plant: 300, save: 1000, ot: 5000 };
 // Regen Shield (patch 9.10): 25 shield that refills from a 50-point reserve after a moment out of combat.
 export const SHIELDS = { light: { name: 'Light Shields', cost: 400, armor: 25 }, regen: { name: 'Regen Shield', cost: 650, armor: 25, pool: 50 }, heavy: { name: 'Heavy Shields', cost: 1000, armor: 50 } };
@@ -110,6 +111,7 @@ export class RoundMode {
     // Spike to a random attacker.
     // The spike starts on the floor just in front of the attackers' spawn: whoever walks over it carries it.
     this.spike = { state: 'dropped', carrier: null, pos: this.spikeSpawnPos(), plantProg: 0, defuseProg: 0, defuser: null, plantedAt: 0, site: null };
+    this.resetOrbs();
     this.phase = 'buy';
     this.phaseEnd = now + (this.round === 1 || half ? ROUND.firstBuy : ROUND.buy);
     this.setBarriers(true);
@@ -213,6 +215,7 @@ export class RoundMode {
       return;
     }
     this.tickSpike(now);
+    this.tickOrbs(now);
     if (this.phase === 'live' && now >= this.phaseEnd) return this.endRound('def', 'time');
     if (this.phase === 'planted' && now >= this.spike.plantedAt + ROUND.spike) {
       this.detonate();
@@ -311,6 +314,27 @@ export class RoundMode {
   }
 
   addUlt(c) { if (c.kit) c.kit.ultPoints = Math.min(c.kit.ultCost, c.kit.ultPoints + 1); }
+
+  // ---------- ultimate orbs ----------
+  resetOrbs() { this.orbs = (this.game.map.ultOrbs || []).map(p => ({ pos: [...p], taken: false, prog: 0, by: null })); }
+
+  // The orb c is close enough to take (none once it's been taken).
+  orbNear(c) {
+    return this.orbs?.find(o => !o.taken && Math.hypot(c.pos[0] - o.pos[0], c.pos[2] - o.pos[2]) < 1.5 && Math.abs(c.pos[1] - o.pos[1]) < 1.5) || null;
+  }
+
+  // Hold Use on an orb for ROUND.orb seconds (standing still, gun down) to take it. One player at a time.
+  tickOrbs(now) {
+    for (const o of this.orbs || []) {
+      if (o.taken) continue;
+      const holding = (c) => c.alive && c.input.use && this.orbNear(c) === o && !(this.spike?.carrier === c && this.inSite(c.pos));
+      if (!o.by || !holding(o.by)) { o.by = this.game.combatants.find(holding) || null; o.prog = 0; }
+      if (!o.by) continue;
+      this.channel(o.by, now);
+      o.prog += DT;
+      if (o.prog >= ROUND.orb) { o.taken = true; this.addUlt(o.by); this.emit('orbTaken', { who: o.by, pos: o.pos }); o.by = null; }
+    }
+  }
 
   // ---------- events ----------
   onKill(victim, killer, info) {
@@ -625,6 +649,7 @@ export class NetRoundMode extends RoundMode {
     this.emit('roundClear');
     if (half) { p.survived = false; p.inv.primary = null; p.inv.secondary = new Gun(WEAPONS.classic); p.armor = 0; p.inv.ability = null; if (p.kit) { p.kit.charges.c = 0; p.kit.charges.q = 0; p.kit.charges.e = 0; p.kit.ultPoints = 0; } }
     this.boughtThisRound = new Map();
+    this.resetOrbs();
     this.phase = 'buy';
     this.spawn(p, now, sp);
     this.setBarriers(true);
@@ -646,6 +671,15 @@ export class NetRoundMode extends RoundMode {
       state: s.st, pos: s.pos, carrier: byNid(s.car) || null, plantProg: s.pp, defuseProg: s.dp, defuser: byNid(s.df) || null,
       plantedAt: now - s.pa, site: s.site, halfDone: s.hd,
     } : null;
+    if (m.ob) {
+      if (!this.orbs || this.orbs.length !== m.ob.length) this.resetOrbs();
+      m.ob.forEach(([taken, prog, by], i) => {
+        const o = this.orbs[i];
+        if (!o) return;
+        if (taken && !o.taken) this.emit('orbTaken', { who: byNid(by), pos: o.pos });
+        o.taken = !!taken; o.prog = prog; o.by = byNid(by) || null;
+      });
+    }
     this.phase = m.ph;
     if (prev !== m.ph) {
       if (prev === 'buy' && m.ph !== 'buy') { this.setBarriers(false); this.liveAt = now; this.emit('live'); }
@@ -664,7 +698,9 @@ export class NetRoundMode extends RoundMode {
   // Only the local player: hold still while planting or defusing (the host does the real progress).
   tick(now) {
     const g = this.game, p = g.player, sp = this.spike;
-    if (!sp || !p.alive || !p.input.use) return;
+    if (!p.alive || !p.input.use) return;
+    if (this.orbNear(p) && (this.phase === 'live' || this.phase === 'planted')) this.channel(p, now);
+    if (!sp) return;
     if (sp.state === 'carried' && sp.carrier === p && this.phase === 'live' && this.inSite(p.pos) && p.grounded) this.channel(p, now);
     else if (sp.state === 'planted' && this.side(p) === 'def' && Math.hypot(p.pos[0] - sp.pos[0], p.pos[2] - sp.pos[2]) < 1.8) this.channel(p, now);
   }

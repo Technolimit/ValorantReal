@@ -431,11 +431,13 @@ export class Renderer {
       slot.to.set(to[0], to[1], to[2]);
       slot.color = gun.def === BLADES ? [0.55, 0.95, 1] : own ? [1, 0.9, 0.6] : [1, 0.55, 0.4];
     });
-    g.on('impact', ({ point, normal, melee }) => {
+    g.on('impact', ({ point, normal, melee, util }) => {
       if (!this.settings.showImpacts || melee) return;
+      if (util) return this.burst(point, normal, util.kind === 'cove' ? [0.5, 0.85, 0.95] : [0.9, 0.8, 0.4], 3, 1.5); // sparks off utility, no decal in mid-air
       this.addDecal(point, normal);
       this.burst(point, normal, [0.35, 0.33, 0.3], 3, 1.5);
     });
+    g.on('utilBroken', (it) => this.burst(it.pos, [0, 1, 0], it.kind === 'cove' ? [0.5, 0.85, 0.95] : [1, 0.75, 0.3], 14, 3));
     g.on('hit', ({ target, part, point, attacker }) => {
       const col = part === 'head' ? [1, 1, 1] : [0.85, 0.1, 0.15];
       this.burst(point, null, col, part === 'head' ? 10 : 6, 2.5);
@@ -869,6 +871,11 @@ export class Renderer {
       const sil = new THREE.Mesh(new THREE.BoxGeometry(0.46, 1.8, 0.3), new THREE.MeshStandardMaterial({ color: 0x5a6cff, emissive: 0x2a3399, emissiveIntensity: 0.8, transparent: true, opacity: 0.75 }));
       sil.position.y = 0.95; g.add(sil);
       light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), mat(0xffffff, 0x8f9bff)); light.position.y = 1.75; g.add(light);
+    } else if (d.kind === 'shade') {
+      // Nightwalk: a dark, smoky figure where Umbra is about to appear
+      const sil = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.2, 4, 10), new THREE.MeshStandardMaterial({ color: 0x1a1030, emissive: 0x4a2a8f, emissiveIntensity: 0.9, transparent: true, opacity: 0.8 }));
+      sil.position.y = 0.95; g.add(sil);
+      light = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), mat(0xffffff, 0xa67bff)); light.position.y = 1.6; g.add(light);
     } else if (d.kind === 'gate') {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.06, 8, 20), mat(0x2a2f6e, 0x5a6cff)); ring.rotation.x = Math.PI / 2; ring.position.y = 0.1;
       light = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), mat(0xffffff, 0x5a6cff)); light.position.y = 0.2;
@@ -941,6 +948,7 @@ export class Renderer {
       if (d.kind === 'wire') { g.position.set(...d.pos); g.visible = true; }
       if (d.kind === 'cam') { const ow = d.owner; g.rotation.set(0, ow.yaw, 0); g.visible = !(ow.kit?.view === d); }
       if (d.kind === 'tiger' || d.kind === 'sdrone' || d.kind === 'owl') g.visible = !(d.owner.kit?.pilot === d);
+      if (d.kind === 'shade') g.visible = d.owner !== this.game.player; // your view is already inside it
       if (d.kind === 'sdrone' || d.kind === 'owl') g.rotation.set(0, Math.atan2(-d.dir[0], -d.dir[2]), 0);
       if (g.userData.spin) for (const m of g.userData.spin) m.rotation.y += 0.03;
       if (d.kind === 'leer') { const e = this.camera.position; g.lookAt(e.x, e.y, e.z); }
@@ -1134,6 +1142,7 @@ export class Renderer {
     this.updateSmokes();
     this.updateFx2();
     this.updateSpike();
+    this.updateOrbs();
     this.updateNearsight(p);
     this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
@@ -1245,6 +1254,36 @@ export class Renderer {
       g.userData.light.visible = on;
       g.userData.glow.intensity = inten;
     }
+  }
+
+  // Ultimate orbs: a floating, spinning crystal on a small base until someone takes it.
+  updateOrbs() {
+    const orbs = this.game.mode?.orbs || [];
+    if (this.orbList !== orbs) { // new round or new map: rebuild
+      for (const o of this.orbObjs || []) this.scene.remove(o);
+      this.orbList = orbs;
+      this.orbObjs = orbs.map(o => {
+        const g = new THREE.Group();
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 0.08, 16), new THREE.MeshStandardMaterial({ color: 0x2b2f36, metalness: 0.5, roughness: 0.5 }));
+        base.position.y = 0.04;
+        const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.2), new THREE.MeshStandardMaterial({ color: 0x9be8ff, emissive: 0x4fd1ff, emissiveIntensity: 1.4, transparent: true, opacity: 0.9 }));
+        const glow = new THREE.PointLight(0x4fd1ff, 1.5, 5);
+        glow.position.y = 0.9;
+        g.add(base, gem, glow);
+        g.userData = { gem };
+        g.position.set(...o.pos);
+        this.scene.add(g);
+        return g;
+      });
+    }
+    const t = this.game.time;
+    orbs.forEach((o, i) => {
+      const g = this.orbObjs[i];
+      g.visible = !o.taken;
+      const gem = g.userData.gem;
+      gem.position.y = 0.9 + Math.sin(t * 2 + i) * 0.06;
+      gem.rotation.y = t * (o.prog > 0 ? 6 : 1.5); // spins up while someone takes it
+    });
   }
 
   renderIdle(t) {

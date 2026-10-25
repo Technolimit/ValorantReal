@@ -8,7 +8,7 @@
 //   recon   – reveal the site before going in (attackers) or the lane mid-round (defenders)
 //   trap    – defenders set up at their spot during the buy phase
 //   heal    – heal when hurt and out of a fight
-//   ultFight / ultSelf / ultRecon / ultPlace / ultMap – ultimates
+//   ultFight / ultSelf / ultRecon / ultPlace / ultMap / bodyRead – ultimates
 // Abilities a bot would have to steer or pilot (drones, cameras, teleports, ability guns) are left alone.
 import { buyPhaseAllows } from './abilities.js';
 
@@ -26,7 +26,7 @@ const R = {
   volt: { c: 'wall', q: 'flash', x: 'ultGun' },
   mirage: { c: 'flash', q: 'flash' },
   fawn: { c: 'teamHeal', e: 'flash', x: 'ultRecon' },
-  lattice: { c: 'trap', x: 'ultRecon' },
+  lattice: { c: 'trap', x: 'bodyRead' },
   nyx: { c: 'flash', q: 'flash', e: 'recon', x: 'ultRecon' },
   solace: { c: 'wall', q: 'molly', e: 'allyHeal', x: 'revive' },
   stella: { x: 'ultMap' },
@@ -45,7 +45,7 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
 
 export function castable(bot, k, drawing = false) {
   const me = bot.me, kit = me.kit, g = bot.game, now = g.time;
-  if (!kit || !me.alive || kit.busy() || (kit.armed && !drawing) || kit.mapPick || me.st.channelUntil > now || me.st.stunUntil > now || me.st.disarmUntil > now) return false;
+  if (!kit || !me.alive || kit.busy() || (kit.armed && !drawing) || kit.mapPick || me.st.channelUntil > now || me.st.stunUntil > now || me.st.disarmUntil > now || me.st.suppressUntil > now) return false;
   if (g.mode?.phase === 'buy' && !buyPhaseAllows(kit.id, k)) return false;
   if (g.mode?.phase === 'end') return false;
   if (k === 'x') return kit.ultPoints >= kit.ultCost && !kit.rebirth;
@@ -206,6 +206,12 @@ export function botAbilities(bot, now) {
         if (visible && (me.hp < 90 || Math.random() < 0.6)) target = bot.target.eye();
         else if (executing && dist(me.pos, site.center) < 20) target = site.center;
         break;
+      case 'bodyRead': {
+        // Mindread needs an enemy body: use it on one in sight.
+        const body = g.combatants.find(c => !c.alive && c.deathPos && g.isEnemy(me, c) && dist(me.pos, c.deathPos) < 11 && g.canSee(me.eye(), [c.deathPos[0], c.deathPos[1] + 0.4, c.deathPos[2]]));
+        if (body && seenAgo > 1.5) target = [body.deathPos[0], body.deathPos[1] + 0.2, body.deathPos[2]];
+        break;
+      }
       case 'ultRecon':
         if ((executing || (side === 'def' && sp?.state === 'planted')) && site) target = sp?.pos || site.center;
         else if (live && m && now - (m.liveAt || now) > 20 && !used.has('urecon')) { target = site?.center || me.pos; used.add('urecon'); } // mid-round info

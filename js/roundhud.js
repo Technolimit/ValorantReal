@@ -21,6 +21,7 @@ export class RoundHud {
     g.on('live', () => this.banner('<b>ROUND START</b>', 1.6));
     g.on('planted', ({ site, who }) => this.banner(`<b class="warn">SPIKE PLANTED</b><small>SITE ${site}${who === g.player ? ' · YOU' : ''}</small>`, 2.5));
     g.on('defuseHalf', () => {});
+    g.on('orbTaken', ({ who }) => { if (who === g.player) this.banner('<b class="good">ULTIMATE ORB</b><small>+1 ULTIMATE POINT</small>', 1.6); });
     g.on('roundEnd', (r) => {
       const won = r.winTeam === 0;
       this.banner(`<b class="${won ? 'good' : 'warn'}">${won ? 'ROUND WON' : 'ROUND LOST'}</b><small>${REASON[r.reason] || ''}</small>`, ROUND.end - 0.5);
@@ -72,6 +73,8 @@ export class RoundHud {
     // A teammate planting or defusing: show their progress too.
     else if (sp?.state === 'planted' && sp.defuser && sp.defuser !== p && sp.defuser.team === p.team && sp.defuseProg > 0) ch = { text: `${sp.defuser.name.toUpperCase()} DEFUSING${sp.halfDone ? ' · HALF SAVED' : ''}`, frac: sp.defuseProg / ROUND.defuse };
     else if (sp?.state === 'carried' && sp.carrier && sp.carrier !== p && sp.carrier.team === p.team && sp.plantProg > 0) ch = { text: `${sp.carrier.name.toUpperCase()} PLANTING`, frac: sp.plantProg / ROUND.plant };
+    const orb = m.orbs?.find(o => !o.taken && o.by === p && o.prog > 0);
+    if (orb) ch = { text: 'TAKING ULTIMATE ORB', frac: orb.prog / ROUND.orb };
     $('rchannel').hidden = !ch;
     if (ch) { $('rchtext').textContent = ch.text; $('rchbar').style.width = (ch.frac * 100).toFixed(1) + '%'; }
     // Hints
@@ -83,6 +86,7 @@ export class RoundHud {
       else if (nearSpike) hint = 'The spike is on the ground — walk over it to pick it up';
       else if (sp?.state === 'carried' && sp.carrier === p) hint = m.inSite(p.pos) ? 'Hold F to plant the spike' : 'You have the spike — plant it on A or B';
       else if (sp?.state === 'planted' && m.side(p) === 'def' && Math.hypot(p.pos[0] - sp.pos[0], p.pos[2] - sp.pos[2]) < 1.8) hint = 'Hold F to defuse';
+      else if (m.orbNear?.(p)) hint = p.kit && p.kit.ultPoints >= p.kit.ultCost ? 'Ultimate orb · your ultimate is already full' : 'Hold F to take the ultimate orb (+1 ultimate point)';
     } else {
       const s = this.spectating && this.spectating.alive ? this.spectating : null;
       hint = s ? `Spectating ${s.name}${s.kit ? ' (' + s.kit.agent.name + ')' : ''} · ${s.gun?.def.name || ''} · click to switch` : (sp ? 'Your team is down · watching the spike' : 'Waiting for the next round');

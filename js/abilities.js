@@ -82,6 +82,7 @@ function landing(o, range) {
 // player is holding it; recomputed for bots and replays, which cast without holding.
 const target = (kit, a) => (kit.armed && kit.previewPos) || a.preview(kit);
 const later = (kit, delay, fn) => kit.timers.push({ at: kit.now + delay, fn });
+const SHADOW_TIME = 4; // Nightwalk: how long the shade stands before you arrive
 const mine = (kit, delay, fn) => kit.timers.push({ at: kit.now + delay, fn, self: true });
 // Flight time for a thrown ability at `speed` m/s (through an optional bend point), never instant.
 function flight(from, to, speed, via) {
@@ -147,11 +148,11 @@ function lookAt(kit, kind, maxDeg = 9) {
 }
 
 // The teammate (alive, or a body for revives) closest to the crosshair within range and in sight.
-function allyInView(kit, { dead = false, range = 20, maxDeg = 12 } = {}) {
+function allyInView(kit, { dead = false, range = 20, maxDeg = 12, enemy = false } = {}) { // enemy: an enemy instead
   const o = kit.owner, g = o.game, e = o.eye(), f = dirFromAngles(o.yaw, o.pitch);
   let best = null, bestCos = Math.cos(maxDeg * DEG);
   for (const c of g.combatants) {
-    if (c === o || g.isEnemy(o, c) || c.alive === dead) continue;
+    if (c === o || g.isEnemy(o, c) !== enemy || c.alive === dead) continue;
     const t = dead ? (c.deathPos ? [c.deathPos[0], c.deathPos[1] + 0.4, c.deathPos[2]] : null) : [c.pos[0], c.pos[1] + 1.1, c.pos[2]];
     if (!t) continue;
     const dx = t[0] - e[0], dy = t[1] - e[1], dz = t[2] - e[2], dist = Math.hypot(dx, dy, dz);
@@ -325,13 +326,13 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Dread', desc: 'Send a wave of shadow straight ahead (30 m) that passes through walls, nearsighting every enemy it touches for 2 s.', charges: 1, cooldown: 30,
+        name: 'Dread', desc: 'Send a wave of shadow straight ahead (30 m) that passes through walls, nearsighting and deafening every enemy it touches for 2 s.', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           const end = [eye[0] + d[0] * 30, eye[1] + d[1] * 30, eye[2] + d[2] * 30];
           const ft4 = flight(eye, end, 10);
           g.emit('throw', { who: o, from: eye, to: end, time: ft4, color: 0x7a4dff, wave: true });
-          later(kit, ft4 + -0.3, () => g.lineEffect(o, eye, end, 1.8, 'near', 2));
+          later(kit, ft4 + -0.3, () => g.lineEffect(o, eye, end, 1.8, 'near+deaf', 2));
         },
       },
       e: {
@@ -346,7 +347,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Nightwalk', desc: 'Open the map and click anywhere. Your view travels there as a shade for 3 s while your body stays behind, exposed; if your body takes damage it is cancelled. Then you teleport.', points: 7,
+        name: 'Nightwalk', desc: 'Open the map and click anywhere. You fade out (untouchable) while a shade of you forms there; after 4 s you step out of it. Enemies who shoot the shade first cancel it and you stay where you were.', points: 7,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -514,7 +515,7 @@ export const AGENTS = {
     blurb: 'An old commander who fights from the map: sky smokes and orbital fire wherever he points, a stim beacon for the push and an incendiary to hold it.',
     abilities: {
       c: {
-        item: 'device', name: 'Rally', desc: 'Throw a beacon (10 m) that sets up a field for 12 s. Standing in it gives you 10% faster fire rate for 4 s after you leave.', charges: 1, cooldown: 30,
+        item: 'device', name: 'Rally', desc: 'Throw a beacon (10 m) that sets up a field for 12 s. You and teammates standing in it get 10% faster fire rate and 15% faster movement, lasting 4 s after you leave.', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 10, { floor: true, back: 0.4 });
           o.game.addZone({ kind: 'stim', color: 0xffb547, owner: o, pos, r: 6, life: 12 }, kit.now);
@@ -666,7 +667,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Ravenous', desc: 'Enter a frenzy for 30 s: 15% faster fire rate, and every kill heals you 100 and resets the timer.', points: 6,
+        name: 'Ravenous', desc: 'Enter a frenzy for 30 s: 15% faster fire rate, equip and reload, and every kill heals you 100 and resets the timer.', points: 6,
         use(kit) {
           kit.empressUntil = kit.now + 30;
           kit.owner.game.emit('ability', { who: kit.owner, type: 'ult' });
@@ -817,10 +818,12 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Riftwalk', desc: 'Hold the rift, left click to send it crawling forward along the ground. Press E again any time in the next 30 s to teleport to it.', charges: 1, cooldown: 30,
-        use(kit) {
-          const o = kit.owner, f = fwd2(o.yaw);
-          kit.gate = o.game.addDevice({ kind: 'gate', owner: o, pos: [o.pos[0] + f[0] * 0.8, o.pos[1], o.pos[2] + f[1] * 0.8], dir: [f[0], 0, f[1]], life: 30 });
+        name: 'Riftwalk', desc: 'Hold the rift: left click sends it crawling forward along the ground, right click leaves it where you stand. Press E again any time in the next 30 s to teleport to it. Enemies can shoot it.', charges: 1, cooldown: 30,
+        armHint: 'LEFT CLICK: SEND IT · RIGHT CLICK: LEAVE IT HERE',
+        use(kit, mode) {
+          const o = kit.owner, f = fwd2(o.yaw), still = mode === 'right';
+          const pos = still ? [...o.pos] : [o.pos[0] + f[0] * 0.8, o.pos[1], o.pos[2] + f[1] * 0.8];
+          kit.gate = o.game.addDevice({ kind: 'gate', owner: o, pos, dir: [f[0], 0, f[1]], life: 30, still });
         },
         reuse(kit) {
           const gt = kit.gate;
@@ -901,14 +904,14 @@ export const AGENTS = {
     blurb: 'An information broker. Wires, cages and a camera tell him everything — and his ultimate reads the minds of the fallen.',
     abilities: {
       c: {
-        item: 'device', name: 'Tripline', desc: 'Hold the wire, aim at a wall (6 m) and left click to stretch it across the gap. An enemy who crosses it is revealed, held and then stunned for 3 s.', charges: 2, cooldown: 30,
+        item: 'device', name: 'Tripline', desc: 'Hold the wire, aim at a wall (6 m) and left click to stretch it across the gap at that height. An enemy who crosses it is revealed, held and then stunned for 3 s.', charges: 2, cooldown: 30,
         use(kit) {
           const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           const hit = g.world.raycast(eye, d, 6);
           if (!hit || hit.box.floor || hit.n[1] !== 0) return false;
-          const n = hit.n, a = [eye[0] + d[0] * hit.t + n[0] * 0.05, 0, eye[2] + d[2] * hit.t + n[2] * 0.05];
-          const fl = g.floorAt(a[0] + n[0] * 0.3, a[2] + n[2] * 0.3);
-          a[1] = (fl ? fl[1] : o.pos[1]) + 0.35;
+          const n = hit.n, a = [eye[0] + d[0] * hit.t + n[0] * 0.05, eye[1] + d[1] * hit.t, eye[2] + d[2] * hit.t + n[2] * 0.05];
+          const fl = g.floorAt(a[0] + n[0] * 0.3, a[2] + n[2] * 0.3, a[1] + 0.5);
+          if (fl) a[1] = Math.max(a[1], fl[1] + 0.1); // at the height you aim at, never inside the floor
           const h2 = g.world.raycast(a, [n[0], 0, n[2]], 12);
           if (!h2) return false;
           const b = [a[0] + n[0] * h2.t, a[1], a[2] + n[2] * h2.t];
@@ -954,9 +957,9 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Mindread', desc: 'If you got a kill in the last 20 s, read the victim’s mind: every enemy is revealed twice, 3 s apart.', points: 6,
+        name: 'Mindread', desc: 'Look at an enemy’s body (12 m) and press X to read their mind: every living enemy is revealed twice, 3 s apart.', points: 6,
         use(kit) {
-          if (kit.now - (kit.lastKillAt ?? -99) > 20) return false;
+          if (!allyInView(kit, { dead: true, enemy: true, range: 12, maxDeg: 18 })) return false;
           const g = kit.owner.game;
           for (const t of [0.5, 3.5]) later(kit, t, () => g.revealAll(kit.owner, 2));
           g.emit('ability', { who: kit.owner, type: 'ult' });
@@ -977,12 +980,12 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Grasp', desc: 'Throw an orb (20 m) that bursts 0.6 s after landing: enemies within 6 m are held in place for 4.5 s.', charges: 1, cooldown: 25,
+        name: 'Grasp', desc: 'Throw an orb (20 m) that bursts 0.6 s after landing: enemies within 6 m are held in place and deafened for 4.5 s and lose 75 health to Decay (never lethal).', charges: 1, cooldown: 25,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.4 });
           const ft18 = flight(o.eye(), pos, 13);
           o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft18, color: 0xb07a9a });
-          later(kit, ft18 + 0.6, () => o.game.pulse(o, [pos[0], pos[1] + 1, pos[2]], 6, 'hold', 4.5, 0xb07a9a));
+          later(kit, ft18 + 0.6, () => { for (const c of o.game.pulse(o, [pos[0], pos[1] + 1, pos[2]], 6, 'hold+deaf', 4.5, 0xb07a9a)) o.game.decay(c, 75); });
         },
       },
       e: {
@@ -995,12 +998,13 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Terror', desc: 'Unleash a 40 m wave of nightmare through walls: everyone it hits is revealed for 12 s and decays (loses up to 50 health, never lethal).', points: 8,
+        name: 'Terror', desc: 'Unleash a 40 m wave of nightmare through walls: everyone it hits is revealed and deafened for 12 s and decays (loses up to 50 health, never lethal).', points: 8,
         use(kit) {
           const o = kit.owner, g = o.game;
           g.emit('quakeLine', { from: [o.pos[0], o.pos[1] + 1, o.pos[2]], yaw: o.yaw, cone: true, color: 0xb07a9a });
           later(kit, 0.8, () => g.cone(o, 40, 30 * DEG, (c) => {
             c.st.revealUntil = kit.now + 12;
+            c.st.deafUntil = kit.now + 12;
             const n = Math.min(50, c.hp + c.armor - 1);
             if (n > 0) g.damage(c, o, n, { part: 'body', def: src('terror', 'Terror'), dist: 0, point: c.eye(), wallbang: true, dot: true });
           }));
@@ -1191,7 +1195,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'orb', name: 'Lagoon', desc: 'Hold the orb, left click to throw it (20 m). It becomes a water dome 4.5 m across for 12 s that blocks sight.', charges: 1, cooldown: 35,
+        item: 'orb', name: 'Lagoon', desc: 'Hold the orb, left click to throw it (20 m). It becomes a water dome 4.5 m across for 12 s that blocks sight and stops bullets until it takes 500 damage.', charges: 1, cooldown: 35,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.6 });
           const ft = flight(o.eye(), pos, 13);
@@ -1420,23 +1424,23 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'knife', name: 'Zero Point', desc: 'Hold the knife, left click to throw it (30 m). It sticks to the first surface and after 1 s pulses 15 m: enemies caught are revealed (and suppressed) for 8 s.', charges: 1, cooldown: 40,
+        item: 'knife', name: 'Zero Point', desc: 'Hold the knife, left click to throw it (30 m). It sticks to the first surface and after 1 s pulses 15 m: enemies caught are revealed and suppressed (no abilities) for 8 s.', charges: 1, cooldown: 40,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 30, { back: 0.15 });
           const ft = flight(o.eye(), pos, 22), g = o.game;
           g.emit('throw', { who: o, from: o.eye(), to: pos, time: ft, color: 0x6fa8ff });
           later(kit, ft, () => g.addDevice({ kind: 'zknife', owner: o, pos, life: 2 }));
-          later(kit, ft + 1, () => g.pulse(o, pos, 15, 'reveal', 8, 0x6fa8ff));
+          later(kit, ft + 1, () => g.pulse(o, pos, 15, 'suppress', 8, 0x6fa8ff));
         },
       },
       x: {
-        name: 'Overload', desc: 'Overload for 12 s: pulses every 2 s reveal enemies within 30 m, you fire 10% faster — and if you would die, you go down instead and reboot 3 s later at full health.', points: 7,
+        name: 'Overload', desc: 'Overload for 12 s: pulses every 2 s reveal and suppress enemies within 30 m, you fire 10% faster — and if you would die, you go down instead and reboot 3 s later at full health.', points: 7,
         use(kit) {
           const o = kit.owner, g = o.game;
           kit.nullUntil = kit.now + 12;
           kit.nullSaved = false;
           kit.nullArmor = o.armor; // comes back with the shields it had, not free ones
-          for (let t = 0; t < 12; t += 2) mine(kit, t, () => g.pulse(o, o.eye(), 30, 'reveal', 2.5, 0x6fa8ff));
+          for (let t = 0; t < 12; t += 2) mine(kit, t, () => g.pulse(o, o.eye(), 30, 'suppress', 2.5, 0x6fa8ff));
           g.emit('ability', { who: o, type: 'ult' });
         },
       },
@@ -1628,10 +1632,20 @@ export class Kit {
       inp.fire = inp.firePressed = inp.altPressed = false;
       this.armed = null;
     }
+    if (o.st.suppressUntil > now) { // suppressed: guns work, abilities don't
+      if (inp.abQ || inp.abE || inp.abC || inp.abX) g.emit('abilityLocked', { who: o, key: 'suppressed' });
+      inp.abQ = inp.abE = inp.abC = inp.abX = false;
+      if (this.armed) { this.armed = null; o.equip(o.slot, now, true); }
+    }
     for (const k of ['q', 'e', 'c']) {
       if (!inp['ab' + k.toUpperCase()]) continue;
       if (this.armed && this.armed.k === k) { this.armed = null; continue; } // press again to put it away
-      if (buyLock && !buyPhaseAllows(this.id, k)) { g.emit('abilityLocked', { who: o, key: k }); continue; }
+      if (buyLock && !buyPhaseAllows(this.id, k)) {
+        // Buy phase: you can still take it out and line it up; using it waits for the round to start.
+        if (!ab[k].instant && !this.busy() && this.charges[k] > 0) { this.armed = { k, at: now }; o.gun.onHolster(); g.emit('abilityArm', { who: o, key: k }); }
+        else g.emit('abilityLocked', { who: o, key: k });
+        continue;
+      }
       if (this.mapPick && this.mapPick.key === k) { this.mapConfirm(); continue; } // press again to confirm map picks
       if (ab[k].reuse && (!this.busy() || this.view || this.pilot) && ab[k].reuse(this)) continue; // second press: detonate / toggle / teleport
       if (this.busy()) continue;
@@ -1643,6 +1657,10 @@ export class Kit {
     this.previewPos = held?.preview ? held.preview(this) : null; // what the player sees is where it lands
     if (this.armed && now - this.armed.at > 0.25) { // short draw before the ability can be used
       const k = this.armed.k, a = ab[k];
+      if (buyLock && !buyPhaseAllows(this.id, k) && (inp.firePressed || (a.charge ? !inp.fire && this.chargeT > 0 : inp.altPressed && !a.rotate && !a.distance))) {
+        g.emit('abilityLocked', { who: o, key: k }); // held, not thrown: keep holding it
+        inp.firePressed = inp.altPressed = false; this.chargeT = 0;
+      }
       if (a.rotate && inp.altPressed) { this.rot = !this.rot; inp.altPressed = false; } // right click rotates the preview
       if (a.distance) {
         // Hold right click to push the marker out (wraps back in at max range); R toggles through-walls.
@@ -1699,10 +1717,12 @@ export class Kit {
       // Frozen while picking a spot or channelling. A piloted drone takes the movement keys instead.
       this.pilotInput = { fwd: inp.fwd, side: inp.side, jumpHeld: inp.jumpHeld, crouch: inp.crouch };
       inp.fwd = inp.side = 0; inp.jump = false;
-      if (this.shadow && this.shadow.phase === 'channel' && now >= this.shadow.until) {
-        g.teleport(o, this.shadow.dest);
-        this.shadow = null;
-        g.emit('shadowEnd', { who: o, arrived: true });
+      const sh = this.shadow;
+      if (sh && sh.phase === 'channel' && sh.shade.removed && now < sh.until) this.endShadow(false); // the shade was shot
+      else if (sh && sh.phase === 'channel' && now >= sh.until) {
+        sh.shade.removed = true;
+        this.endShadow(true);
+        g.teleport(o, sh.dest);
       }
     }
   }
@@ -1711,7 +1731,11 @@ export class Kit {
   chooseShadow(dest) {
     const o = this.owner, g = o.game;
     if (!g.canStand(o, dest)) return false;
-    this.shadow = { phase: 'channel', dest, until: this.now + 3 };
+    // You fade out where you stand (can't be seen or hurt) while a shade forms at the destination. Shooting
+    // the shade (enemies) cancels it.
+    const shade = g.addDevice({ kind: 'shade', owner: o, pos: [...dest], life: SHADOW_TIME + 0.5 });
+    this.shadow = { phase: 'channel', dest, until: this.now + SHADOW_TIME, shade };
+    o.st.hiddenUntil = o.st.intangibleUntil = this.now + SHADOW_TIME;
     this.ultPoints = 0;
     this.lastUse.x = this.now;
     g.emit('ability', { who: o, type: 'ult' });
@@ -1719,13 +1743,15 @@ export class Kit {
     return true;
   }
 
-  // Damage while channelling as a shade cancels the teleport.
+  endShadow(arrived) {
+    const o = this.owner;
+    this.shadow = null;
+    o.st.hiddenUntil = o.st.intangibleUntil = 0;
+    o.game.emit('shadowEnd', { who: o, arrived, cancelled: !arrived });
+  }
+
   onDamaged() {
     if (this.pilot && this.pilot.kind === 'owl') { this.pilot.removed = true; this.pilot = null; } // body hit: drone drops
-    if (this.shadow && this.shadow.phase === 'channel') {
-      this.shadow = null;
-      this.owner.game.emit('shadowEnd', { who: this.owner, cancelled: true });
-    }
   }
 
   // Agents that act from the grave (Thistle): smokes from the map and her ultimate.
@@ -1959,19 +1985,20 @@ export class Kit {
   // Ongoing per-tick effects for the second wave of agents.
   tickExtras(now) {
     const o = this.owner, g = o.game, DT = 1 / 128;
-    // Fire-rate buffs: stim beacon, empress
+    // Fire-rate buffs: stim beacon, empress; Ravenous also speeds up equipping and reloading
     let rate = 1;
     if (o.st.stimUntil > now) rate *= 1.1;
     if (now < this.empressUntil) rate *= 1.15;
     if (now < this.nullUntil) rate *= 1.1;
-    for (const gun of Object.values(o.inv)) if (gun) { gun.buffRate = rate; gun.buffRecoil = 1; }
+    const handling = now < this.empressUntil ? 1.15 : 1;
+    for (const gun of Object.values(o.inv)) if (gun) { gun.buffRate = rate; gun.buffRecoil = 1; gun.buffHandling = handling; }
     // Ability guns are gone once their last round is fired.
     const ag = o.inv.ability;
     if (ag && ag.mag <= 0 && now >= ag.nextFire - 0.05) {
       o.inv.ability = null;
       if (o.slot === 'ability') o.equip(o.inv.primary ? 'primary' : 'secondary', now, true);
     }
-    for (const z of g.zones) if (z.kind === 'stim' && z.owner === o && Math.hypot(o.pos[0] - z.pos[0], o.pos[2] - z.pos[2]) < z.r) o.st.stimUntil = now + 4;
+    for (const z of g.zones) if (z.kind === 'stim' && o.alive && !g.isEnemy(z.owner, o) && Math.hypot(o.pos[0] - z.pos[0], o.pos[2] - z.pos[2]) < z.r) o.st.stimUntil = now + 4;
     // Bloom channel: heal teammates in sight from the pool while C is held (bots: a few seconds).
     const rg = this.regrow;
     if (rg?.on) {

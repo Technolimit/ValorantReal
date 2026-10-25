@@ -58,7 +58,7 @@
           "type": "object", "description": "5v5 timers (seconds) and match length.",
           "properties": {
             "buyTime": { "type": "number" }, "firstBuyTime": { "type": "number" }, "roundTime": { "type": "number" }, "spikeTime": { "type": "number" },
-            "plantTime": { "type": "number" }, "defuseTime": { "type": "number" }, "defuseHalfway": { "type": "number" }, "roundEndTime": { "type": "number" },
+            "plantTime": { "type": "number" }, "defuseTime": { "type": "number" }, "defuseHalfway": { "type": "number" }, "orbTime": { "type": "number" }, "roundEndTime": { "type": "number" },
             "roundsToWin": { "type": "integer" }, "halftimeAfter": { "type": "integer" }
           }
         },
@@ -106,6 +106,10 @@
         "type": "object", "required": ["min", "max"],
         "properties": { "min": { "$ref": "#/$defs/pairOrXyz" }, "max": { "$ref": "#/$defs/pairOrXyz" }, "name": { "type": "string" }, "color": { "$ref": "#/$defs/color" } }
       }
+    },
+    "ultOrbs": {
+      "type": "array", "description": "Ultimate orbs for 5v5: they come back every round, and holding F on one for 3 s gives 1 ultimate point.",
+      "items": { "type": "object", "required": ["x", "z"], "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "z": { "type": "number" } } }
     },
     "barriers": {
       "type": "array", "description": "Walls that hold a team in spawn during the buy phase.",
@@ -188,7 +192,8 @@
         "paint": { "type": "string", "description": "Floor material painted on this square." },
         "spawn": { "description": "true = deathmatch spawn, \"atk\" / \"def\" = 5v5 team spawn.", "oneOf": [{ "type": "boolean" }, { "enum": ["atk", "def"] }] },
         "site": { "type": "string", "description": "Part of this spike site (A or B)." },
-        "barrier": { "enum": ["atk", "def"], "description": "Buy-phase barrier for that team." }
+        "barrier": { "enum": ["atk", "def"], "description": "Buy-phase barrier for that team." },
+        "orb": { "type": "boolean", "description": "An ultimate orb sits on this cell in 5v5." }
       }
     },
     "material": {

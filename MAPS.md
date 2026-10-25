@@ -102,6 +102,7 @@ Every row must be the same length, and every character you use must be in the le
 | `"spawn": "atk"` / `"def"` | An attacker / defender spawn point for 5v5. |
 | `"site": "A"` | Part of spike site A (the site covers all its squares). |
 | `"barrier": "atk"` / `"def"` | A buy-phase barrier for that team. |
+| `"orb": true` | An ultimate orb (5v5). |
 | `{}` | Plain open floor. |
 
 Stairs are just blocks that get a little taller each square: `0.4`, `0.8`, `1.2`, `1.6`, then a `2` m platform. Steps
@@ -224,6 +225,10 @@ so you don't need to list the modes.
   the floor.
 - In a grid map you can draw both instead, with `"site": "A"` and `"barrier": "atk"` squares.
 
+**Ultimate orbs** come back at the start of every round. Holding F on one for 3 seconds gives 1 ultimate point.
+List them with `"ultOrbs": [{ "x": 41.7, "z": 3.8 }]` (the height is found from the floor), or draw them in a grid
+map with an `"orb": true` square. Put them somewhere both teams can reach in about the same time.
+
 **Bots** need to know where to wait and what to watch. If the map has no `bots` section, the game works out
 sensible spots from the sites, spawns and paths between them, so a new map is playable straight away. To place them
 yourself (Divide does):
@@ -267,7 +272,7 @@ Each map can change the match rules. Leave out anything you don't want to change
 ```
 
 Try `"gravity": 11` for a moon map, or `"roundsToWin": 5` for short matches. Times are in seconds. `lossRewards`
-are the credits after 1, 2 and 3+ lost rounds in a row; `defuseHalfway` is when defuse progress is saved, `saveReward`
+are the credits after 1, 2 and 3+ lost rounds in a row; `defuseHalfway` is when defuse progress is saved, `orbTime` is how long taking an ultimate orb takes, `saveReward`
 is what attackers get for surviving a round lost on time, and `overtimeCredits` is everyone's money in overtime.
 
 ## Everything else
