@@ -1138,10 +1138,18 @@ export class Game {
     }
     // The body drops its best gun: the primary, or the sidearm if there's no primary.
     victim.deathDrop = this.dropGun(victim, victim.inv.primary ? 'primary' : 'secondary', false);
-    // Teammates nearby react to the death: they turn toward and check where the killer was (trading).
+    // Teammates nearby react to the death: they turn toward and check where the killer was, and the close
+    // ones swing on the killer right away to trade before the killer can reset.
     if (this.mode && killer !== victim) for (const b of this.bots) {
-      if (b.alive && b !== victim && !this.isEnemy(b, victim) && Math.hypot(b.pos[0] - victim.pos[0], b.pos[2] - victim.pos[2]) < 30) b.brain.alert(killer.pos, this.time);
+      if (!b.alive || b === victim || this.isEnemy(b, victim)) continue;
+      const d = Math.hypot(b.pos[0] - victim.pos[0], b.pos[2] - victim.pos[2]);
+      if (d >= 30) continue;
+      b.brain.alert(killer.pos, this.time);
+      if (d < 16 && this.time - b.brain.lastSeen > 0.5 && !b.brain.goal?.action && Math.random() < 0.4 + b.brain.aggr * 0.6) {
+        b.brain.lastSeenPos = [...killer.pos]; b.brain.pushUntil = this.time + 2.5;
+      }
     }
+    if (this.mode?.report && killer !== victim && this.isEnemy(killer, victim)) this.mode.report(victim, killer, killer.pos, 'shot');
     if (this.mode) this.mode.onKill(victim, killer, info);
     this.emit('kill', { killer, victim, def: info.def, headshot: info.part === 'head', wallbang: info.wallbang });
     if (!this.mode && killer.stats.kills >= this.killLimit) this.end();
