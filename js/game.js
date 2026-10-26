@@ -325,7 +325,8 @@ export class Game {
   }
 
   // Status on every enemy within `width` of the segment a-b, straight through walls.
-  lineEffect(owner, a, b, width, type, dur) {
+  // With `height`, the area is a flat strip instead: `width` sideways, `height` up or down.
+  lineEffect(owner, a, b, width, type, dur, height) {
     const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     const len2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2;
     for (const c of this.combatants) {
@@ -333,8 +334,9 @@ export class Game {
       const p = [c.pos[0], c.pos[1] + 1, c.pos[2]];
       let t = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / len2;
       t = Math.max(0, Math.min(1, t));
-      const d = Math.hypot(a[0] + ab[0] * t - p[0], a[1] + ab[1] * t - p[1], a[2] + ab[2] * t - p[2]);
-      if (d > width) continue;
+      const dy = a[1] + ab[1] * t - p[1];
+      const d = Math.hypot(a[0] + ab[0] * t - p[0], height ? 0 : dy, a[2] + ab[2] * t - p[2]);
+      if (d > width || (height && Math.abs(dy) > height)) continue;
       for (const t of type.split('+')) this.status(c, t, dur);
     }
   }
@@ -976,6 +978,7 @@ export class Game {
     if (attacker !== target && !this.isEnemy(attacker, target)) return; // no friendly fire
     const now = this.time;
     if (target.st.intangibleUntil > now && !info.spike) return; // Vanish: can't be hurt
+    if (target.st.invulnUntil > now && !info.spike) return; // Rendezvous: invulnerable while teleporting
     if (target.kit?.shield && !info.spike) { target.kit.shield = false; this.emit('pulse', { pos: target.eye(), r: 1.2, type: 'shield', color: 0x9b5cff, owner: target }); return; } // Focus shield eats one hit
     if (target.st.vulnUntil > now) amount *= 2; // Vulnerable: double damage
     if (target.kit) target.kit.onDamaged();

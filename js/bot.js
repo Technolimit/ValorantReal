@@ -204,6 +204,7 @@ export class Bot {
       this.aimHead = Math.random() < this.d.head;
       this.phase = 'shoot';
       this.burstLeft = 0;
+      this.lastAim = null;
     }
     this.target = best;
     this.headVisible = bestHead;
@@ -215,13 +216,20 @@ export class Bot {
   }
 
   engage(now, dt) {
-    const me = this.me, t = this.target, inp = me.input, gun = me.gun, def = gun.def;
-    const hb = t.hitboxes();
-    const useHead = this.aimHead && this.headVisible !== false;
-    const aim = useHead ? center(hb[0]) : center(hb[1]);
-    if (useHead) aim[1] -= 0.06; // head aim tends to sit a little low (neck / collar)
-    else aim[1] -= 0.12; // body aim sits around the stomach, so recoil climbs into the chest rather than the head
+    const me = this.me, t = this.target, inp = me.input, gun = me.gun, def = gun.def, g = this.game;
     const eye = me.eye();
+    // Re-check sight every tick (sense() only runs every ~0.1 s): aim at the part that's actually visible,
+    // and once the target is fully behind cover or smoke, hold on the last spot seen instead of tracking
+    // them through the wall.
+    const hb = t.hitboxes();
+    const head = center(hb[0]), body = center(hb[1]);
+    head[1] -= 0.06; // head aim tends to sit a little low (neck / collar)
+    body[1] -= 0.12; // body aim sits around the stomach, so recoil climbs into the chest rather than the head
+    const headVis = g.canSee(eye, head), bodyVis = g.canSee(eye, body);
+    const visible = headVis || bodyVis;
+    const useHead = visible ? (this.aimHead ? headVis : !bodyVis) : this.lastAimHead;
+    const aim = visible ? (useHead ? head : body) : this.lastAim || (useHead ? head : body);
+    if (visible) { this.lastAim = aim; this.lastAimHead = useHead; }
     const dx = aim[0] - eye[0], dy = aim[1] - eye[1], dz = aim[2] - eye[2];
     const dist = Math.hypot(dx, dz, dy);
 
@@ -289,11 +297,18 @@ export class Bot {
       }
     }
     if (me.st.disarmUntil > now) return; // locked down: can't fire
+    if (!visible || !this.clearShot(eye, aimYaw, aimPitch, dist)) return; // never shoot blind into a wall
     if (me.st.stunUntil > now && Math.random() < 0.6) return; // stunned: fumbling shots
     if (slowEnough && onTarget) {
       if (def.auto) inp.fire = true;
       else if (now >= gun.nextFire) inp.firePressed = true;
     }
+  }
+
+  // Would a bullet fired along (yaw, pitch) reach range dist without crossing a wall (or an ability wall)?
+  clearShot(eye, yaw, pitch, dist) {
+    const d = dirFromAngles(yaw, pitch);
+    return this.game.world.lineOfSight(eye, [eye[0] + d[0] * dist, eye[1] + d[1] * dist, eye[2] + d[2] * dist]);
   }
 
   pursueGoal(now, dt) {
