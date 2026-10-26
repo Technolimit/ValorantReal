@@ -213,7 +213,8 @@ export class RoundMode {
     }
     if (this.phase === 'buy') {
       if (this.spike?.state === 'dropped') this.tickSpike(now); // the spike can be grabbed during the buy phase
-      if (now >= this.phaseEnd) { this.phase = 'live'; this.liveAt = now; this.phaseEnd = now + ROUND.round; this.setBarriers(false); this.emit('live'); this.goTime = now + (this.plan?.style === 'rush' ? 1 + Math.random() * 2 : 6 + Math.random() * 9); }
+      // A rush goes at once; a default takes map control first and executes 12-26 s in.
+      if (now >= this.phaseEnd) { this.phase = 'live'; this.liveAt = now; this.phaseEnd = now + ROUND.round; this.setBarriers(false); this.emit('live'); this.goTime = now + (this.plan?.style === 'rush' ? 1 + Math.random() * 2 : 12 + Math.random() * 14); }
       return;
     }
     if (this.phase === 'end') {
@@ -497,6 +498,77 @@ export class RoundMode {
   }
 
   // ---------- team AI ----------
+  // Team comms: a bot that sees, hears or is shot by an enemy tells its team where. Each side keeps the
+  // last report per enemy, which is what the team plan reads ("three B main", "spike seen A").
+  report(c, enemy, pos, kind) {
+    const plan = this.plan, now = this.game.time;
+    if (!plan?.intel || !enemy || !pos) return;
+    const side = this.side(c), zone = this.zoneOf(pos);
+    const prev = plan.intel[side].get(enemy);
+    // A sighting is better info than a sound: don't let footsteps overwrite a fresh sighting.
+    if (prev && kind === 'heard' && prev.kind === 'seen' && now - prev.t < 1.5) return;
+    plan.intel[side].set(enemy, { pos: [...pos], t: now, zone, kind });
+    if (kind === 'seen' && side === 'def' && this.spike?.carrier === enemy) plan.spikeSeen = { zone, t: now };
+    if (kind !== 'seen') return;
+    // The callout: teammates nearby who aren't already fighting check that angle.
+    for (const b of this.game.bots) {
+      const br = b.brain;
+      if (b === c || !b.alive || this.side(b) !== side || !br || now - br.lastSeen < 1 || dist(b.pos, pos) > 30) continue;
+      br.lookAt = [...pos];
+      br.alertUntil = Math.max(br.alertUntil, now + 1.5);
+    }
+  }
+
+  // Which part of the map a point is in: site A, site B, or mid.
+  zoneOf(pos) {
+    const map = this.game.map;
+    const mid = map.holds?.mid?.[0]?.pos;
+    let best = 'mid', bd = mid ? dist(pos, mid) : Infinity;
+    for (const s of ['A', 'B']) {
+      const st = map.sites[s];
+      if (!st) continue;
+      const d = this.inSite(pos) === st ? 0 : dist(pos, st.center);
+      if (d < bd) { bd = d; best = s; }
+    }
+    return best;
+  }
+
+  // How many living enemies this side has had reported in a zone within the last `win` seconds.
+  seenIn(side, zone, win) {
+    const now = this.game.time;
+    let n = 0;
+    for (const [e, r] of this.plan?.intel?.[side] || []) if (e.alive && r.zone === zone && now - r.t < win) n++;
+    return n;
+  }
+
+  // A point on the defenders' way in to `pos` (the spike, or a site taken over), about `back` metres short of
+  // it: where a retake groups up.
+  retakeSpot(pos, back = 17) {
+    const map = this.game.map, sp0 = map.teamSpawns.def;
+    const from = sp0?.length ? [sp0[0].x, 0, sp0[0].z] : pos;
+    const path = map.findPath(map.nearestWalkable(...map.cellOf(from[0], from[2])), map.nearestWalkable(...map.cellOf(pos[0], pos[2])));
+    if (!path) return [pos[0], pos[1], pos[2]];
+    for (let i = path.length - 1; i >= 0; i--) {
+      const [cx, cz] = path[i], c = map.cellCenter(cx, cz);
+      if (Math.hypot(c.x - pos[0], c.z - pos[2]) >= back) return [c.x, map.heights[cz][cx], c.z];
+    }
+    const [cx, cz] = path[0], c = map.cellCenter(cx, cz);
+    return [c.x, map.heights[cz][cx], c.z];
+  }
+
+  // Post-plant spots: open floor 7 to 20 m from the spike with a clear view of it, so the attackers can play
+  // off the spike from cover instead of standing on it. The ones closest to `near` come first.
+  postSpots(sp, near) {
+    const g = this.game, map = g.map, target = [sp.pos[0], sp.pos[1] + 0.3, sp.pos[2]];
+    if (!this.plan.postCells || this.plan.postFor !== sp.plantedAt) {
+      this.plan.postFor = sp.plantedAt;
+      this.plan.postCells = map.walkable.map(([cx, cz]) => { const c = map.cellCenter(cx, cz); return [c.x, map.heights[cz][cx], c.z]; })
+        .filter(p => { const d = dist(p, sp.pos); return d > 7 && d < 20 && Math.abs(p[1] - sp.pos[1]) < 4; })
+        .filter(p => g.world.lineOfSight([p[0], p[1] + 1.5, p[2]], target));
+    }
+    return this.plan.postCells.slice().sort((a, b) => dist(a, near) - dist(b, near));
+  }
+
   planBots(fresh) {
     const g = this.game, map = g.map, sp = this.spike, now = g.time;
     if (!map.holds) return;
@@ -506,9 +578,10 @@ export class RoundMode {
       // two on A, one mid, two on B.
       const site = Math.random() < 0.5 ? 'A' : 'B';
       const defRoles = shuffle(['A', 'A', 'mid', 'B', 'B']);
-      // Low-elo attack calls: a fast rush, a slower default, or a default with someone lurking the other site.
-      const r = Math.random(), style = r < 0.35 ? 'rush' : r < 0.75 ? 'default' : 'lurk';
-      this.plan = { site, style, defRoles: new Map(), atkRoles: new Map(), rotated: new Set(), pushed: new Set() };
+      // Attack calls: a fast rush now and then, but mostly a default that takes map control and gathers info
+      // before calling the site, sometimes with someone lurking the other site.
+      const r = Math.random(), style = r < 0.2 ? 'rush' : r < 0.72 ? 'default' : 'lurk';
+      this.plan = { site, style, defRoles: new Map(), atkRoles: new Map(), pushed: new Set(), intel: { atk: new Map(), def: new Map() }, spikeSeen: null, defCall: null, leaned: false, called: false, switched: false, stats: { rot: 0, lean: 0, switch: 0, save: 0 } };
       let di = 0, ai = 0;
       for (const c of g.combatants) {
         if (this.side(c) === 'def') this.plan.defRoles.set(c, defRoles[di++ % 5]);
@@ -527,16 +600,59 @@ export class RoundMode {
       const [cx, cz] = pick(cells), c = map.cellCenter(cx, cz);
       return [c.x, map.heights[cz][cx], c.z];
     };
-    // Where defenders last saw attackers (bronze/silver habit: everyone rotates toward the first contact).
-    let contact = null;
-    for (const c of this.alive('def')) {
-      const br = c.brain;
-      if (br && br.lastSeenPos && now - br.lastSeen < 2.5) {
-        const near = Object.keys(map.sites).sort((a, b) => dist(br.lastSeenPos, map.sites[a].center) - dist(br.lastSeenPos, map.sites[b].center))[0];
-        if (dist(br.lastSeenPos, map.sites[near].center) < 45) contact = near;
+    const live = this.phase === 'live', since = now - (this.liveAt || now), left = this.phaseEnd - now;
+    const other = (s) => s === 'A' ? 'B' : 'A';
+    const atkAlive = this.alive('atk').length, defAlive = this.alive('def').length;
+
+    // ----- Defenders read the info and call a rotation, like a team on comms -----
+    // The spike seen, three or more on a site (or most of what's left of them), or a fight two attackers
+    // took there: that's the hit, so everyone but the far-site anchor goes. Two seen with no spike: the mid
+    // player leans over. One seen: probably a lurk, nobody moves. A site with no contact while the other has
+    // it is the one that rotates out.
+    if (live && sp.state !== 'planted') {
+      let call = null;
+      for (const s of ['A', 'B']) {
+        const n = this.seenIn('def', s, 10), spike = plan.spikeSeen && plan.spikeSeen.zone === s && now - plan.spikeSeen.t < 20;
+        if (spike || n >= 3 || (n >= 2 && n >= atkAlive - 1)) call = call && !spike ? call : s;
+      }
+      if (call && plan.defCall?.site !== call) {
+        // Already on the site in numbers: the rotators don't run into it one at a time, they set up on the
+        // way in and hold for the retake.
+        plan.defCall = { site: call, at: now, delay: this.seenIn('def', call, 10) >= 3 ? this.retakeSpot(map.sites[call].center, 14) : null };
+        const all = this.seenIn('def', call, 10) >= 4 || defAlive <= 2;
+        const anchor = [...plan.defRoles.entries()].find(([c, r]) => r === other(call) && c.alive)?.[0];
+        for (const [c, r] of plan.defRoles) {
+          if (!c.alive || !c.brain || r === call || (c === anchor && !all)) continue;
+          plan.defRoles.set(c, call);
+          c.brain.rotateAt = now + 0.4 + Math.random(); // a moment to hear the call and turn around
+          plan.stats.rot++;
+        }
+      } else if (!plan.defCall && !plan.leaned) {
+        const lean = ['A', 'B'].find(s => this.seenIn('def', s, 8) === 2);
+        const midder = lean && [...plan.defRoles.entries()].find(([c, r]) => r === 'mid' && c.alive && c.brain)?.[0];
+        if (midder) { plan.leaned = true; plan.defRoles.set(midder, lean); midder.brain.rotateAt = now + 0.5; plan.stats.lean++; }
       }
     }
-    const live = this.phase === 'live';
+
+    // ----- Attackers call the site from what the default showed them -----
+    if (live && sp.state !== 'planted') {
+      const resist = (s) => this.seenIn('atk', s, 25);
+      if (!plan.called && plan.style !== 'rush' && now >= this.goTime - 4) {
+        // Hit the site that showed fewer defenders; if both look the same, stick with the plan.
+        plan.called = true;
+        const s = plan.site, o = other(s);
+        if (resist(s) >= resist(o) + 2 || (resist(s) >= 2 && resist(o) === 0)) { plan.site = o; plan.stats.switch++; this.goTime = now + 7; this.restage(); }
+      }
+      // Up two players or more: no need to wait, go now.
+      if (now < this.goTime && atkAlive - defAlive >= 2) this.goTime = now + 1;
+      // Never leave the execute so late there's no time to plant.
+      if (this.goTime > this.liveAt + 55) this.goTime = this.liveAt + 55;
+      // The hit stalled against a stack with plenty of time left: rotate through to the other site, once.
+      if (!plan.switched && now > this.goTime + 10 && left > 40 && atkAlive >= 3 && resist(plan.site) >= 3 && resist(other(plan.site)) <= 1) {
+        plan.switched = true; plan.site = other(plan.site); plan.stats.switch++; this.goTime = now + 7; this.restage();
+      }
+    }
+
     for (const b of bots) {
       const br = b.brain;
       const side = this.side(b);
@@ -549,49 +665,79 @@ export class RoundMode {
       if (br.goal?.kind === 'revive') br.goal = null;
       if (side === 'def') {
         if (sp.state === 'planted') {
+          const tleft = sp.plantedAt + ROUND.spike - now, need = sp.halfDone ? ROUND.defuseHalf : ROUND.defuse;
+          // No time left to get there and defuse: save the gun, out of the blast.
+          if (atkAlive > 0 && tleft < need + dist(b.pos, sp.pos) / 6 + 0.5 && dist(b.pos, sp.pos) > 2) {
+            if (br.goal?.kind !== 'save') {
+              const s0 = map.teamSpawns.def[0];
+              br.goal = { kind: 'save', pos: s0 ? [s0.x, s0.y, s0.z] : jitter(b.pos, 4), look: sp.pos };
+              plan.stats.save++;
+            }
+            continue;
+          }
+          // Retake together, not one by one: those far from the spike group up on the way in first, and the
+          // team goes once two are there (or everyone left is), or the clock says go.
+          plan.retake ||= { pos: this.retakeSpot(sp.pos), go: false };
+          const rt = plan.retake, team = this.alive('def');
+          if (!rt.go) {
+            const ready = team.filter(c => dist(c.pos, rt.pos) < 8 || dist(c.pos, sp.pos) < dist(rt.pos, sp.pos)).length;
+            if (ready >= Math.min(2, team.length) || tleft < need + 14) rt.go = true;
+          }
+          if (!rt.go && dist(b.pos, sp.pos) > dist(rt.pos, sp.pos) + 3) {
+            if (br.goal?.kind !== 'regroup') br.goal = { kind: 'regroup', pos: jitter(rt.pos, 3), look: sp.pos, hold: true };
+            continue;
+          }
           // Everyone collapses on the spike; the closest defuses.
-          const closest = this.alive('def').filter(c => c.isBot).sort((x, y) => dist(x.pos, sp.pos) - dist(y.pos, sp.pos))[0];
+          const closest = team.filter(c => c.isBot).sort((x, y) => dist(x.pos, sp.pos) - dist(y.pos, sp.pos))[0];
           // The others spread around it and watch outward, covering the defuser.
-          const left = sp.plantedAt + ROUND.spike - now;
           const cover = () => { const p = jitter(sp.pos, 9); return { pos: p, look: [p[0] + (p[0] - sp.pos[0]) * 3, 0, p[2] + (p[2] - sp.pos[2]) * 3] }; };
           if (b === closest) {
             if (!br.goal || br.goal.action !== 'defuse') br.goal = { kind: 'spike', pos: [...sp.pos], look: sp.pos, action: 'defuse' };
             // Out of time: commit to the defuse even with enemies around (needs the whole 7 s, or 3.5 after half).
-            br.goal.commit = left < (sp.halfDone ? ROUND.defuseHalf : ROUND.defuse) + 1.5;
+            br.goal.commit = tleft < need + 1.5;
           } else if (!br.goal || br.goal.kind !== 'spike' || br.goal.action || fresh) { const cv = cover(); br.goal = { kind: 'spike', pos: cv.pos, look: cv.look, hold: true }; }
           continue;
         }
-        let role = plan.defRoles.get(b) || 'mid';
-        // Rotate on contact (half the time — and sometimes too early).
-        if (live && contact && role !== contact && !plan.rotated.has(b)) {
-          plan.rotated.add(b);
-          if (Math.random() < 0.55) { role = contact; plan.defRoles.set(b, role); br.goal = null; }
-        }
-        // An aggressive defender pushes out into a lane if nothing has happened for a while.
-        if (live && !contact && now - (this.liveAt || now) > 16 && br.aggr > 0.65 && !plan.pushed.has(b)) {
+        const role = plan.defRoles.get(b) || 'mid';
+        // An aggressive defender looks for info in a lane when nothing has happened for a while.
+        if (live && !plan.defCall && since > 16 && since < 40 && br.aggr > 0.65 && !plan.pushed.has(b) && !this.seenIn('def', role, 15)) {
           plan.pushed.add(b);
           const lane = role === 'mid' ? map.stage[pick(['A', 'B'])].mid : map.stage[role].main;
-          br.goal = { kind: 'push', pos: jitter(pick(lane), 3), look: map.teamSpawns.atk[0] ? [map.teamSpawns.atk[0].x, 0, map.teamSpawns.atk[0].z] : null, hold: true };
+          br.goal = { kind: 'push', pos: jitter(pick(lane), 3), look: map.teamSpawns.atk[0] ? [map.teamSpawns.atk[0].x, 0, map.teamSpawns.atk[0].z] : null, hold: true, quiet: true };
           br.nextShift = now + 14;
           continue;
         }
-        if (br.goal?.kind === 'push' && now < br.nextShift) continue;
-        const list = map.holds[role];
+        // Pushed out but the call went elsewhere: drop it and rotate.
+        if (br.goal?.kind === 'push' && now < br.nextShift && !(plan.defCall && plan.defCall.site !== role)) continue;
+        if (br.rotateAt && now < br.rotateAt) continue; // still finishing what it was doing before the rotate
+        const rotating = br.rotateAt && br.goal?.kind === 'hold' && br.goal.role !== role;
+        const dc = plan.defCall;
+        const list = dc?.delay && dc.site === role && (br.rotateAt || br.rotatedTo === role) ? [{ pos: dc.delay, look: map.sites[role].center }] : map.holds[role];
         const idx = [...plan.defRoles.entries()].filter(([c, r]) => r === role).findIndex(([c]) => c === b);
         // Holding: swap to another spot on the same site every so often instead of camping one pixel.
-        if (!br.goal || br.goal.kind !== 'hold' || fresh || (live && now >= (br.nextShift || 0))) {
-          const k = fresh || !br.goal ? Math.max(0, idx) : Math.floor(Math.random() * list.length);
+        if (!br.goal || br.goal.kind !== 'hold' || rotating || fresh || (live && now >= (br.nextShift || 0))) {
+          const k = fresh || !br.goal || rotating ? Math.max(0, idx) : Math.floor(Math.random() * list.length);
           const h = list[k % list.length];
-          br.goal = { kind: 'hold', pos: jitter(h.pos, 2), look: h.look, hold: true };
+          br.goal = { kind: 'hold', role, pos: jitter(h.pos, 2), look: h.look, hold: true };
           br.nextShift = now + 6 + Math.random() * 7;
+          if (br.rotateAt) br.rotatedTo = role;
+          br.rotateAt = 0;
         }
       } else {
         if (sp.state === 'planted') {
+          // A defuse started: swing on it. Otherwise play off the spike from a spot that sees it.
+          if (sp.defuser && br.goal?.kind === 'post' && now - br.lastSeen > 1) { br.lastSeenPos = [...sp.pos]; br.pushUntil = now + 1.5; }
           if (!br.goal || br.goal.kind !== 'post' || fresh || now >= (br.nextShift || 0)) {
-            const p = [sp.pos[0] + (Math.random() - 0.5) * 16, 0, sp.pos[2] + (Math.random() - 0.5) * 16];
+            const spots = this.postSpots(sp, b.pos);
+            const p = spots.length ? jitter(pick(spots.slice(0, 6)), 1) : [sp.pos[0] + (Math.random() - 0.5) * 16, 0, sp.pos[2] + (Math.random() - 0.5) * 16];
             br.goal = { kind: 'post', pos: p, look: sp.pos, hold: true };
-            br.nextShift = now + 7 + Math.random() * 7; // reposition during the post-plant
+            br.nextShift = now + 9 + Math.random() * 8; // reposition during the post-plant
           }
+          continue;
+        }
+        // Lost round with no way to plant in time (or alone against a full team late): save the gun.
+        if (live && left < 20 && (atkAlive === 1 && defAlive >= 3 || (sp.carrier === b || sp.state === 'carried') && left < ROUND.plant + (sp.carrier ? dist(sp.carrier.pos, map.sites[plan.site].center) / 6 : 0) + 1)) {
+          if (br.goal?.kind !== 'save') { const s0 = map.teamSpawns.atk[0]; br.goal = { kind: 'save', pos: s0 ? [s0.x, s0.y, s0.z] : jitter(b.pos, 4), look: map.sites[plan.site].center, quiet: true }; plan.stats.save++; }
           continue;
         }
         if (sp.state === 'dropped') {
@@ -601,7 +747,7 @@ export class RoundMode {
         const role = plan.atkRoles.get(b) || 'main';
         if (this.phase === 'buy') {
           // Buy phase: walk up to the barrier of the lane this player will take, ready to go.
-          const site = role === 'lurk' ? (plan.site === 'A' ? 'B' : 'A') : plan.site;
+          const site = role === 'lurk' ? other(plan.site) : plan.site;
           const spots = map.buyStage?.[site]?.[role === 'mid' ? 'mid' : 'main'];
           if (!spots) { br.goal = null; continue; }
           if (!br.goal || br.goal.kind !== 'buystage' || fresh) {
@@ -612,27 +758,33 @@ export class RoundMode {
         }
         // The carrier plants on the called site, whatever role it was given (a lurker holding it would never plant).
         if (sp.carrier === b && now >= this.goTime + 3) {
-          if (!br.goal || br.goal.kind !== 'plant') br.goal = { kind: 'plant', pos: plantSpot(plan.site), action: 'plant' };
+          if (!br.goal || br.goal.kind !== 'plant' || br.goal.site !== plan.site) br.goal = { kind: 'plant', site: plan.site, pos: plantSpot(plan.site), action: 'plant' };
           continue;
         }
         if (role === 'lurk' && sp.carrier !== b) {
-          // The lurker sits in the other site's main, then pushes in once the spike is down or late in the round.
-          const other = plan.site === 'A' ? 'B' : 'A';
-          if (now - (this.liveAt || now) > 45) { if (!br.goal || br.goal.kind !== 'entry') br.goal = { kind: 'entry', pos: siteSpot(other, 0.8), look: siteSpot(other, 0.2), hold: true }; }
-          else if (!br.goal || br.goal.kind !== 'stage' || now >= (br.nextShift || 0)) { br.goal = { kind: 'stage', pos: jitter(pick(map.stage[other].main), 3), look: map.sites[other].center, hold: true }; br.nextShift = now + 6 + Math.random() * 5; }
+          // The lurker sits quietly in the other site's main, then hits it as the execute starts, catching the
+          // defenders who rotate off it (or the spike is down, or it's late).
+          const o = other(plan.site);
+          if (now > this.goTime + 5 || since > 45) { if (!br.goal || br.goal.kind !== 'entry') br.goal = { kind: 'entry', pos: siteSpot(o, 0.8), look: siteSpot(o, 0.2), hold: true }; }
+          else if (!br.goal || br.goal.kind !== 'stage' || now >= (br.nextShift || 0)) { br.goal = { kind: 'stage', pos: jitter(pick(map.stage[o].main), 3), look: map.sites[o].center, hold: true, quiet: true }; br.nextShift = now + 6 + Math.random() * 5; }
           continue;
         }
         const st = map.stage[plan.site][role === 'lurk' ? 'main' : role]; // a lurker holding the spike stages with the main group
         const executing = now >= this.goTime;
         if (!executing) {
-          // Staging: keep moving between spots in the lane rather than standing still.
-          if (!br.goal || br.goal.kind !== 'stage' || now >= (br.nextShift || 0)) { br.goal = { kind: 'stage', pos: jitter(pick(st), 3), look: map.sites[plan.site].center, hold: true }; br.nextShift = now + 3 + Math.random() * 3; }
+          // Staging: keep moving between spots in the lane rather than standing still, quietly.
+          if (!br.goal || br.goal.kind !== 'stage' || now >= (br.nextShift || 0)) { br.goal = { kind: 'stage', pos: jitter(pick(st), 3), look: map.sites[plan.site].center, hold: true, quiet: plan.style !== 'rush' }; br.nextShift = now + 3 + Math.random() * 3; }
         } else if (sp.carrier === b) {
           // The carrier lets the entry players go first, then follows to plant (above).
           if (!br.goal || br.goal.kind !== 'stage') br.goal = { kind: 'stage', pos: jitter(pick(st), 2), look: map.sites[plan.site].center, hold: true };
-        } else if (!br.goal || br.goal.kind !== 'entry') br.goal = { kind: 'entry', pos: siteSpot(plan.site, 0.9), look: siteSpot(plan.site, 0.2), hold: true };
+        } else if (!br.goal || br.goal.kind !== 'entry' || br.goal.site !== plan.site) br.goal = { kind: 'entry', site: plan.site, pos: siteSpot(plan.site, 0.9), look: siteSpot(plan.site, 0.2), hold: true };
       }
     }
+  }
+
+  // The attack changed its call: everyone drops their spot and stages for the new site.
+  restage() {
+    for (const c of this.alive('atk')) if (c.brain && c.brain.goal?.kind !== 'pickup') { c.brain.goal = null; c.brain.nextShift = 0; }
   }
 }
 

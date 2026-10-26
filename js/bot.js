@@ -86,16 +86,20 @@ export class Bot {
     this.used = new Set(); // abilities already used for a one-per-round purpose
     this.lastSeenPos = null;
     this.pushUntil = 0;
+    this.rotateAt = 0; // team AI: when this defender starts a called rotation, and where to
+    this.rotatedTo = null;
     this.aggr = 0.35 + Math.random() * 0.5; // how readily this bot pushes a contact instead of holding
   }
 
   hear(source, now) {
     if (this.mode === 'static' || now - this.lastSeen < 1 || this.me.st.deafUntil > now) return; // deafened: hears nothing
+    if (this.game.isEnemy(this.me, source)) this.game.mode?.report?.(this.me, source, source.pos, 'heard');
     this.alert(source.pos, now);
   }
 
   onDamaged(attacker, now) {
     if (this.mode === 'static' || now - this.lastSeen < 0.5) return;
+    if (attacker && attacker !== this.me) this.game.mode?.report?.(this.me, attacker, attacker.pos, 'shot');
     this.alert(attacker.pos, now);
   }
 
@@ -207,6 +211,7 @@ export class Bot {
     this.lastSeenPos = [...best.pos];
     this.investigate = { pos: [...best.pos], until: now + 6 };
     this.lookAt = [...best.pos];
+    this.game.mode?.report?.(me, best, best.pos, 'seen'); // call it out to the team
   }
 
   engage(now, dt) {
@@ -301,12 +306,15 @@ export class Bot {
     if (!there) {
       this.moveTo(t, now, dt);
       if (!this.path) this.steer(t[0] - me.pos[0], t[2] - me.pos[2], now); // no path (off-grid or the last stretch): walk straight, around corners
-      // Walk the last stretch rather than run, like a careful player clearing an angle.
-      if (gl.hold && d < 4) inp.walk = true;
+      // Walk the last stretch rather than run, like a careful player clearing an angle; a quiet move (a lurk,
+      // a default, an info push) is walked from further out so footsteps don't give it away.
+      if (gl.hold && d < (gl.quiet ? 14 : 4)) inp.walk = true;
       return;
     }
     this.path = null;
-    if (gl.look) this.turnToward(gl.look, PLAYER.standEye * 0.85, dt, 0.35);
+    // Check the angle a teammate just called out; otherwise the spot's own angle.
+    const look = this.lookAt && now < this.alertUntil && gl.hold ? this.lookAt : gl.look;
+    if (look) this.turnToward(look, PLAYER.standEye * 0.85, dt, 0.35);
     // Plant or defuse once nobody has been seen for a moment.
     if (gl.action && (gl.commit || now - this.lastSeen > 1.2)) { inp.use = true; return; }
     // Holding an angle isn't standing still: jiggle-peek side to side, crouch now and then, glance around.

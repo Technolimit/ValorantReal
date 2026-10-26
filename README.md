@@ -17,6 +17,8 @@ It also works as-is on any static host (GitHub Pages, Netlify, an S3 bucket).
 `playwright`). Pass `--offline` to skip the two-tab online checks. `node tools/check-agent-select.mjs` checks the
 agent select: the pick rules, offline 5v5, and an online room with a player joining mid-match. `node tools/check-spike.mjs`
 checks that bots carry the spike out of spawn and plant it on Divide.
+`node tools/sim-bots.mjs [rounds] [difficulty] [--trace]` plays bot-only 5v5 rounds on Divide and reports how they went
+(plants, retakes, rotations; `--trace` prints every bot's goal as the round plays out).
 `node tools/check-world.mjs` checks that the collision grid answers exactly like testing every box.
 `node tools/profile.mjs [seconds] [--shadows on] [--scale 1] [--cpu] [--spikes]` plays a 5v5 on Divide headless and reports
 the cost of a tick and a frame, draw calls and garbage. `node tools/check-net-smooth.mjs` measures how smoothly another player moves
