@@ -29,6 +29,9 @@ import { takenAgents } from './agentselect.js';
 // TIMEOUT: silence that counts as gone (a closed connection or a 'bye' is noticed at once; this is for a crashed
 // tab or a dead network, and has to ride out a few seconds of wifi trouble). LOAD_TIMEOUT: a joiner's first
 // match message can take this long, since it downloads and builds the map after the welcome.
+// Bump whenever messages change shape or meaning. A host turns away joiners on another version (usually a
+// browser still running cached files from before a deploy) instead of letting them half work.
+export const NET_VERSION = 3;
 const SNAP_HZ = 20, STATE_HZ = 30, TIMEOUT = 15, LOAD_TIMEOUT = 60, PEER_PREFIX = 'tapfire-';
 // What a client only sends once its copy of the match is running (anything else may be left over from the
 // pick screen, like its last 'lhb', and says nothing about whether it has finished loading).
@@ -227,7 +230,7 @@ export class NetSession {
 
   async join({ transport, room, profile }) {
     this.close();
-    this.room = room; this.profile = profile;
+    this.room = room; this.profile = { ...profile, v: NET_VERSION };
     this.t = transport === 'peer' ? new PeerTransport(room, this.nid, false) : new LocalTransport(room, this.nid);
     this.cb.onStatus(transport === 'peer' ? 'Connecting to the host…' : 'Looking for the host…');
     await this.t.open();
@@ -463,6 +466,7 @@ export class NetSession {
     const g = this.game, id = m.from;
     if (this.lobby) { this.lobbyRecv(m); return; }
     if (m.k === 'hello' || m.k === 'peek') {
+      if (m.v !== NET_VERSION) { this.t.send({ k: 'version', v: NET_VERSION }, id); return; }
       if (g.state !== 'playing') return;
       const p = this.peers.get(id);
       if (p) { if (m.k === 'hello') this.t.send(this.welcome(id, p), id); return; }
@@ -584,6 +588,7 @@ export class NetSession {
   lobbyRecv(m) {
     const L = this.lobby, id = m.from;
     if (m.k === 'hello') {
+      if (m.v !== NET_VERSION) { this.t.send({ k: 'version', v: NET_VERSION }, id); return; }
       if (!L.get(id)) {
         if (!L.open) { this.t.send({ k: 'wait' }, id); return; } // the pick is finishing: they join the match once it starts
         if (this.humanCount() >= this.server.max || !L.add(id, cleanName(m.name))) { this.t.send({ k: 'full' }, id); return; }
@@ -792,6 +797,13 @@ export class NetSession {
     const g = this.game;
     if (this.role === 'joining' || this.role === 'lobby' || this.role === 'picking') {
       if (m.k === 'full' && m.to === this.nid) { this.cb.onStatus('That server is full'); this.close(); return; }
+      if (m.k === 'version' && m.to === this.nid) {
+        this.cb.onStatus(Number(m.v) > NET_VERSION
+          ? 'The host is on a newer version of the game. Refresh this page (Ctrl+Shift+R) and join again.'
+          : 'The host is on an older version of the game. Ask them to refresh (Ctrl+Shift+R) and create the server again.');
+        this.close();
+        return;
+      }
       if (m.k === 'bye' && m.from === this.hostId) { this.hostGone(); return; }
       if (m.k === 'wait' && m.to === this.nid) { clearTimeout(this.joinDeadline); this.joinDeadline = setTimeout(() => this.noHost(), 12000); return; }
       if (m.k === 'lobby' && this.role !== 'picking' && m.s?.players?.some(p => p.n === this.nid)) { this.enterLobby(m); return; }
