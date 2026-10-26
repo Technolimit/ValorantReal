@@ -206,6 +206,34 @@ function flashTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+// The white light bulb shown over the head of anyone who is flashed, with a soft glow behind it.
+function bulbTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(64, 52, 0, 64, 52, 62);
+  gr.addColorStop(0, 'rgba(255,255,255,0.75)');
+  gr.addColorStop(0.45, 'rgba(255,255,255,0.25)');
+  gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, 128, 128);
+  g.fillStyle = '#fff';
+  g.shadowColor = '#fff';
+  g.shadowBlur = 10;
+  g.beginPath(); // glass: a round top narrowing into the neck
+  g.arc(64, 50, 26, Math.PI * 0.8, Math.PI * 2.2);
+  g.lineTo(76, 88);
+  g.lineTo(52, 88);
+  g.closePath();
+  g.fill();
+  g.shadowBlur = 0;
+  g.fillStyle = '#d8dde4'; // screw base
+  g.fillRect(52, 91, 24, 5);
+  g.fillRect(54, 98, 20, 5);
+  g.fillRect(58, 105, 12, 4);
+  return new THREE.CanvasTexture(c);
+}
+
 // First-person gun models, built from boxes. The muzzle object marks where flashes and tracers start.
 const VM_SCALE = 0.8;
 const EXAMINE_HOLD = 280; // ms the inspect key is held before examine mode takes the mouse
@@ -1171,7 +1199,12 @@ export class Renderer {
     const held = new THREE.Group(); // the weapon this player is holding, rebuilt when it changes
     group.add(held);
     this.scene.add(group);
-    return { c, group, legs, body, head, gun, visor, held, heldKey: '', flash: 0, deathT: 0 };
+    this.bulbMat ||= new THREE.SpriteMaterial({ map: bulbTexture(), transparent: true, depthWrite: false });
+    const bulb = new THREE.Sprite(this.bulbMat.clone()); // own material so each one fades on its own
+    bulb.scale.setScalar(0.42);
+    bulb.visible = false;
+    group.add(bulb);
+    return { c, group, legs, body, head, gun, visor, held, bulb, heldKey: '', flash: 0, deathT: 0 };
   }
 
   // Overload's beam: a glowing rod from the caster's fingertip (yours on screen, theirs at the hand) to where it
@@ -1752,6 +1785,7 @@ export class Renderer {
       const c = ch.c;
       if (c === this.game.player && !(c.alive && this.riding)) { ch.group.visible = false; continue; } // first person: no body of your own
       if (!c.alive) {
+        ch.bulb.visible = false;
         if (ch.deathT) {
           const t = (now - ch.deathT) / 450;
           ch.group.rotation.x = -Math.min(1, t) * Math.PI / 2 * 0.9;
@@ -1799,6 +1833,13 @@ export class Renderer {
       }
       ch.held.position.set(0.2, lerp(GUN_HEIGHT[0], GUN_HEIGHT[1], cr), -0.28);
       ch.held.rotation.set(Math.max(-0.6, Math.min(0.6, c.pitch || 0)) * 0.8, 0, 0);
+      // Flashed: a white bulb over their head for as long as the blind lasts, fading out with it.
+      const bl = c.st ? c.st.blindUntil - this.game.time : 0;
+      ch.bulb.visible = bl > 0;
+      if (bl > 0) {
+        ch.bulb.position.set(0, hy + 0.45 + Math.sin(now / 160) * 0.03, 0);
+        ch.bulb.material.opacity = Math.min(1, bl / Math.max(0.3, c.st.blindLen * 0.4));
+      }
       const hot = now - ch.flash < 80;
       // Revealed (sonar, traps, lockdown): glowing red silhouette drawn through walls.
       const shown = c.st && c.st.revealUntil > this.game.time && !(c.st.hiddenUntil > this.game.time) && this.game.isEnemy(this.game.player, c);
