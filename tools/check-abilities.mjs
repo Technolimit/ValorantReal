@@ -608,6 +608,32 @@ const checks = [
     const over = !k.overdrive && !k.highGear && p.gun === p.inv[p.slot];
     return { pass: sprinting && speed > 8 && shots >= 3 && slid && stillSprinting && firedSliding && killed && refilled && over, sprinting, speed: +speed.toFixed(1), shots, slid, stillSprinting, firedSliding, killed, refilled, endsAfterMeter: over };
   }],
+  ['Convergent Paths: holds aim and movement back while casting, bursts after 1 s into a 13.5 m wide beam (6 s Hinder), then +10% speed for 7 s', async () => {
+    const g = await __start({ agent: 'lumen' });
+    const p = g.player, k = p.kit, b = g.bots[0];
+    if (!__place(g, p, 30)) return { error: 'no open ground' };
+    __tick(g, 0.5);
+    // A bot 30 m ahead and 6 m to the side: inside the new 13.5 m width, outside the old one.
+    b.pos = __ahead(p, 30); b.pos[0] += 6; b.pos[1] = (g.floorAt(b.pos[0], b.pos[2], p.pos[1] + 1) || p.pos)[1]; b.prevPos = [...b.pos];
+    k.ultPoints = k.ultCost; k.agent.abilities.x.use(k);
+    const locked = p.st.castLockUntil > g.time;
+    __tick(g, 0.9); const early = b.st.hinderUntil > g.time;
+    __tick(g, 0.7); const hindered = b.st.hinderUntil - g.time, haste = p.st.hasteUntil - g.time, amt = p.st.hasteAmt;
+    return { pass: locked && !early && hindered > 5 && hindered <= 6 && haste > 6 && haste <= 7 && amt === 0.1, locked, early, hindered: +hindered.toFixed(2), haste: +haste.toFixed(2), amt };
+  }],
+  ['Rendezvous: Regent can\'t be hurt or shoot while teleporting to his anchor, and can be hurt again once he lands', async () => {
+    const g = await __start({ agent: 'regent' });
+    const p = g.player, k = p.kit, b = g.bots[0];
+    if (!__place(g, p, 20)) return { error: 'no open ground' };
+    __tick(g, 0.5);
+    k.anchor = g.addDevice({ kind: 'anchor', owner: p, pos: __ahead(p, 10).map((v, i) => i === 1 ? p.pos[1] : v), life: 99999 });
+    const hit = () => { const hp = p.hp + p.armor; g.damage(p, b, 30, { part: 'body', def: { id: 'vandal', name: 'Vandal' }, dist: 5, point: p.eye() }); return p.hp + p.armor < hp; };
+    const from = [...p.pos];
+    k.agent.abilities.e.reuse(k);
+    __tick(g, 0.2); const hurtMid = hit(), noGun = p.st.channelUntil > g.time;
+    __tick(g, 0.6); const moved = Math.hypot(p.pos[0] - from[0], p.pos[2] - from[2]) > 5, hurtAfter = hit();
+    return { pass: !hurtMid && noGun && moved && hurtAfter, hurtMid, noGun, moved, hurtAfter };
+  }],
   ['Bot 5v5 (6 min): no errors, bots don\'t stay stuck on walls, bot flashes hit enemies more than their own side', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'fight' });
     const s = { flashes: 0, self: 0, ally: 0, enemy: 0, errors: 0, rounds: 0 };

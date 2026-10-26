@@ -1178,7 +1178,7 @@ export const AGENTS = {
         reuse(kit) { return toggleAbilityGun(kit, 'headhunter'); },
       },
       e: {
-        item: 'device', name: 'Anchor', desc: 'Hold the anchor, left click to place it on the floor (13 m). Press E again anywhere within 50 m to teleport back to it (20 s cooldown between teleports).', charges: 1, cooldown: 0,
+        item: 'device', name: 'Anchor', desc: 'Hold the anchor, left click to place it on the floor (13 m). Press E again anywhere within 50 m to teleport back to it, invulnerable while you teleport (20 s cooldown between teleports).', charges: 1, cooldown: 0,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 13, { floor: true, back: 0.6 });
           if (kit.anchor) kit.anchor.removed = true;
@@ -1190,6 +1190,8 @@ export const AGENTS = {
           if (kit.now < (kit.tpReady || 0) || Math.hypot(o.pos[0] - a.pos[0], o.pos[2] - a.pos[2]) > 50) { o.game.emit('abilityFail', { who: o, key: 'e' }); return true; }
           kit.tpReady = kit.now + 20;
           o.game.emit('ability', { who: o, type: 'step', pos: a.pos });
+          o.st.invulnUntil = kit.now + 0.6; // can't be hurt from the press until he lands
+          o.st.channelUntil = kit.now + 0.5; // and can't shoot while teleporting
           mine(kit, 0.5, () => o.game.teleportNear(o, [...a.pos]));
           return true;
         },
@@ -1344,15 +1346,17 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Convergent Paths', desc: 'Send an afterimage ahead that casts a 40 m beam of light (through walls). After 1.2 s the beam bursts: everyone in it is Hindered for 6 s, and you gain 15% speed for 10 s.', points: 8,
+        name: 'Convergent Paths', desc: 'Focus your light and cast a beam 36 m ahead, through walls. Casting briefly slows your aim and movement. After 1 s the beam expands to 13.5 m wide: everyone in it is Hindered for 6 s, and you gain 10% speed for 7 s.', points: 8,
         use(kit) {
-          const o = kit.owner, g = o.game, f = fwd2(o.yaw), a = [o.pos[0], o.pos[1] + 1, o.pos[2]], b = [a[0] + f[0] * 40, a[1], a[2] + f[1] * 40];
+          const o = kit.owner, g = o.game, f = fwd2(o.yaw), a = [o.pos[0], o.pos[1] + 1, o.pos[2]], b = [a[0] + f[0] * 36, a[1], a[2] + f[1] * 36];
           g.emit('ability', { who: o, type: 'ult' });
-          for (let i = 1; i <= 8; i++) g.emit('pulse', { pos: [a[0] + f[0] * i * 5, a[1], a[2] + f[1] * i * 5], r: 1.8, type: 'reveal', color: 0xffe680, owner: o });
-          later(kit, 1.2, () => {
-            g.lineEffect(o, a, b, 3, 'hinder', 6);
-            for (let i = 1; i <= 8; i++) g.emit('pulse', { pos: [a[0] + f[0] * i * 5, a[1], a[2] + f[1] * i * 5], r: 3, type: 'stun', color: 0xfff2b0, owner: o });
-            if (o.alive) o.st.hasteUntil = kit.now + 10;
+          o.st.castLockUntil = kit.now + 0.6; // like Rolling Thunder: aim and movement held back while casting
+          g.emit('quakeLine', { from: a, to: b, width: 1, color: 0xffe680, life: 1 });
+          later(kit, 1, () => {
+            g.emit('quakeLine', { from: a, to: b, width: 13.5, color: 0xfff2b0, life: 0.8 });
+            // The expanded area lingers for 4 ticks, 0.125 s apart, catching anyone who walks in.
+            for (let i = 0; i < 4; i++) later(kit, i * 0.125, () => g.lineEffect(o, a, b, 6.75, 'hinder', 6, 4));
+            if (o.alive) { o.st.hasteUntil = kit.now + 7; o.st.hasteAmt = 0.1; }
           });
         },
       },
@@ -1483,7 +1487,7 @@ export const AGENTS = {
           if (!prey) return false;
           prey.soulTaken = true;
           o.hp = Math.min(200, o.hp + 100);
-          o.st.hasteUntil = kit.now + 10;
+          o.st.hasteUntil = kit.now + 10; o.st.hasteAmt = 0.15;
           g.emit('ability', { who: o, type: 'heal' });
         },
       },

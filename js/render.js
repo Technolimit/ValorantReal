@@ -832,7 +832,7 @@ export class Renderer {
   }
 
   // Seismic line / cone: a ripple of light along the ground.
-  fxQuake({ from, to, yaw, cone, color = 0xf28c38 }) {
+  fxQuake({ from, to, yaw, cone, color = 0xf28c38, width = 2.2, life = 1.2 }) {
     const t0 = this.game.time;
     if (cone) {
       const m = new THREE.Mesh(new THREE.CircleGeometry(32, 32, -25 * DEG, 50 * DEG), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -842,10 +842,10 @@ export class Renderer {
       return;
     }
     const len = Math.hypot(to[0] - from[0], to[2] - from[2]);
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, len), new THREE.MeshBasicMaterial({ color: 0xf28c38, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(width, len), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
     m.rotation.set(-Math.PI / 2, 0, Math.atan2(to[0] - from[0], to[2] - from[2]));
     m.position.set((from[0] + to[0]) / 2, from[1] - 0.95, (from[2] + to[2]) / 2);
-    this.fxAdd(m, t0 + 1.2, (now) => { const k = (now - t0) / 1.2; m.material.opacity = 0.5 * Math.sin(Math.min(1, k) * Math.PI); });
+    this.fxAdd(m, t0 + life, (now) => { const k = (now - t0) / life; m.material.opacity = 0.5 * Math.sin(Math.min(1, k) * Math.PI); });
   }
 
   // Soul orb: a floating purple wisp that fades after 3 s.
