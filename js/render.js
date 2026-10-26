@@ -1430,13 +1430,13 @@ export class Renderer {
   }
 
   // Slow orbit over the map behind the main menu.
-  // Buy-phase barriers: translucent coloured walls at the spawn exits.
+  // Buy-phase barriers: solid coloured walls at the spawn exits, so nobody can look into the other team's spawn.
   showBarriers(boxes) {
     if (this.barrierGroup) this.scene.remove(this.barrierGroup);
     this.barrierGroup = new THREE.Group();
     for (const b of boxes) {
       const size = [b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]];
-      const m = new THREE.Mesh(new THREE.BoxGeometry(...size), new THREE.MeshBasicMaterial({ color: b.barrier === 'atk' ? 0xff4655 : 0x4fd1c5, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
+      const m = new THREE.Mesh(new THREE.BoxGeometry(...size), new THREE.MeshBasicMaterial({ color: b.barrier === 'atk' ? 0x6e1a24 : 0x1a5a54, side: THREE.DoubleSide }));
       m.position.set(b.min[0] + size[0] / 2, b.min[1] + size[1] / 2, b.min[2] + size[2] / 2);
       const e = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(...size)), new THREE.LineBasicMaterial({ color: b.barrier === 'atk' ? 0xff8a95 : 0x8ff0e6 }));
       e.position.copy(m.position);
