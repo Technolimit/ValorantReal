@@ -251,6 +251,7 @@ document.addEventListener('mousemove', (e) => {
   // Same scale as Valorant: 0.07 degrees per count times sensitivity; zoomed views scale by 1/zoom.
   let deg = YAW_PER_COUNT * settings.sensitivity;
   if (zoom > 1) deg *= settings.zoomSensMult / zoom;
+  if (p.st.castLockUntil > game.time) deg *= 0.25; // casting Convergent Paths: aim held back
   p.yaw -= e.movementX * deg * DEG;
   p.pitch -= e.movementY * deg * DEG * (settings.invertY ? -1 : 1);
   p.pitch = Math.max(-89 * DEG, Math.min(89 * DEG, p.pitch));
