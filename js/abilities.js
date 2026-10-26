@@ -149,6 +149,9 @@ export const PICKUPS = {
   star: { star: true, cd: 25, far: true },
 };
 
+// Devices that shut off the moment their owner dies (see Kit.onDeath).
+const DIES_WITH_OWNER = new Set(['alarm', 'turret', 'swarm', 'wire', 'cam', 'trademark', 'anchor', 'satchel', 'owl', 'tiger', 'sdrone']);
+
 // The player's own device of `kind` closest to the crosshair (within 9 degrees), if any.
 function lookAt(kit, kind, maxDeg = 9) {
   const o = kit.owner, e = o.eye(), f = dirFromAngles(o.yaw, o.pitch);
@@ -1544,6 +1547,33 @@ export class Kit {
     const g = this.owner.game;
     if (this.gas) for (const gr of Object.values(this.gas.groups)) gasOff(this, gr);
     for (const d of g.devices || []) if (d.owner === this.owner && (d.kind === 'emitter' || d.kind === 'satchel')) d.removed = true;
+  }
+
+  // The owner just died: take down what Valorant takes down with its agent, on every peer's copy of the kit.
+  // Thrown smokes, fire, walls, flashes and ultimates already placed stay (Brimstone, Omen, Sage, Phoenix...);
+  // what goes is utility that needs its owner alive:
+  //   Venom (Viper)     Miasma, Toxic Wall and Nest linger 2 s, then the gas drops; Acid Vial stays
+  //   Bastion (Killjoy) Watchdog, Sentry and undetonated Hive grenades shut off; a running Hive or Clampdown stays
+  //   Lattice (Cypher)  Tripline and Watcher are disabled; triggered cages stay
+  //   Regent (Chamber)  Snare and Anchor; Blitz (Raze) Kicker satchels; Lumen (Waylay) Refract beacon
+  //   anything being piloted or held (drones, the tiger, Overload, blades, beams, a camera view, map picks)
+  onDeath(now) {
+    const g = this.owner.game, o = this.owner, LINGER = 2;
+    const fade = (it) => { it.until = Math.min(it.until, now + LINGER); };
+    for (const gr of Object.values(this.gas.groups)) { if (gr.active) gr.items.forEach(fade); gr.active = false; gr.items = []; }
+    this.gas.groups = {};
+    for (const s of g.smokes) if (s.owner === o && s.nest) fade(s);
+    for (const z of g.zones) if (z.owner === o && z.nearsight) fade(z);
+    for (const d of g.devices) {
+      if (d.owner !== o || d.removed) continue;
+      if (d.kind === 'emitter') fade(d);
+      else if (DIES_WITH_OWNER.has(d.kind)) d.removed = true;
+    }
+    for (const t of [this.pilot, this.cam, this.anchor, this.refract]) if (t) t.removed = true;
+    if (this.shadow?.shade) this.shadow.shade.removed = true;
+    this.pilot = this.view = this.cam = this.anchor = this.refract = this.shadow = null;
+    this.armed = this.mapPick = this.blades = this.beams = this.launcher = this.highGear = this.overdrive = null;
+    this.timers = this.timers.filter(t => !t.self);
   }
 
   // On spawn: full charges, ultimate points kept.

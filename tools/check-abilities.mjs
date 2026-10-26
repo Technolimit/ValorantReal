@@ -108,6 +108,29 @@ const checks = [
     __tick(g2, 0.5);
     return { pass: landed && z.vel[1] <= 0, emberLanded: landed, deadZephyrLaunched: z.vel[1] > 0 };
   }],
+  ['Dying takes down what Valorant takes down: Venom\'s gas after 2 s, sentinel gadgets at once; smokes and fire stay', async () => {
+    const kill = (g, c) => g.kill(c, g.bots[0], { part: 'body', def: { id: 'x', name: 'x' } });
+    const v = await __start({ agent: 'venom' }), p = v.player, k = p.kit;
+    k.agent.abilities.q.use(k); k.agent.abilities.e.use(k); k.agent.abilities.c.use(k); k.agent.abilities.x.use(k);
+    __tick(v, 1.5);
+    const gas = () => v.smokes.filter(s => s.owner === p && s.kind === 'gas').length;
+    const before = gas(), acid = () => v.zones.some(z => z.acid);
+    kill(v, p);
+    __tick(v, 1);
+    const lingering = gas();
+    __tick(v, 1.5);
+    const after = { gas: gas(), emitter: v.devices.some(d => d.kind === 'emitter' && !d.removed), acid: acid(), canToggle: !!k.agent.abilities.q.reuse(k) };
+    const b = await __start({ agent: 'bastion' }), q = b.player, bk = q.kit;
+    __place(b, q, 12);
+    for (const key of ['q', 'e', 'c']) bk.agent.abilities[key].use(bk);
+    b.addSmoke(q, __ahead(q, 4), b.time); // someone else's kind of smoke: it stays
+    __tick(b, 1.5);
+    const had = b.devices.filter(d => d.owner === q && !d.removed).map(d => d.kind).sort().join();
+    kill(b, q);
+    b.tick();
+    const left = b.devices.filter(d => d.owner === q && !d.removed).map(d => d.kind).join(), smokeStays = b.smokes.some(s => s.owner === q);
+    return { pass: before > 0 && lingering === before && after.gas === 0 && !after.emitter && !after.canToggle && left === '' && had.includes('turret') && smokeStays, before, lingering, ...after, had, left, smokeStays };
+  }],
   ['Detained players cannot shoot or use abilities', async () => {
     const g = await __start({ agent: 'cinder' });
     const p = g.player;
@@ -681,6 +704,13 @@ if (!offline) {
   await C.waitForFunction(() => window.__t.removed, null, { timeout: 5000 }).catch(() => {});
   const hostGone = await H.evaluate(() => !!window.__t.removed), clientGone = await C.evaluate(() => !!window.__t.removed);
   report('Online: a client shooting the host\'s Sentry breaks it for both', { pass: hostGone && clientGone, hostSentryGone: hostGone, clientSentryGone: clientGone });
+  // The client's Tripline goes away on both screens when the host kills the client.
+  await H.evaluate((f) => { window.__w = window.__game.game.addDevice({ kind: 'wire', owner: __remote(), pos: f, b: [f[0] + 2, f[1], f[2]], life: 120 }); }, spot);
+  await C.evaluate((f) => { const g = window.__game.game; window.__w = g.addDevice({ kind: 'wire', owner: g.player, pos: f, b: [f[0] + 2, f[1], f[2]], life: 120 }); }, spot);
+  await H.evaluate(() => { const g = window.__game.game, c = __remote(); c.st.intangibleUntil = 0; c.kit.mustScoreUntil = 0; g.damage(c, g.player, 999, { part: 'head', def: { id: 'vandal', name: 'Vandal' }, dist: 3, point: c.eye() }); });
+  await C.waitForFunction(() => window.__w.removed, null, { timeout: 5000 }).catch(() => {});
+  const wireHost = await H.evaluate(() => !!window.__w.removed), wireClient = await C.evaluate(() => !!window.__w.removed);
+  report('Online: a dead player\'s Tripline goes away for both', { pass: wireHost && wireClient, hostWireGone: wireHost, clientWireGone: wireClient });
 }
 
 if (errors.length) { failed++; console.log('Page errors:', errors.slice(0, 5)); }
