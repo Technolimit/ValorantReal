@@ -530,7 +530,7 @@ export class Game {
           const c = d.target, dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = Math.hypot(dx, dz);
           if (!c.alive) d.target = null;
           else {
-            if (dist < 1.3) { d.removed = true; this.explode(d.owner, [c.pos[0], c.pos[1] + 1, c.pos[2]], 3, 125, 50, BOOMER); continue; }
+            if (dist < 1.3) { d.removed = true; this.explode(d.owner, [c.pos[0], c.pos[1] + 1, c.pos[2]], 3, 80, 30, BOOMER); continue; }
             d.dir = [dx / dist, 0, dz / dist]; sp = 8;
           }
         }

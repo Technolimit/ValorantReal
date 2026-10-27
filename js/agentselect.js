@@ -163,7 +163,7 @@ const ROLE_ICON = {
 };
 
 const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const abilityTag = (x) => (x.cooldown ? `${x.charges}× · ${x.cooldown}s` : /soul orb/i.test(x.desc) ? `${x.charges}× · soul orb` : 'toggle');
+const abilityTag = (x) => (x.cooldown >= 1e6 ? `${x.charges}× · 2 kills` : x.cooldown ? `${x.charges}× · ${x.cooldown}s` : /soul orb/i.test(x.desc) ? `${x.charges}× · soul orb` : 'toggle');
 
 // ---------- the screen ----------
 // Draws a Lobby state for one person (`me`). Picking a card hovers it (teammates see that), LOCK IN locks it.

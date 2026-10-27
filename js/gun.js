@@ -62,8 +62,7 @@ export class Gun {
     const d = this.def, a = this.alt;
     let r = d.rate;
     if (d.spin) {
-      let t = d.spin.adsInstant && this.adsT > 0.5 ? 1 : this.spinT / d.spin.time;
-      if (d.spin.adsHead && this.adsT > 0.5) t = Math.max(t, d.spin.adsHead + this.spinT / d.spin.time);
+      const t = d.spin.adsInstant && this.adsT > 0.5 ? 1 : this.spinT / d.spin.time;
       r = lerp(d.rate, d.spin.to, clamp(t, 0, 1));
     }
     if ((a.type === 'zoom' || a.type === 'scope') && a.rateMult && this.adsT > 0.5) r *= a.rateMult;
@@ -146,7 +145,9 @@ export class Gun {
     const d = this.def, a = this.alt, inp = owner.input;
 
     if (this.reloading) {
-      if (inp.firePressed && this.mag > 0) this.stopReload(now); // shooting cancels a reload
+      // Firing only interrupts a round-by-round reload (the loaded rounds are ready); a magazine reload runs to
+      // the end unless you switch weapons, as in Valorant.
+      if (d.perRound && inp.firePressed && this.mag > 0) this.stopReload(now);
       else if (d.perRound) {
         while (this.reloading && now >= this.roundEnd) {
           this.mag++;
@@ -163,6 +164,8 @@ export class Gun {
       }
     }
     if (inp.reload && this.burstLeft === 0) this.startReload(owner, now);
+    // Valorant reloads by itself once the magazine is empty (after the last shot's cycle).
+    if (this.mag <= 0 && this.reserve > 0 && !this.reloading && this.burstLeft === 0 && now >= this.nextFire && now >= this.equipEnd) this.startReload(owner, now);
 
     const ready = now >= this.equipEnd && !this.reloading;
 

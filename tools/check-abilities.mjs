@@ -36,6 +36,8 @@ window.__start = async (o) => {
   return h.game;
 };
 window.__tick = (g, s) => { for (let i = 0; i < Math.round(s * 128); i++) g.tick(); };
+// Tick through the rest of the buy phase (30 s, or 45 s in the first round of a half).
+window.__live = (g) => __tick(g, Math.max(0, g.mode.phaseEnd - g.time) + 1);
 // Put c on open ground, facing -z, with 'len' metres of clear sight ahead.
 window.__place = (g, c, len = 8, skip = 0) => {
   const b = g.map.boxes.filter(x => !x.floor);
@@ -68,7 +70,7 @@ window.__ahead = (c, d) => { const e = c.eye(); return [e[0] - Math.sin(c.yaw) *
 const checks = [
   ['Bots on the thrower\'s team look away from its flash; enemies and humans are still blinded', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide' });
-    __tick(g, 31);
+    __live(g);
     const p = g.player, ally = g.bots.find(b => !g.isEnemy(p, b)), foe = g.bots.find(b => g.isEnemy(p, b));
     const out = {};
     for (const [name, c] of [['allyBot', ally], ['enemyBot', foe], ['human', p]]) {
@@ -166,7 +168,7 @@ const checks = [
   }],
   ['The spike kills through a Focus shield', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', agent: 'vanta' });
-    __tick(g, 31);
+    __live(g);
     const p = g.player, m = g.mode;
     p.kit.shield = true;
     m.spike = { state: 'planted', pos: [...p.pos], site: 'A', plantedAt: g.time };
@@ -177,7 +179,7 @@ const checks = [
     const out = {};
     for (const agent of ['cinder', 'override']) {
       const g = await __start({ mode: 'rounds', map: 'divide', agent, botMode: 'static' });
-      __tick(g, 31);
+      __live(g);
       const p = g.player;
       p.armor = 0;
       p.kit.ultPoints = 99; p.kit.agent.abilities.x.use(p.kit);
@@ -289,7 +291,7 @@ const checks = [
       out[map] = { orbs: orbs.length, reach };
     }
     const g = await __start({ mode: 'rounds', map: 'divide' });
-    __tick(g, 31); // buy phase over
+    __live(g);
     const p = g.player, orb = g.mode.orbs[0];
     p.kit.ultPoints = 0; p.hp = 1e6; // a stray shot shouldn't add a death point
     p.pos = [...orb.pos]; p.prevPos = [...orb.pos]; p.vel = [0, 0, 0];
@@ -364,7 +366,7 @@ const checks = [
   }],
   ['Ravenous speeds up reload; Rally buffs teammates too', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', agent: 'vex' });
-    __tick(g, 31);
+    __live(g);
     const p = g.player, gun = p.gun;
     gun.mag = 1; gun.startReload(p, g.time); const normal = gun.reloadDur; gun.reloading = false;
     p.kit.empressUntil = g.time + 30; g.tick();
@@ -373,6 +375,67 @@ const checks = [
     const zone = g.addZone({ kind: 'stim', owner: p, pos: [...ally.pos], r: 6, life: 12 }, g.time);
     __tick(g, 0.1);
     return { pass: fast < normal * 0.9 && ally.st.stimUntil > g.time, reloadNormal: normal, reloadRavenous: fast, allyStimmed: ally.st.stimUntil > g.time };
+  }],
+  ['5v5 recharges follow Valorant: Dark Cover on its 40 s timer (only what you held), Tailwind after two kills, Sky Smoke never', async () => {
+    const setup = async (agent) => {
+      const g = await __start({ mode: 'rounds', map: 'divide', agent });
+      __live(g);
+      for (const b of g.bots) { b.brain.mode = 'static'; b.hp = 1e6; }
+      g.player.hp = 1e6;
+      return g;
+    };
+    let g = await setup('umbra'), k = g.player.kit;
+    k.charges.e = 1; g.tick(); // the free smoke only
+    k.charges.e = 0; k.ready.e = g.time + 40; // just cast it
+    __tick(g, 39); const omenAt39 = k.charges.e;
+    __tick(g, 2); const omenAt41 = k.charges.e;
+    __tick(g, 42); const omenAt83 = k.charges.e; // no free second smoke
+    g = await setup('zephyr'); k = g.player.kit;
+    k.charges.e = 0; k.ready.e = g.time + 12;
+    __tick(g, 20); const jettTimer = k.charges.e;
+    const foes = g.bots.filter(b => g.isEnemy(g.player, b));
+    g.kill(foes[0], g.player, { def: g.player.gun.def, part: 'body' }); const jettOneKill = k.charges.e;
+    g.kill(foes[1], g.player, { def: g.player.gun.def, part: 'body' }); const jettTwoKills = k.charges.e;
+    g = await setup('granite'); k = g.player.kit;
+    k.charges.e = 0; k.ready.e = g.time + 35;
+    __tick(g, 40); const brim = k.charges.e;
+    const pass = omenAt39 === 0 && omenAt41 === 1 && omenAt83 === 1 && jettTimer === 0 && jettOneKill === 0 && jettTwoKills === 1 && brim === 0;
+    return { pass, omenAt39, omenAt41, omenAt83, jettTimer, jettOneKill, jettTwoKills, brim };
+  }],
+  ['Reloads: firing doesn\'t cut a magazine reload short (it does a round-by-round one); an empty magazine reloads itself', async () => {
+    const g = await __start({});
+    const p = g.player;
+    const gun = p.give('vandal'); p.equip('primary', g.time, true); __tick(g, 1.2);
+    gun.mag = 10; gun.startReload(p, g.time);
+    p.input.firePressed = true; g.tick(); p.input.firePressed = false;
+    const stillReloading = gun.reloading, shotsMid = 25 - gun.mag;
+    __tick(g, 2.6); const full = gun.mag;
+    gun.mag = 0; __tick(g, 0.1); const auto = gun.reloading;
+    const m = p.give('marshal'); p.equip('primary', g.time, true); __tick(g, 1.5);
+    m.mag = 2; m.startReload(p, g.time); __tick(g, 0.8);
+    const loaded = m.mag; p.input.firePressed = true; g.tick(); p.input.firePressed = false;
+    const marshalCut = !m.reloading;
+    return { pass: stillReloading && full === 25 && auto && loaded === 3 && marshalCut, stillReloading, shotsMid, full, autoReload: auto, marshalLoaded: loaded, marshalCut };
+  }],
+  ['Vex: Glare goes 12 m straight ahead through a wall, where its preview showed; Feast and Vanish take the nearest soul orb on the key press', async () => {
+    const g = await __start({ agent: 'vex' });
+    const p = g.player, k = p.kit;
+    if (!__place(g, p, 14)) return { error: 'no open ground' };
+    __box(g, [p.pos[0] - 3, p.pos[1], p.pos[2] - 5], [p.pos[0] + 3, p.pos[1] + 4, p.pos[2] - 4.5]); // a wall 5 m ahead
+    k.charges.c = 2; p.input.abC = true; g.tick(); __tick(g, 0.3);
+    const shown = k.previewPos && [...k.previewPos];
+    p.input.firePressed = true; g.tick(); __tick(g, 1.2);
+    const eye = g.devices.find(d => d.kind === 'leer' && d.owner === p);
+    const placed = eye && shown && Math.hypot(eye.pos[0] - shown[0], eye.pos[1] - shown[1], eye.pos[2] - shown[2]) < 0.01;
+    const beyondWall = eye && eye.pos[2] < p.pos[2] - 5;
+    const e = p.eye();
+    k.orbs = [{ pos: [e[0] + 6, e[1], e[2]], until: g.time + 3, life: 3 }, { pos: [e[0] + 2, e[1], e[2]], until: g.time + 3, life: 3 }];
+    p.hp = 50; k.charges.q = 1; p.input.abQ = true; g.tick();
+    const fed = k.orbs.length === 1 && k.orbs[0].pos[0] === e[0] + 6, healing = g.time < k.healOverUntil;
+    __tick(g, 0.5);
+    k.charges.e = 1; p.input.abE = true; g.tick();
+    const vanished = k.orbs.length === 0 && p.st.intangibleUntil > g.time;
+    return { pass: !!placed && beyondWall && fed && healing && vanished, placed: !!placed, beyondWall, nearestFirst: fed, healing, vanished };
   }],
   ['Buy phase: any ability can be held; set-up utility (camera, Sentry, Anchor) can be placed', async () => {
     const press = (g, c, key, aim) => { c.input['ab' + key] = true; g.tick(); __tick(g, 0.35); if (aim) aim(); c.input.firePressed = true; g.tick(); __tick(g, 0.2); };

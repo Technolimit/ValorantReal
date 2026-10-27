@@ -71,6 +71,11 @@ on its own copy of that agent; only the host applies ability damage. Shots, trac
 and skins (including custom designs) are relayed to everyone.
 Imported maps are sent to joiners too.
 
+## Agents
+
+**[ABILITIES.md](ABILITIES.md)** lists every agent's abilities with their charges, prices, cooldowns, durations and
+ultimate costs, and how they recharge in 5v5 and in deathmatch.
+
 ## Maps (JSON, loaded with fetch)
 
 Every map is one editable JSON file in `maps/`, listed in `maps/index.json` and fetched when first needed. A map

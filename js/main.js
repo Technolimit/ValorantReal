@@ -123,8 +123,16 @@ async function lock() {
   try {
     await canvas.requestPointerLock({ unadjustedMovement: true });
   } catch {
-    try { await canvas.requestPointerLock(); } catch { $('pause-hint').textContent = 'Click Resume again to capture the mouse.'; }
+    try { await canvas.requestPointerLock(); } catch { lockFailed(); }
   }
+}
+
+// The browser refused the mouse: Chrome does for about a second after Esc, and whenever there was no click.
+// Go back to the pause menu so Resume can try again, instead of leaving the game running with a free cursor.
+function lockFailed() {
+  if (document.pointerLockElement === canvas) return;
+  if (running && !paused && game.state === 'playing') pause();
+  $('pause-hint').textContent = 'Click Resume again to capture the mouse.';
 }
 
 document.addEventListener('pointerlockchange', () => {
@@ -132,7 +140,7 @@ document.addEventListener('pointerlockchange', () => {
   if (locked) { $('pause-hint').textContent = ''; return; }
   if (running && !paused && game.state === 'playing') pause();
 });
-document.addEventListener('pointerlockerror', () => { $('pause-hint').textContent = 'Click Resume again to capture the mouse.'; });
+document.addEventListener('pointerlockerror', lockFailed);
 
 function releaseInputs() {
   keys.clear();
@@ -212,6 +220,7 @@ addEventListener('keyup', (e) => {
 addEventListener('blur', releaseInputs);
 
 document.addEventListener('mousedown', (e) => {
+  if (running && !paused && !locked && game.state === 'playing') { lock(); return; } // a click takes the mouse back
   if (!locked || paused) return;
   if (hud.buyOpen) { clickBuy(e.button); return; }
   if (!game.player.alive && game.mode && !hud.mapOpen) { if (e.button === 0) rhud.nextSpectate(); return; }

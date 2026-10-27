@@ -11,6 +11,8 @@ import { AGENTS, SMOKE, BLADES, BEAMS, insideSlab, bloomTargets, BLOOM, PICKUPS 
 const DEG = Math.PI / 180;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// Neon's slide while it isn't ready: seconds left (deathmatch) or the kills it needs (5v5).
+const slideWait = (kit, now) => (kit.slideAt === Infinity ? ' (2 KILLS)' : now < kit.slideAt ? ` (${(kit.slideAt - now).toFixed(0)}s)` : '');
 
 export class Hud {
   constructor(game, renderer, settings) {
@@ -194,8 +196,8 @@ export class Hud {
     else if (kit?.shadow?.phase === 'channel') mode = `NIGHTWALK · ${(kit.shadow.until - g.time).toFixed(1)}s`;
     else if (kit?.rebirth) mode = `REKINDLE · ${(kit.rebirth.until - g.time).toFixed(1)}s`;
     else if (kit?.launcher) mode = 'FINALE · LEFT CLICK TO FIRE · X TO PUT AWAY';
-    else if (kit?.overdrive) mode = `OVERLOAD · HOLD LEFT CLICK · ${Math.ceil(kit.overdrive.fuel / 5)}s${kit.highGear ? ' · CROUCH TO SLIDE' + (g.time < kit.slideAt ? ' (' + (kit.slideAt - g.time).toFixed(0) + 's)' : '') : ''}`;
-    else if (kit?.highGear) mode = `OVERCLOCK · ENERGY ${Math.round(kit.energy)}% · CROUCH TO SLIDE${g.time < kit.slideAt ? ' (' + (kit.slideAt - g.time).toFixed(0) + 's)' : ''}`;
+    else if (kit?.overdrive) mode = `OVERLOAD · HOLD LEFT CLICK · ${Math.ceil(kit.overdrive.fuel / 5)}s${kit.highGear ? ' · CROUCH TO SLIDE' + slideWait(kit, g.time) : ''}`;
+    else if (kit?.highGear) mode = `OVERCLOCK · ENERGY ${Math.round(kit.energy)}% · CROUCH TO SLIDE${slideWait(kit, g.time)}`;
     else if (kit?.drift) mode = `PHASED OUT · ${(kit.drift.until - g.time).toFixed(1)}s · X TO RETURN`;
     else if (kit?.pilot?.kind === 'tiger') mode = `STALKER · STEER WITH MOUSE · LEFT CLICK TO POUNCE · ${(kit.pilot.until - g.time).toFixed(1)}s`;
     else if (kit?.view) mode = g.time >= (kit.view.dartReady || 0) ? 'WATCHER · LEFT CLICK: TRACKING DART · E TO LEAVE' : 'WATCHER · E TO LEAVE';
