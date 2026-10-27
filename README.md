@@ -98,10 +98,16 @@ the game (stored in the browser's localStorage). **Maps → Download** saves any
 
 ## Skins (all client-side)
 
-15 preset finishes plus a **custom skin editor** (Skins → New custom skin): colours, roughness and
+16 preset finishes plus a **custom skin editor** (Skins → New custom skin): colours, roughness and
 metallic for each part, 13 procedural patterns with their own colours, and glow. Custom skins are saved in
 localStorage and can be shared as a `TFSKIN1.…` code or exported/imported as JSON. Bots wear random
 presets, and other online players see your skins.
+
+**Model skins** replace the gun itself, not just its paint: a skin's `models` maps a weapon to its own design in
+`js/models.js`, which brings its own inspect (`MODEL_INSPECTS` in `js/melee.js`) and reload (keyed by the design in
+`js/reloadanim.js`), and the skin menu only offers it on those weapons. The first is **Orbital** (Vandal): a
+purple and gold receiver built around a reactor ring holding a glowing orb. Inspect floats the orb out of the
+ring while the gun is turned side-on in front of you; reload pops the spent orb out and seats a fresh one.
 
 **Melee types** (Skins → Melee): Tactical Knife, Hatchet, Katana, Karambit, Balisong, Kunai and Arc Blade.
 Picking one equips it in your knife slot (they all hit like the knife; it's cosmetic), and each takes any

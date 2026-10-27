@@ -2,8 +2,8 @@
 // Axes: -z is forward (muzzle), +y up, +x right; the trigger sits near the origin. Every part is painted by
 // one of the skin slots in skins.js: body, trim, metal, grip, glow.
 import * as THREE from '../vendor/three.module.min.js';
-import { SKINS, TEXTURES, onSkinsChanged } from './skins.js';
-import { MELEE, inspectPose } from './melee.js';
+import { SKINS, TEXTURES, onSkinsChanged, designFor } from './skins.js';
+import { MELEE, MODEL_INSPECTS, inspectPose } from './melee.js';
 
 const PI = Math.PI;
 
@@ -41,9 +41,12 @@ export function skinMaterials(skinId) {
     // Scope parts: open tubes seen from inside when aiming, and see-through glass.
     glass: new THREE.MeshStandardMaterial({ color: 0x9fd8ff, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.1, depthWrite: false }),
     reticle: new THREE.MeshBasicMaterial({ color: s.glow.intensity ? s.glow.color : 0xff3344 }),
+    // Model skins' second glow colour (falls back to the glow).
+    accent: s.accent ? new THREE.MeshStandardMaterial({ color: s.accent.color, roughness: 0.35, metalness: 0.2, emissive: s.accent.color, emissiveIntensity: s.accent.intensity }) : null,
     sleeve: new THREE.MeshStandardMaterial({ color: 0x30363f, roughness: 0.9 }),
     glove: new THREE.MeshStandardMaterial({ color: 0x1b1d21, roughness: 0.85 }),
   };
+  mats.accent ||= mats.glow;
   mats.tube = mats.trim.clone(); mats.tube.side = THREE.DoubleSide;
   mats.tubeBody = mats.body.clone(); mats.tubeBody.side = THREE.DoubleSide;
   matCache.set(skinId, mats);
@@ -114,6 +117,8 @@ function kit(g, mats) {
       geo.rotateY(-PI / 2);
       return put(geo, slot, x, 0, 0);
     },
+    // Sphere of radius r (orbs, cores).
+    ball: (r, slot, x, y, z) => put(new THREE.SphereGeometry(r, 18, 14), slot, x, y, z),
     // Ring (finger rings, pommels): radius r, tube thickness t, lying in the x-y plane unless rotated.
     tor: (r, t, slot, x, y, z, rx = 0, ry = 0, rz = 0) => put(new THREE.TorusGeometry(r, t, 8, 20), slot, x, y, z, rx, ry, rz),
     // A row of small blocks (vents, rail teeth, fluting).
@@ -612,6 +617,62 @@ const DESIGNS = {
     return { muzzle: [0, 0.014, -0.615], sightY: 0.054 };
   },
 
+  // Orbital skin's Vandal: a heavier receiver split around a reactor ring (axis across the gun) that holds a
+  // glowing orb, part `orb`: the inspect floats it out and the reload pops it and seats a fresh one.
+  vandalOrb(k) {
+    // Receiver, rear and front halves with the reactor bay between them (z -0.115 to -0.185).
+    k.prof([[0.06, -0.026], [0.06, 0.048], [-0.02, 0.054], [-0.115, 0.054], [-0.115, -0.026]], 0.058, 'body');
+    k.prof([[-0.185, -0.026], [-0.185, 0.054], [-0.3, 0.05], [-0.32, 0.028], [-0.32, -0.026]], 0.058, 'body');
+    k.box(0.06, 0.004, 0.16, 'accent', 0, 0.002, -0.02);
+    k.box(0.06, 0.004, 0.12, 'accent', 0, 0.002, -0.25);
+    k.box(0.04, 0.012, 0.09, 'trim', 0, -0.02, -0.15); // keel under the bay
+    // Top spine bridging the bay, gold clamps either side of the sight line.
+    k.box(0.034, 0.012, 0.36, 'trim', 0, 0.06, -0.13);
+    for (const z of [-0.035, -0.265]) for (const x of [-0.016, 0.016]) {
+      k.box(0.008, 0.03, 0.014, 'metal', x, 0.074, z);
+      k.box(0.008, 0.008, 0.024, 'metal', x, 0.09, z - 0.005);
+    }
+    // Reactor ring: gunmetal housing, blue inner ring, gold latches top and bottom.
+    for (const x of [-0.025, 0.025]) {
+      k.tor(0.037, 0.009, 'trim', x, 0.014, -0.15, 0, PI / 2);
+      k.tor(0.028, 0.0035, 'glow', x * 1.22, 0.014, -0.15, 0, PI / 2);
+    }
+    k.box(0.062, 0.012, 0.02, 'metal', 0, 0.054, -0.15);
+    k.box(0.062, 0.012, 0.02, 'metal', 0, -0.026, -0.15);
+    k.part('orb', [0, 0.014, -0.15]);
+    k.ball(0.019, 'glow', 0, 0.014, -0.15);
+    k.tor(0.024, 0.0018, 'accent', 0, 0.014, -0.15, 0.6, 0.3);
+    k.tor(0.024, 0.0018, 'glow', 0, 0.014, -0.15, -0.5, 1.2);
+    k.part(null);
+    // Handguard: chunky shroud with neon vents and a gold name plate on each side.
+    k.prof([[-0.32, -0.026], [-0.32, 0.05], [-0.49, 0.04], [-0.5, 0.018], [-0.49, -0.014]], 0.054, 'trim');
+    k.teeth(5, -0.34, -0.46, 0.056, 0.018, 0.008, 'accent', 0, 0.026);
+    k.box(0.056, 0.012, 0.07, 'metal', 0, -0.004, -0.4);
+    k.box(0.062, 0.006, 0.17, 'body', 0, 0.042, -0.41);
+    // Barrel and the glowing muzzle: a shroud with a blue ring at the face, gold latches either side.
+    k.cyl(0.011, 0.08, 'trim', 0, 0.014, -0.53);
+    k.cyl(0.024, 0.07, 'trim', 0, 0.014, -0.6, 16);
+    k.cyl(0.026, 0.012, 'body', 0, 0.014, -0.575, 16);
+    k.tor(0.02, 0.0045, 'glow', 0, 0.014, -0.636);
+    k.cyl(0.012, 0.004, 'glow', 0, 0.014, -0.634, 14);
+    for (const x of [-0.026, 0.026]) k.box(0.006, 0.016, 0.03, 'metal', x, 0.014, -0.6);
+    // Magazine (fixed: this gun reloads its orb), gold base plate.
+    k.box(0.03, 0.06, 0.042, 'trim', 0, -0.052, -0.08, 0.28);
+    k.box(0.03, 0.06, 0.042, 'trim', 0, -0.105, -0.053, 0.55);
+    k.box(0.034, 0.008, 0.048, 'metal', 0, -0.132, -0.034, 0.55);
+    charger(k, -0.04, 0.03, -0.034);
+    k.box(0.034, 0.1, 0.044, 'grip', 0, -0.06, 0.03, -0.3);
+    k.box(0.024, 0.005, 0.05, 'metal', 0, -0.03, -0.03);
+    // Stock: gunmetal frame, purple cheek panel with an accent line, gold butt plate.
+    k.prof([[0.06, 0.044], [0.29, 0.034], [0.3, -0.078], [0.26, -0.082], [0.12, -0.024], [0.06, -0.024]], 0.044, 'trim');
+    k.prof([[0.15, 0.022], [0.25, 0.016], [0.255, -0.04], [0.15, -0.006]], 0.046, 'body', 0, 0.001);
+    k.box(0.047, 0.003, 0.09, 'accent', 0, 0.0, 0.2);
+    k.box(0.05, 0.115, 0.02, 'grip', 0, -0.022, 0.305);
+    k.box(0.052, 0.012, 0.022, 'metal', 0, 0.03, 0.305);
+    irons(k, -0.47, 0.0, 0.066);
+    return { muzzle: [0, 0.014, -0.64], sightY: 0.076 };
+  },
+
   warden(k) {
     k.prof([[0.08, -0.024], [0.08, 0.05], [-0.36, 0.05], [-0.38, 0.024], [-0.38, -0.024]], 0.054, 'body');
     k.box(0.055, 0.004, 0.36, 'glow', 0, 0.018, -0.13);
@@ -781,6 +842,7 @@ function offHands(g, parts, mats) {
     add(parts.mag, c.x - o.x - 0.01, b.min.y - o.y - 0.012, c.z - o.z + 0.01, [-0.06, -0.12, 0.13]);
   }
   if (parts.shell) add(parts.shell, 0.014, -0.016, 0.04, [0.06, -0.12, 0.16]);
+  if (parts.orb) add(parts.orb, -0.012, -0.036, 0.012, [-0.06, -0.12, 0.13]); // cups the fresh orb from below
   return hands;
 }
 
@@ -862,6 +924,7 @@ function goldMaterials(glowColor) {
     lens: new THREE.MeshStandardMaterial({ color: 0x0a0a12, roughness: 0.05, metalness: 0.6, emissive: glowColor, emissiveIntensity: 0.3 }),
     reticle: new THREE.MeshBasicMaterial({ color: glowColor }),
   };
+  mats.accent ||= mats.glow;
   mats.tube = mats.trim.clone(); mats.tube.side = THREE.DoubleSide;
   mats.tubeBody = mats.body.clone(); mats.tubeBody.side = THREE.DoubleSide;
   goldCache.set(glowColor, mats);
@@ -955,7 +1018,8 @@ export function gunModel(weaponId, skinId = 'standard', { noHands = false } = {}
   const k = kit(g, mats);
   const melee = MELEE[weaponId];
   if (melee) k.part('w', melee.pivot); // the whole weapon, so inspects can spin it in the hand
-  const d = (DESIGNS[weaponId] || DESIGNS.classic)(k);
+  const design = designFor(skinId, weaponId);
+  const d = (DESIGNS[design] || DESIGNS[weaponId] || DESIGNS.classic)(k);
   k.part(null);
   // Hands
   if (noHands) { /* a gun lying on the floor */ } else if (!melee) {
@@ -971,6 +1035,7 @@ export function gunModel(weaponId, skinId = 'standard', { noHands = false } = {}
   g.userData.muzzle = muzzle;
   g.userData.sightY = d.sightY;
   g.userData.parts = k.parts;
+  g.userData.design = DESIGNS[design] ? design : weaponId; // reloads and inspects follow the model, not just the weapon
   g.userData.hands = offHands(g, k.parts, mats);
   if (k.parts.shell) k.parts.shell.visible = false;
   return g;
@@ -1058,7 +1123,7 @@ export class GunPreview {
     this.anim = null;
     const m = gunModel(weaponId, skinId);
     this.model = m;
-    this.glow = MELEE[weaponId] ? ownGlow(m, skinId) : null;
+    this.glow = MELEE[weaponId] || MODEL_INSPECTS[m.userData.design] ? ownGlow(m, skinId) : null;
     // Drop the hands for the showcase.
     m.children.filter(c => c.material && (c.material === skinMaterials(skinId).sleeve || c.material === skinMaterials(skinId).glove)).forEach(c => m.remove(c));
     const box = new THREE.Box3().setFromObject(m);

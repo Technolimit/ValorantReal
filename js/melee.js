@@ -28,6 +28,37 @@ export const GUN_INSPECT = {
   ],
 };
 
+// Inspects that come with a gun model (model skins, see `models` in skins.js), by design id.
+export const MODEL_INSPECTS = {
+  // Orbital Vandal: the orb floats up out of the reactor ring and hovers, turning, while the gun is brought
+  // round side-on and level in front of you so you see all of it; then the orb settles back in.
+  vandalOrb: [{
+    name: 'Orbit', dur: 4.2,
+    track: [
+      [0, ...Z],
+      [0.6, -0.05, 0.03, -0.02, 0.06, 0.4, 0.2],
+      [1.4, -0.08, 0.06, -0.3, 0.02, 1.5, 0.0],
+      [3.0, -0.08, 0.065, -0.3, 0.04, 1.53, 0.0],
+      [3.6, -0.06, 0.03, -0.03, 0.05, 0.4, 0.15],
+      [4.2, ...Z],
+    ],
+    parts: {
+      orb: [
+        [0, ...Z, 1],
+        [0.25, ...Z, 1],
+        L(1.0, -0.075, 0.035, 0, 0, TAU * 0.5, 0, 1),
+        L(1.6, -0.08, 0.05, 0, 0.3, TAU * 1.0, 0, 1),
+        L(2.2, -0.08, 0.04, 0, -0.2, TAU * 1.5, 0, 1),
+        L(2.8, -0.08, 0.052, 0, 0.2, TAU * 2.0, 0, 1),
+        L(3.3, -0.075, 0.04, 0, 0, TAU * 2.4, 0, 1),
+        S(3.75, 0, 0, 0, 0, TAU * 2.5, 0, 1),
+        [4.2, 0, 0, 0, 0, TAU * 2.5, 0, 1],
+      ],
+    },
+    glow: [[0, 1], [1.0, 1.9], [2.8, 2.1], S(3.8, 2.8), [4.2, 1]],
+  }],
+};
+
 // A spin made of quarter turns at constant speed, so it doesn't slow down at every keyframe.
 function spin(t0, t1, axis, turns, base = [0, 0, 0, 0, 0, 0], from = 0) {
   const n = Math.max(1, Math.round(Math.abs(turns) * 4)), out = [];

@@ -2,8 +2,8 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { HFOV, VIEW_RECOIL, HITBOX, GUN_HEIGHT } from './config.js';
 import { gunModel, handsModel, studioEnv, ownGlow, poseMeleeParts, rocketModel, paintShellModel, bombletModel } from './models.js';
-import { MELEE, GUN_INSPECT, meleeId, inspectPose } from './melee.js';
-import { skinFor, SKINS } from './skins.js';
+import { MELEE, GUN_INSPECT, MODEL_INSPECTS, meleeId, inspectPose } from './melee.js';
+import { skinFor, skinFits, SKINS } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
 import { BLADES, SMOKE, bloomTargets } from './abilities.js';
 
@@ -1205,7 +1205,7 @@ export class Renderer {
     if (!c) return 'standard';
     if (c === this.game.player) return skinFor(this.settings, weaponId);
     const id = c.skinMap?.[weaponId] || c.skinMap?.all;
-    return id && SKINS[id] ? id : 'standard';
+    return skinFits(id, weaponId) ? id : 'standard';
   }
 
   syncCharacters() {
@@ -1351,7 +1351,8 @@ export class Renderer {
     if (this.vm.model) this.vm.group.remove(this.vm.model);
     this.vm.model = def.hands ? handsModel(def.color, def.item) : gunModel(id, skin);
     this.vm.melee = MELEE[id] || null;
-    this.vm.glow = this.vm.melee ? ownGlow(this.vm.model, skin) : null;
+    // Melee types and gun models with their own inspects pulse their glow, so they get their own copy of it.
+    this.vm.glow = this.vm.melee || MODEL_INSPECTS[this.vm.model.userData.design] ? ownGlow(this.vm.model, skin) : null;
     // Its own copies of the skin's materials: the same material drawn in both scenes (here and on your body or
     // anyone else's gun) has its shader looked up again on every draw, since the two scenes are lit differently.
     this.vm.model.traverse(o => { if (o.material?.isMaterial && o.material !== this.vm.glow?.mat) o.material = vmMaterial(o.material); });
@@ -1595,9 +1596,10 @@ export class Renderer {
     this.renderer.render(this.scene, cam);
   }
 
-  // The inspects for what's in hand: a melee type's set, or the one gun inspect.
+  // The inspects for what's in hand: a melee type's set, the gun model's own (model skins), or the one gun inspect.
   inspectSet(gun) {
-    return gun.def.id === 'knife' ? MELEE[this.meleeOf(this.game.player)].inspects : [GUN_INSPECT];
+    if (gun.def.id === 'knife') return MELEE[this.meleeOf(this.game.player)].inspects;
+    return MODEL_INSPECTS[this.vm.model?.userData.design] || [GUN_INSPECT];
   }
 
   // Inspect key pressed: start inspecting, or (mid-inspect) chain into the next one. Held down, it turns into
@@ -1821,7 +1823,9 @@ export class Renderer {
       if (m.hip) { px += m.hip[0]; py += m.hip[1]; pz += m.hip[2]; }
       if (m.rot) { rx += m.rot[0] * (1 - (insPose ? 0.6 : 0)); ry += m.rot[1] * (insPose ? 0.4 : 1); rz += m.rot[2] * (insPose ? 0.4 : 1); }
       poseMeleeParts(vm.model, insPose && this.inspecting?.ins, insPose?.t, vm.glow);
-    }
+    } else if (insPose && this.inspecting.ins.parts) {
+      poseMeleeParts(vm.model, this.inspecting.ins, insPose.t, vm.glow); // a gun model's inspect (the Orbital orb)
+    } else if (vm.glow) vm.glow.mat.emissiveIntensity = vm.glow.base; // its parts are left to the reload pose
     vm.group.position.set(px, py, pz);
     vm.group.rotation.set(rx, ry, rz);
     this.vmCamera.fov = 60;
