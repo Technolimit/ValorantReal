@@ -676,7 +676,7 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Feast', desc: 'Press Q to consume the nearest soul orb within 15 m: heal 50 over 3 s (2.5 s in Ravenous). You can go above 100 HP; the extra stays 10 s, then fades (it stays for good in Ravenous). Shares its 2 charges with Vanish.', charges: 2, cooldown: 0, item: 'grab', instant: true,
+        name: 'Feast', desc: 'Press Q to consume your nearest soul orb, at any distance: heal 50 over 3 s (2.5 s in Ravenous). You can go above 100 HP; the extra stays 10 s, then fades (it stays for good in Ravenous). Shares its 2 charges with Vanish.', charges: 2, cooldown: 0, item: 'grab', instant: true,
         use(kit) {
           if (!kit.takeOrb()) return false;
           kit.grab = { until: kit.now + 0.35 };
@@ -685,14 +685,13 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Vanish', desc: 'Press E to consume the nearest soul orb within 15 m: it pulls you along at high speed for 1.5 s, intangible (and invisible in Ravenous). Uses Feast’s charges. You steer with the mouse but can’t stop or slow down, and can’t shoot.', charges: 2, cooldown: 0, item: 'grab', instant: true, shares: 'q',
+        name: 'Vanish', desc: 'Press E to consume your nearest soul orb, at any distance: for 1.5 s you’re intangible (and invisible in Ravenous) and move much faster in any direction, but can’t use your gun. Uses Feast’s charges.', charges: 2, cooldown: 0, item: 'grab', instant: true, shares: 'q',
         use(kit) {
           if (!kit.takeOrb()) return false;
           const o = kit.owner;
           kit.grab = { until: kit.now + 0.35 };
-          o.st.intangibleUntil = kit.now + 1.5;
+          o.st.intangibleUntil = kit.vanishUntil = kit.now + 1.5; // intangible also keeps the gun down
           if (kit.now < kit.empressUntil) o.st.hiddenUntil = kit.now + 1.5;
-          o.forced = { until: kit.now + 1.5, speed: 9.5 };
           o.game.emit('ability', { who: o, type: 'dismiss' });
         },
       },
