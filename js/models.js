@@ -281,6 +281,29 @@ const DESIGNS = {
     return { muzzle: [0, 0, -0.45], sightY: 0 };
   },
 
+  // Finale: a shoulder-fired launcher, painted like the rest of Blitz's gear. The loaded rocket's warhead
+  // shows at the mouth (part 'rocket', hidden once it's fired).
+  finale(k) {
+    k.cyl(0.056, 0.78, 'body', 0, 0.03, -0.22, 18);                       // main tube
+    k.cyl(0.06, 0.06, 'trim', 0, 0.03, -0.6, 18);                         // muzzle ring
+    k.cyl(0.062, 0.05, 'trim', 0, 0.03, 0.12, 18);                        // rear ring
+    k.cyl(0.075, 0.09, 'metal', 0, 0.03, 0.2, 18, PI / 2, 0, 0, 0.058, true); // exhaust bell, flaring backward
+    k.box(0.118, 0.014, 0.5, 'glow', 0, 0.03, -0.25);                     // paint stripe around the tube
+    k.box(0.02, 0.05, 0.05, 'glow', 0.055, 0.06, -0.42, 0.3, 0, 0.4);     // paint splats
+    k.box(0.02, 0.035, 0.04, 'glow', -0.055, 0.0, -0.05, -0.2, 0, -0.5);
+    k.box(0.03, 0.05, 0.12, 'trim', -0.07, 0.09, -0.14);                  // sight on the left
+    k.box(0.01, 0.024, 0.01, 'glow', -0.07, 0.122, -0.19);
+    k.box(0.03, 0.09, 0.045, 'grip', 0, -0.055, 0.03, -0.25);             // rear grip and trigger guard
+    k.box(0.014, 0.03, 0.05, 'metal', 0, -0.035, -0.02);
+    k.box(0.03, 0.085, 0.04, 'grip', 0, -0.05, -0.25, 0.15);              // front grip
+    k.box(0.06, 0.035, 0.16, 'trim', 0.0, -0.02, 0.06);                   // shoulder rest under the tube
+    k.part('rocket', [0, 0.03, -0.62]);
+    k.cyl(0.045, 0.05, 'metal', 0, 0.03, -0.64, 16);
+    k.cyl(0.045, 0.09, 'glow', 0, 0.03, -0.71, 16, PI / 2, 0, 0, 0.004); // warhead cone
+    k.part(null);
+    return { muzzle: [0, 0.03, -0.66], sightY: 0.13 };
+  },
+
   // Edgestorm: a fan of throwing blades held in the hand; each is its own part so thrown ones disappear.
   blades(k) {
     for (let i = 0; i < 5; i++) {
@@ -762,7 +785,7 @@ function offHands(g, parts, mats) {
 }
 
 // Hands holding an ability item (no gun): two gloved hands, the right one holding the item in the agent's
-// colour. item: orb | flash | grenade | device | grab (open hand) | none (running).
+// colour. item: orb | flash | grenade | paintshell | device | grab (open hand) | none (running).
 export function handsModel(color, item = 'orb') {
   const g = new THREE.Group();
   const glove = new THREE.MeshStandardMaterial({ color: 0x1b1d21, roughness: 0.85 });
@@ -784,6 +807,9 @@ export function handsModel(color, item = 'orb') {
     thing = new THREE.Mesh(new THREE.CapsuleGeometry(0.025, 0.04, 6, 10), shell);
     thing.position.set(0.01, 0.045, -0.03);
     const band = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.006, 6, 16), glow); band.rotation.x = Math.PI / 2; thing.add(band);
+  } else if (item === 'paintshell') {
+    thing = paintShellModel(0.42);
+    thing.position.set(0.01, 0.05, -0.03);
   } else if (item === 'device') {
     thing = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.04, 0.06), shell);
     thing.position.set(0.01, 0.045, -0.03);
@@ -843,11 +869,89 @@ function goldMaterials(glowColor) {
 }
 const OWN_LOOK = { headhunter: 0xff5a1f, tourdeforce: 0xb34dff };
 
+// Blitz's gear, whatever skin you run: sunflower yellow and teal, splashed with hot-pink paint.
+let razeMats = null;
+function razeMaterials() {
+  if (razeMats) return razeMats;
+  const base = skinMaterials('standard');
+  razeMats = {
+    ...base,
+    body: new THREE.MeshStandardMaterial({ color: 0xf2b630, roughness: 0.45, metalness: 0.3 }),
+    trim: new THREE.MeshStandardMaterial({ color: 0x1f6f78, roughness: 0.5, metalness: 0.4 }),
+    metal: new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.35, metalness: 0.85 }),
+    grip: new THREE.MeshStandardMaterial({ color: 0x24262b, roughness: 0.8, metalness: 0.1 }),
+    glow: new THREE.MeshStandardMaterial({ color: 0xff4fa3, roughness: 0.4, metalness: 0.1, emissive: 0xff4fa3, emissiveIntensity: 0.8 }),
+  };
+  razeMats.tube = razeMats.trim.clone(); razeMats.tube.side = THREE.DoubleSide;
+  razeMats.tubeBody = razeMats.body.clone(); razeMats.tubeBody.side = THREE.DoubleSide;
+  return razeMats;
+}
+
+// A soft round glow texture (white centre fading to nothing), shared by every glow sprite.
+let dotTex = null;
+function softDot() {
+  if (dotTex) return dotTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+  dotTex = new THREE.CanvasTexture(c);
+  return dotTex;
+}
+
+// Finale's rocket in flight (world size, nose along +z so lookAt points it at the target).
+export function rocketModel() {
+  const m = razeMaterials(), g = new THREE.Group();
+  const add = (geo, mat, z, rx = PI / 2) => { const o = new THREE.Mesh(geo, mat); o.rotation.x = rx; o.position.z = z; g.add(o); return o; };
+  add(new THREE.CylinderGeometry(0.075, 0.075, 0.5, 14), m.body, 0);
+  add(new THREE.CylinderGeometry(0.077, 0.077, 0.08, 14), m.glow, 0.1);
+  add(new THREE.CylinderGeometry(0.003, 0.075, 0.22, 14), m.glow, 0.36);                        // nose
+  add(new THREE.CylinderGeometry(0.06, 0.045, 0.06, 12), m.metal, -0.28);                        // nozzle
+  for (let i = 0; i < 4; i++) {
+    const f = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.11, 0.14), m.trim);
+    const a = i * PI / 2;
+    f.position.set(Math.cos(a) * 0.1, Math.sin(a) * 0.1, -0.2); f.rotation.z = a + PI / 2; g.add(f);
+  }
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.32, 10), new THREE.MeshBasicMaterial({ color: 0xffc061, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+  flame.rotation.x = -PI / 2; flame.position.z = -0.46; g.add(flame);
+  // A bright exhaust glow, so the rocket still reads when you see it from straight behind.
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: softDot(), color: 0xffb04a, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
+  glow.scale.set(0.55, 0.55, 1); glow.position.z = -0.35; g.add(glow);
+  g.scale.setScalar(1.5);
+  g.userData.flame = flame;
+  return g;
+}
+
+// Splatter (Paint Shells): a paint canister with four bomblets clipped round it. `scale` 1 is world size.
+export function paintShellModel(scale = 1) {
+  const m = razeMaterials(), g = new THREE.Group();
+  const can = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.15, 14), m.body); g.add(can);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.03, 14), m.trim); band.position.y = 0.035; g.add(band);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.03, 12), m.metal); cap.position.y = 0.09; g.add(cap);
+  const pin = new THREE.Mesh(new THREE.TorusGeometry(0.018, 0.004, 6, 12), m.metal); pin.position.set(0.03, 0.11, 0); g.add(pin);
+  for (let i = 0; i < 4; i++) {
+    const a = i * PI / 2 + PI / 4, b = new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 8), m.glow);
+    b.position.set(Math.cos(a) * 0.065, -0.04, Math.sin(a) * 0.065); g.add(b);
+  }
+  const drip = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.06, 0.012), m.glow); drip.position.set(0, 0.0, 0.062); g.add(drip);
+  g.scale.setScalar(scale);
+  return g;
+}
+
+// One of Splatter's bomblets in flight.
+export function bombletModel() {
+  const m = razeMaterials(), g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), m.glow));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 6, 14), m.trim); ring.rotation.x = PI / 2; g.add(ring);
+  return g;
+}
+
 // Builds the first-person model for a weapon in a skin. userData: muzzle (Object3D), sightY (top of the sight
 // line in model units, before viewmodel scaling).
 export function gunModel(weaponId, skinId = 'standard', { noHands = false } = {}) {
   const g = new THREE.Group();
-  const mats = OWN_LOOK[weaponId] ? goldMaterials(OWN_LOOK[weaponId]) : skinMaterials(skinId);
+  const mats = OWN_LOOK[weaponId] ? goldMaterials(OWN_LOOK[weaponId]) : weaponId === 'finale' ? razeMaterials() : skinMaterials(skinId);
   const k = kit(g, mats);
   const melee = MELEE[weaponId];
   if (melee) k.part('w', melee.pivot); // the whole weapon, so inspects can spin it in the hand

@@ -483,6 +483,12 @@ export class Game {
     for (const d of this.devices) {
       if (now >= d.until) d.removed = true;
       if (d.removed) continue;
+      if (d.flight) { // thrown and still in the air: it follows the same arc a thrown ability is drawn on
+        const f = d.flight, k = Math.min(1, (now - d.born) / f.time);
+        const lift = Math.sin(k * Math.PI) * Math.min(2, Math.hypot(f.to[0] - f.from[0], f.to[2] - f.from[2]) * 0.12);
+        d.pos = [f.from[0] + (f.to[0] - f.from[0]) * k, f.from[1] + (f.to[1] - f.from[1]) * k + lift, f.from[2] + (f.to[2] - f.from[2]) * k];
+        if (k >= 1) d.flight = null;
+      }
       if (d.kind === 'drone') {
         const step = d.speed * DT, nx = [d.pos[0] + d.dir[0] * step, d.pos[1] + d.dir[1] * step, d.pos[2] + d.dir[2] * step];
         const ahead = [d.pos[0] + d.dir[0] * 0.5, d.pos[1] + d.dir[1] * 0.5, d.pos[2] + d.dir[2] * 0.5];

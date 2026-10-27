@@ -1,11 +1,14 @@
 // Three.js scene: map, characters, first-person viewmodel and effects (tracers, impacts, flashes).
 import * as THREE from '../vendor/three.module.min.js';
 import { HFOV, VIEW_RECOIL, HITBOX, GUN_HEIGHT } from './config.js';
-import { gunModel, handsModel, studioEnv, ownGlow, poseMeleeParts } from './models.js';
+import { gunModel, handsModel, studioEnv, ownGlow, poseMeleeParts, rocketModel, paintShellModel, bombletModel } from './models.js';
 import { MELEE, GUN_INSPECT, meleeId, inspectPose } from './melee.js';
 import { skinFor, SKINS } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
 import { BLADES, SMOKE, bloomTargets } from './abilities.js';
+
+// Blitz's Finale launcher, shown in the hands (and on her body) while the ultimate is out.
+const FINALE = { id: 'finale', name: 'Finale', cat: 'Ability', model: 'launcher', launcher: true };
 import { ROUND } from './rounds.js';
 import { materialOf } from './map.js';
 import { dirFromAngles } from './entity.js';
@@ -242,6 +245,7 @@ const EXAMINE_HOLD = 280; // ms the inspect key is held before examine mode take
 const VM_POSE = {
   knife: { hip: [0.17, -0.17, -0.34], ads: [0.17, -0.17, -0.34] },
   blades: { hip: [0.12, -0.12, -0.3], ads: [0.12, -0.12, -0.3] },
+  launcher: { hip: [0.19, -0.15, -0.34], ads: [0.19, -0.15, -0.34] },
   hands: { hip: [0.13, -0.13, -0.3], ads: [0.13, -0.13, -0.3] },
   pistol: { hip: [0.15, -0.14, -0.34], ads: [0, -0.047, -0.3] },
   revolver: { hip: [0.15, -0.14, -0.34], ads: [0, -0.05, -0.31] },
@@ -577,6 +581,7 @@ export class Renderer {
       if (who !== g.player) return;
       if (type === 'ult') { this.vm.equipStart = performance.now(); this.vm.equipDur = 350; }
       if (type === 'lift') this.shake = Math.min(1.5, this.shake + 0.4);
+      if (type === 'rocket') { this.shake = Math.min(2, this.shake + 1.2); this.vm.flashUntil = performance.now() + 90; }
     });
   }
 
@@ -786,7 +791,9 @@ export class Renderer {
   }
 
   // A thrown projectile flying from `from` to `to` in `time` seconds, with a little arc.
-  fxThrow({ from, to, via, time, color, wave, straight }) {
+  fxThrow({ from, to, via, time, color, wave, straight, rocket, model, stay }) {
+    if (rocket) return this.fxRocket(from, to, time);
+    if (model === 'paintshell' || model === 'bomblet') return this.fxGrenade(from, to, time, model, stay ?? time);
     const m = wave
       ? new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
       : new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color }));
@@ -805,6 +812,42 @@ export class Renderer {
       } else {
         m.position.set(from[0] + (to[0] - from[0]) * k, from[1] + (to[1] - from[1]) * k + Math.sin(k * Math.PI) * Math.min(2, d * 0.12), from[2] + (to[2] - from[2]) * k);
       }
+    });
+  }
+
+  // A rocket (Finale, Missile Call, Barrage): flies straight at its target nose first, flame flickering, with a
+  // smoke trail behind it.
+  fxRocket(from, to, time) {
+    const m = rocketModel(), t0 = this.game.time, flame = m.userData.flame;
+    const N = 24, trailGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Array(N * 3).fill(0), 3));
+    const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0xdedad2, transparent: true, opacity: 0.55 }));
+    trail.frustumCulled = false;
+    const pts = [];
+    m.position.set(...from);
+    m.lookAt(to[0], to[1], to[2]);
+    this.fxAdd(trail, t0 + time + 0.4);
+    this.fxAdd(m, t0 + time, (now) => {
+      const k = Math.min(1, (now - t0) / time);
+      m.position.set(from[0] + (to[0] - from[0]) * k, from[1] + (to[1] - from[1]) * k, from[2] + (to[2] - from[2]) * k);
+      flame.scale.set(1, 0.7 + Math.random() * 0.6, 1);
+      if (!pts.length || m.position.distanceTo(pts[0]) > 0.3) { pts.unshift(m.position.clone()); pts.length = Math.min(pts.length, N); }
+      const a = trailGeo.attributes.position;
+      for (let i = 0; i < N; i++) { const q = pts[Math.min(i, pts.length - 1)]; a.setXYZ(i, q.x, q.y, q.z); }
+      a.needsUpdate = true;
+    });
+  }
+
+  // Splatter's canister (or one of its bomblets): tumbles along the throw arc, then sits where it landed until
+  // it goes off `stay` seconds after the throw.
+  fxGrenade(from, to, time, model, stay) {
+    const m = model === 'paintshell' ? paintShellModel(1) : bombletModel(), t0 = this.game.time;
+    const d = Math.hypot(to[0] - from[0], to[2] - from[2]), spin = 9 + Math.random() * 4;
+    m.position.set(...from);
+    this.fxAdd(m, t0 + Math.max(time, stay), (now) => {
+      const k = Math.min(1, (now - t0) / time);
+      m.position.set(from[0] + (to[0] - from[0]) * k, from[1] + (to[1] - from[1]) * k + Math.sin(k * Math.PI) * Math.min(2, d * 0.12), from[2] + (to[2] - from[2]) * k);
+      if (k < 1) m.rotation.set((now - t0) * spin, (now - t0) * spin * 0.6, 0);
+      else { m.rotation.x = 0; m.rotation.z = 0; m.position.y += 0.07 + Math.abs(Math.sin(now * 14)) * 0.02; } // landed: rattling before it pops
     });
   }
 
@@ -1316,6 +1359,7 @@ export class Renderer {
     // anyone else's gun) has its shader looked up again on every draw, since the two scenes are lit differently.
     this.vm.model.traverse(o => { if (o.material?.isMaterial && o.material !== this.vm.glow?.mat) o.material = vmMaterial(o.material); });
     if (def.hands) { this.vm.equipStart = performance.now(); this.vm.equipDur = 250; }
+    if (def.launcher) { this.vm.equipStart = performance.now(); this.vm.equipDur = 1400; } // Finale takes 1.4 s to draw
     this.vm.model.scale.setScalar(VM_SCALE);
     this.vm.model.userData.muzzle.add(this.vmFlash);
     this.vm.group.add(this.vm.model);
@@ -1680,7 +1724,7 @@ export class Renderer {
     const kitc = vp.kit, armedAb = kitc?.armed && kitc.agent.abilities[kitc.armed.k];
     const handItem = vp.st.channelUntil > this.game.time ? 'device' : armedAb ? (armedAb.item || 'orb') : kitc?.grab ? 'grab' : kitc?.overdrive ? 'beam' : kitc?.highGear ? 'none' : null;
     const handsDef = handItem && { id: `hand:${kitc.id}:${handItem}`, hands: true, model: 'hands', color: vp.st.channelUntil > this.game.time ? 0xff4655 : parseInt(kitc.agent.color.slice(1), 16), item: handItem, melee: true };
-    const def = blades ? BLADES : handsDef || gun.def;
+    const def = blades ? BLADES : kitc?.launcher ? FINALE : handsDef || gun.def;
     const kind = def.model;
     this.setViewmodel(def, vp);
     const vm = this.vm;
@@ -1742,7 +1786,7 @@ export class Renderer {
     // Equip / reload / knife swing
     const et = Math.min(1, (performance.now() - vm.equipStart) / Math.max(1, vm.equipDur));
     if (et < 1) { const e = 1 - Math.pow(1 - et, 3); py -= (1 - e) * 0.25; rx -= (1 - e) * 0.6; }
-    if (!def.melee && !blades) {
+    if (!def.melee && !blades && !def.launcher) {
       // Per-gun reload and bolt/pump animations (reloadanim.js); the gun is lowered a touch while aiming.
       const rp = reloadPose(vm.model, def, gun, this.game.time, this.cycle);
       px += rp.px || 0; py += rp.py || 0; pz += rp.pz || 0;
@@ -1830,7 +1874,7 @@ export class Renderer {
       ch.gun.position.set(0.17, lerp(GUN_HEIGHT[0], GUN_HEIGHT[1], cr), -0.35);
       ch.gun.scale.set(0.07, 0.1, 0.75);
       // Show the weapon they're actually holding, in their skin; an ability in hand shows nothing.
-      const heldDef = c.kit?.armed || c.kit?.blades || c.kit?.overdrive ? null : c.gun?.def;
+      const heldDef = c.kit?.armed || c.kit?.blades || c.kit?.overdrive ? null : c.kit?.launcher ? FINALE : c.gun?.def;
       const heldId = heldDef ? this.modelOf(c, heldDef.id) : '';
       const heldSkin = heldDef ? this.skinOf(c, heldId) : '';
       const hk = heldDef ? heldId + ':' + heldSkin : '';

@@ -76,9 +76,9 @@ Passive: **Kindled**: Your own fire heals you instead of hurting you.
 | Key | Ability | 5v5 charges · price | 5v5 recharge | Deathmatch cooldown | What it does |
 |---|---|---|---|---|---|
 | C | **Boomer** (Boom Bot) | 1 × 300 | bought only | 35 s | Deploy a bot that rolls forward and bounces off walls. It locks onto the first enemy in front of it and explodes for up to 80. It lasts 5 s. |
-| Q | **Kicker** (Blast Pack) | 2 × 200 | bought only | 12 s | Instantly throws a satchel that sticks where it lands (12 m). Press Q again to blow it: it launches anyone nearby — you included — and deals 50. |
+| Q | **Kicker** (Blast Pack) | 2 × 200 | bought only | 12 s | Instantly throws a satchel that sticks where it lands (12 m) and lasts 5 s. Press Q again to blow it, even while it is still in the air: it launches anyone nearby, you included, and deals 20-50 (only 5-15 in its first 1.5 s). |
 | E | **Splatter** (Paint Shells) | 1 free | 2 kills | 30 s | Throw a cluster grenade (20 m): it explodes for 55, then scatters four bomblets that explode for 55 each. In 5v5 it comes back after two kills. |
-| X | **Finale** (Showstopper) | 8 points | | | Pull out a rocket launcher and left click to fire one rocket within 10 s: 150 damage within 4 m, falling to 30 at 7 m. |
+| X | **Finale** (Showstopper) | 8 points | | | Pull out a rocket launcher and left click to fire one rocket within 10 s: 150 damage within 4 m, falling to 30 at 7 m. It hurts you too, so don’t fire it at your feet. |
 
 ## Granite (Brimstone) · Controller
 

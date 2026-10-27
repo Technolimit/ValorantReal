@@ -469,6 +469,26 @@ const checks = [
     const saved = !saver.inv.primary && saver.credits >= 1500;
     return { pass: leftMolly && drewSidearm && calls[0] === 'full' && calls[1] === 'eco' && saved, leftMolly, drewSidearm, calls, saverCredits: saver.credits };
   }],
+  ['Kicker can be blown the moment it is thrown (mid-air satchel jump), and hits harder once armed', async () => {
+    const g = await __start({ agent: 'blitz' });
+    const p = g.player, k = p.kit, b = g.bots[0];
+    if (!__place(g, p, 14)) return { error: 'no open ground' };
+    p.pitch = 0.2; k.charges.q = 2;
+    p.input.abQ = true; g.tick(); __tick(g, 0.1);
+    const sat = g.devices.find(d => d.kind === 'satchel' && d.owner === p && !d.removed);
+    const inAir = !!sat?.flight;
+    p.input.abQ = true; g.tick();
+    const blown = !!sat?.removed, launched = p.vel[1] > 5, chargesLeft = k.charges.q;
+    // Armed: thrown at a bot's feet, blown after 1.6 s, it deals the full 50 up close.
+    __tick(g, 3);
+    if (!__place(g, p, 14)) return { error: 'no open ground' }; // the jump left us anywhere: back on open ground
+    b.hp = 100; b.armor = 0; b.pos = __ahead(p, 6); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.vel = [0, 0, 0];
+    __aim(p, [b.pos[0], b.pos[1] + 0.1, b.pos[2]]);
+    p.input.abQ = true; g.tick(); __tick(g, 1.6);
+    p.input.abQ = true; g.tick();
+    const armedDamage = 100 - b.hp;
+    return { pass: inAir && blown && launched && chargesLeft === 1 && armedDamage >= 40, inAir, blown, launched, chargesLeft, armedDamage };
+  }],
   ['Buy phase: any ability can be held; set-up utility (camera, Sentry, Anchor) can be placed', async () => {
     const press = (g, c, key, aim) => { c.input['ab' + key] = true; g.tick(); __tick(g, 0.35); if (aim) aim(); c.input.firePressed = true; g.tick(); __tick(g, 0.2); };
     const out = {};
@@ -710,11 +730,13 @@ const checks = [
     __tick(g, 0.5);
     // A bot 30 m ahead and 6 m to the side: inside the new 13.5 m width, outside the old one.
     b.pos = __ahead(p, 30); b.pos[0] += 6; b.pos[1] = (g.floorAt(b.pos[0], b.pos[2], p.pos[1] + 1) || p.pos)[1]; b.prevPos = [...b.pos];
+    // Held where it was put: depending on where the spawns fell, that spot can be off the floor.
+    const spot = [...b.pos], hold = (sec) => { for (let i = 0; i < Math.round(sec * 128); i++) { g.tick(); b.pos = [...spot]; b.prevPos = [...spot]; b.vel = [0, 0, 0]; } };
     k.ultPoints = k.ultCost; k.agent.abilities.x.use(k);
     const locked = p.st.castLockUntil > g.time;
-    __tick(g, 0.9); const early = b.st.hinderUntil > g.time;
-    __tick(g, 0.7); const hindered = b.st.hinderUntil - g.time, haste = p.st.hasteUntil - g.time, amt = p.st.hasteAmt;
-    return { pass: locked && !early && hindered > 5 && hindered <= 6 && haste > 6 && haste <= 7 && amt === 0.1, locked, early, hindered: +hindered.toFixed(2), haste: +haste.toFixed(2), amt };
+    hold(0.9); const early = b.st.hinderUntil > g.time;
+    hold(0.7); const hindered = b.st.hinderUntil - g.time, haste = p.st.hasteUntil - g.time, amt = p.st.hasteAmt;
+    return { pass: locked && !early && hindered > 5 && hindered <= 6 && haste > 6 && haste <= 7 && amt === 0.1, locked, early, hindered: +hindered.toFixed(2), haste: +haste.toFixed(2), amt, alive: b.alive };
   }],
   ['Rendezvous: Regent can\'t be hurt or shoot while teleporting to his anchor, and can be hurt again once he lands', async () => {
     const g = await __start({ agent: 'regent' });
@@ -774,7 +796,7 @@ await page.goto(url);
 await page.waitForFunction(() => window.__game);
 await page.addScriptTag({ content: PAGE_HELPERS });
 for (const [name, fn] of checks) {
-  if (only && !name.includes(only)) continue;
+  if (only && !only.split('|').some(o => name.includes(o))) continue;
   try { report(name, await page.evaluate(fn)); } catch (e) { report(name, { error: String(e).slice(0, 300) }); }
 }
 
