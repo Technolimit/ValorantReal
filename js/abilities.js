@@ -490,45 +490,45 @@ export const AGENTS = {
         },
       },
       q: {
-        instant: true, item: 'device', name: 'Kicker', desc: 'Instantly throws a satchel that sticks where it lands (12 m). Press Q again to blow it: it launches anyone nearby — you included — and deals 50.', charges: 2, cooldown: 12,
+        instant: true, item: 'device', name: 'Kicker', desc: 'Instantly throws a satchel that sticks where it lands (12 m) and lasts 5 s. Press Q again to blow it, even while it is still in the air: it launches anyone nearby, you included, and deals 20-50 (only 5-15 in its first 1.5 s).', charges: 2, cooldown: 12,
         use(kit) {
-          const o = kit.owner, pos = aimPoint(o, 12, { back: 0.3 });
-          const ft8 = flight(o.eye(), pos, 13);
-          o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft8, color: 0xffb547 });
-          later(kit, ft8, () => o.game.addDevice({ kind: 'satchel', owner: o, pos, life: 5 }));
+          // The satchel exists from the moment it leaves your hand, so it can be blown mid-air (satchel jumps).
+          const o = kit.owner, from = o.eye(), pos = aimPoint(o, 12, { back: 0.3 });
+          o.game.addDevice({ kind: 'satchel', owner: o, pos: [...from], life: 5, armAt: kit.now + 1.5, flight: { from, to: pos, time: flight(from, pos, 13) } });
         },
         reuse(kit) {
           const g = kit.owner.game;
           const mine = g.devices.filter(d => d.kind === 'satchel' && d.owner === kit.owner && !d.removed);
           if (!mine.length) return false;
-          const d = mine[0];
+          const d = mine[0], armed = kit.now >= d.armAt;
           d.removed = true;
           g.knockback(kit.owner, d.pos, 3.8, 16, 12.5);
-          g.explode(kit.owner, d.pos, 5, 50, 20, src('kicker', 'Kicker'), 0xffb547, false, false, 2); // 50 within 2 m, down to 20 at 5 m
+          // 50 within 2 m, down to 20 at 5 m once armed; 15 down to 5 before that.
+          g.explode(kit.owner, d.pos, 5, armed ? 50 : 15, armed ? 20 : 5, src('kicker', 'Kicker'), 0xffb547, false, false, 2);
           return true;
         },
       },
       e: {
-        item: 'grenade', name: 'Splatter', desc: 'Throw a cluster grenade (20 m): it explodes for 55, then scatters four bomblets that explode for 55 each. In 5v5 it comes back after two kills.', charges: 1, cooldown: 30, recharge: 'kills',
+        item: 'paintshell', name: 'Splatter', desc: 'Throw a cluster grenade (20 m): it explodes for 55, then scatters four bomblets that explode for 55 each. In 5v5 it comes back after two kills.', charges: 1, cooldown: 30, recharge: 'kills',
         use(kit) {
           const o = kit.owner, g = o.game, pos = aimPoint(o, 20, { floor: true, back: 0.4 });
           pos[1] += 0.2;
           const ft9 = flight(o.eye(), pos, 13);
-          g.emit('throw', { who: o, from: o.eye(), to: pos, time: ft9, color: 0xffb547 });
+          g.emit('throw', { who: o, from: o.eye(), to: pos, time: ft9, color: 0xffb547, model: 'paintshell', stay: Math.max(ft9, 2.25) });
           later(kit, Math.max(ft9, 2.25), () => { // goes off 2.25 s after the throw
             g.explode(o, pos, 5.5, 55, 15, src('splatter', 'Splatter'), 0xffb547);
             for (let i = 0; i < 4; i++) {
               const a = i * Math.PI / 2 + Math.random() * 0.8, dd = 1.5 + Math.random() * 1.8;
               const p = [pos[0] + Math.cos(a) * dd, pos[1], pos[2] + Math.sin(a) * dd];
               const ft10 = flight(pos, p, 13);
-              g.emit('throw', { who: o, from: pos, to: p, time: ft10, color: 0xff7ab8 });
+              g.emit('throw', { who: o, from: pos, to: p, time: ft10, color: 0xff7ab8, model: 'bomblet', stay: 0.667 + i * 0.05 });
               later(kit, 0.667 + i * 0.05, () => g.explode(o, p, 5.25, 55, 1, src('splatter', 'Splatter'), 0xff7ab8)); // bomblets 0.67 s later
             }
           });
         },
       },
       x: {
-        name: 'Finale', desc: 'Pull out a rocket launcher and left click to fire one rocket within 10 s: 150 damage within 4 m, falling to 30 at 7 m.', points: 8,
+        name: 'Finale', desc: 'Pull out a rocket launcher and left click to fire one rocket within 10 s: 150 damage within 4 m, falling to 30 at 7 m. It hurts you too, so don’t fire it at your feet.', points: 8,
         use(kit) {
           kit.launcher = { ready: kit.now + 1.4, until: kit.now + 10 }; // 1.4 s to draw it, 10 s to fire
           kit.owner.game.emit('ability', { who: kit.owner, type: 'ult' });
@@ -2183,7 +2183,9 @@ export class Kit {
     if (this.launcher && o.input.firePressed && now >= this.launcher.ready) {
       this.launcher = null;
       const pos = aimPoint(o, 120, { back: 0.3, bodies: true });
-      g.emit('throw', { who: o, from: o.eye(), to: pos, time: Math.max(0.1, Math.hypot(pos[0] - o.pos[0], pos[2] - o.pos[2]) / 45), color: 0xff8c2e, rocket: true });
+      const e = o.eye(), r = right(o.yaw), f = dirFromAngles(o.yaw, o.pitch);
+      const muzzle = [e[0] + r[0] * 0.25 + f[0] * 0.6, e[1] - 0.15 + f[1] * 0.6, e[2] + r[1] * 0.25 + f[2] * 0.6]; // leaves the launcher on the right shoulder
+      g.emit('throw', { who: o, from: muzzle, to: pos, time: Math.max(0.1, Math.hypot(pos[0] - o.pos[0], pos[2] - o.pos[2]) / 45), color: 0xff8c2e, rocket: true });
       later(this, Math.max(0.1, Math.hypot(pos[0] - o.pos[0], pos[2] - o.pos[2]) / 45), () => g.explode(o, pos, 7, 150, 30, src('rocket', 'Finale'), 0xff8c2e, true, false, 4));
       g.emit('ability', { who: o, type: 'rocket' });
     }
