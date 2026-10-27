@@ -122,6 +122,7 @@ export class RoundMode {
     this.phase = 'buy';
     this.phaseEnd = now + (this.round === 1 || half || ot ? ROUND.firstBuy : ROUND.buy);
     this.setBarriers(true);
+    this.buyCall = [this.teamBuyCall(0), this.teamBuyCall(1)];
     for (const c of g.bots) this.botBuy(c);
     this.plan = null;
     this.planBots(true);
@@ -468,11 +469,38 @@ export class RoundMode {
   }
 
   // Bots buy like a sensible team: full buy at 3900+, half buy at 2000+, a pistol-round buy, or save.
+  // Team economy, called the way a team calls it: everyone buys together. 'full' when the team can afford
+  // rifles and heavy shields; 'eco' (save) when saving now means a full buy next round; otherwise 'force'.
+  // Always force when the round matters too much to save: the last round of a half, overtime, or when the
+  // other team is one round from winning.
+  teamBuyCall(team) {
+    if (this.round === 1 || this.round === ROUND.half + 1) return 'pistol';
+    const mates = this.game.combatants.filter(c => c.team === team);
+    if (!mates.length) return 'full';
+    const FULL = 3900; // Vandal / Phantom and heavy shields
+    // A survivor still holding a rifle only needs shields.
+    const avg = mates.reduce((s, c) => s + c.credits + (c.inv.primary && c.inv.primary.def.cost >= 2000 ? FULL - 1000 : 0), 0) / mates.length;
+    if (avg >= FULL) return 'full';
+    if (this.round === ROUND.half || this.round > ROUND.half * 2 || this.score[1 - team] === ROUND.toWin - 1) return 'force';
+    const nextBonus = ECON.loss[Math.min(3, this.lossStreak[team] + 1) - 1];
+    return avg + nextBonus >= FULL ? 'eco' : 'force';
+  }
+
   botBuy(c) {
     const has = c.inv.primary;
     const cr = () => c.credits;
     const tryBuy = (item) => this.buy(c, item) === null;
-    const pistolRound = this.round === 1 || this.round === ROUND.half + 1;
+    const call = this.buyCall?.[c.team] || 'full';
+    const pistolRound = call === 'pistol';
+    if (call === 'eco' && !has) {
+      // Saving: keep enough for a full buy next round even after a loss; spend only what's above that.
+      const keep = Math.max(0, 3900 - ECON.loss[Math.min(3, this.lossStreak[c.team] + 1) - 1]);
+      if (cr() - keep >= 800 && Math.random() < 0.5) tryBuy({ type: 'weapon', id: 'sheriff' });
+      else if (cr() - keep >= 500) tryBuy({ type: 'weapon', id: 'ghost' });
+      if (cr() - keep >= 400) tryBuy({ type: 'shield', id: 'light' });
+      this.botBuyAbilities(c, keep);
+      return;
+    }
     if (pistolRound) {
       if (Math.random() < 0.5) { tryBuy({ type: 'shield', id: 'light' }); tryBuy({ type: 'weapon', id: pick(['ghost', 'frenzy']) }); }
       else tryBuy({ type: 'weapon', id: 'sheriff' });

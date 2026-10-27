@@ -17,15 +17,15 @@ import { PLAYER } from './config.js';
 const DEG = Math.PI / 180;
 
 export const LIFT_VELOCITY = 12.5; // ~3.5 m rise
-export const DASH = { speed: 42, time: 0.18, exit: 7 }; // ~7.5 m in 0.18 s, keep 7 m/s afterwards
+export const DASH = { speed: 24.4, time: 0.45, exit: 7 }; // Tailwind: 11 m in 0.45 s, keep 7 m/s afterwards
 export const GLIDE_FALL = 2.3; // max fall speed while gliding, m/s
 export const SMOKE = { radius: 2.8, life: 4.5, range: 14, grow: 0.25 };
 export const BLADES = {
   id: 'blades', name: 'Edgestorm', cat: 'Ability', model: 'blades', count: 5, cycle: 0.33,
-  dmg: [[50, 150, 50, 50]], spread: 0.15, fan: 2.2,
+  dmg: [[50, 150, 50, 42]], spread: 0.15, fan: 2.2, // 50 body, x3 head, x0.85 legs
 };
 export const OVERDRIVE = { id: 'overload', name: 'Overload', cat: 'Ability', dmg: [[50, 54, 27, 22]] };
-export const BEAMS = { id: 'beams', name: 'Talon Strike', cat: 'Ability', count: 3, time: 6, dmg: 80, width: 0.75 };
+export const BEAMS = { id: 'beams', name: 'Talon Strike', cat: 'Ability', count: 3, time: 6, dmg: 80, width: 0.88, range: 66, reveal: 1 }; // 66 m x 1.76 m
 // Damage sources for the kill feed.
 const src = (id, name) => ({ id, name, cat: 'Ability', dmg: [[50, 0, 0, 0]] });
 
@@ -189,7 +189,7 @@ function allyInView(kit, { dead = false, range = 20, maxDeg = 12, enemy = false 
   return best;
 }
 // Bloom (Skye-style Regrowth): who it would heal right now.
-export const BLOOM = { pool: 100, rate: 30, range: 18 };
+export const BLOOM = { pool: 100, rate: 20, range: 18 };
 export function bloomTargets(o) {
   const g = o.game, e = o.eye();
   return g.combatants.filter(c => c !== o && c.alive && !g.isEnemy(o, c) && c.hp < PLAYER.hp && Math.hypot(c.pos[0] - o.pos[0], c.pos[2] - o.pos[2]) < BLOOM.range && g.canSee(e, c.eye()));
@@ -241,7 +241,7 @@ export const AGENTS = {
         name: 'Veil', desc: 'Throw a smoke orb that flies slowly where you look while you hold C; release C to burst it into a smoke (2.5 s).', charges: 2, cooldown: 16, instant: true,
         use(kit) {
           const o = kit.owner, e = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
-          o.game.addDevice({ kind: 'cloud', owner: o, pos: [e[0] + d[0] * 0.6, e[1] + d[1] * 0.6, e[2] + d[2] * 0.6], dir: d, life: 2.6, speed: 7, key: 'abCHeld', radius: 2.8, smokeLife: 2.5, color: 0xcfdbe6 });
+          o.game.addDevice({ kind: 'cloud', owner: o, pos: [e[0] + d[0] * 0.6, e[1] + d[1] * 0.6, e[2] + d[2] * 0.6], dir: d, life: 2, speed: 7, key: 'abCHeld', radius: 3.35, smokeLife: 2.5, color: 0xcfdbe6 });
         },
       },
       q: {
@@ -258,7 +258,7 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Slipstream', desc: 'Press to gather the wind (1 s); press again within 7.5 s to dash ~8 m the way you are moving. Unused, the charge is lost. In 5v5 it comes back after two kills.', charges: 1, cooldown: 12, instant: true, recharge: 'kills',
+        name: 'Slipstream', desc: 'Press to gather the wind (1 s); press again within 7.5 s to dash ~11 m the way you are moving. Unused, the charge is lost. In 5v5 it comes back after two kills.', charges: 1, cooldown: 12, instant: true, recharge: 'kills',
         use(kit) {
           kit.tailwind = { readyAt: kit.now + 1, until: kit.now + 7.5 };
           kit.owner.game.emit('ability', { who: kit.owner, type: 'windup' });
@@ -281,7 +281,7 @@ export const AGENTS = {
       x: {
         name: 'Edgestorm', desc: 'Draw five throwing blades: left click throws one (150 head / 50 body), right click fans out all of them. Each kill refills the set.', points: 8,
         use(kit) {
-          kit.blades = { left: BLADES.count, next: kit.now + 0.35 };
+          kit.blades = { left: BLADES.count, next: kit.now + 1.0 }; // 1 s to draw the blades
           kit.owner.gun.onHolster();
           kit.owner.game.emit('ability', { who: kit.owner, type: 'ult' });
         },
@@ -303,7 +303,16 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'flash', name: 'Sunflare', desc: 'Hold a flare in your hand (no gun), then left click to curve it left or right click to curve it right. It bursts around the corner, blinding anyone facing it.', charges: 2, cooldown: 14,
+        item: 'grenade', name: 'Ember', desc: 'Hold a fireball, then left click to lob it. It leaves a 3.5 m pool of fire for 4 s (60/s to enemies; heals you).', charges: 1, cooldown: 18,
+        use(kit) {
+          const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.4 });
+          const ft3 = flight(o.eye(), pos, 13);
+          o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft3, color: 0xff7a2e });
+          later(kit, ft3, () => o.game.addZone({ kind: 'fire', owner: o, pos, r: 3.5, life: 4, dps: 60, heal: 12.5, def: src('ember', 'Ember') }, kit.now));
+        },
+      },
+      e: {
+        item: 'flash', name: 'Sunflare', desc: 'Hold a flare in your hand (no gun), then left click to curve it left or right click to curve it right. It bursts around the corner, blinding anyone facing it for up to 1.5 s. In 5v5 one is free each round and two kills bring a used one back.', charges: 2, cooldown: 14, recharge: 'kills',
         arm: true, armHint: 'LEFT CLICK: CURVE LEFT · RIGHT CLICK: CURVE RIGHT',
         use(kit, mode) {
           const o = kit.owner, g = o.game, eye = o.eye();
@@ -315,15 +324,6 @@ export const AGENTS = {
           const ft2 = flight(eye, pop, 11, mid);
           g.emit('throw', { who: o, from: eye, via: mid, to: pop, time: ft2, color: 0xffc061 });
           later(kit, ft2, () => g.flash(o, pop, 1.5));
-        },
-      },
-      e: {
-        item: 'grenade', name: 'Ember', desc: 'Hold a fireball, then left click to lob it. It leaves a 3.5 m pool of fire for 4 s (60/s to enemies; heals you). In 5v5 it comes back after two kills.', charges: 1, cooldown: 18, recharge: 'kills',
-        use(kit) {
-          const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.4 });
-          const ft3 = flight(o.eye(), pos, 13);
-          o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft3, color: 0xff7a2e });
-          later(kit, ft3, () => o.game.addZone({ kind: 'fire', owner: o, pos, r: 3.5, life: 4, dps: 60, heal: 12.5, def: src('ember', 'Ember') }, kit.now));
         },
       },
       x: {
@@ -342,29 +342,29 @@ export const AGENTS = {
     blurb: 'Commands the dark from a distance: long-range smokes, a blinding wave, and he can step out of the shadows anywhere on the map.',
     abilities: {
       c: {
-        name: 'Rift', desc: 'Hold it: a marker shows where you will land (up to 12 m) and follows your aim. Left click to go; 1 s later you step through the shadows to it.', charges: 2, cooldown: 25,
-        preview(kit) { return landing(kit.owner, 12); },
+        name: 'Rift', desc: 'Hold it: a marker shows where you will land (up to 15 m) and follows your aim. Left click to go; 0.7 s later you step through the shadows to it.', charges: 2, cooldown: 25,
+        preview(kit) { return landing(kit.owner, 15); },
         use(kit) {
           const o = kit.owner, pos = target(kit, this);
           if (!pos) return false;
           o.game.emit('ability', { who: o, type: 'step', pos });
-          mine(kit, 0.5, () => o.game.teleportNear(o, pos));
+          mine(kit, 0.7, () => o.game.teleportNear(o, pos));
         },
       },
       q: {
-        name: 'Dread', desc: 'Send a wave of shadow straight ahead (30 m) that passes through walls, nearsighting and deafening every enemy it touches for 2 s.', charges: 1, cooldown: 30,
+        name: 'Dread', desc: 'Send a wave of shadow straight ahead (25 m) that passes through walls, nearsighting and deafening every enemy it touches for 2 s.', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
-          const end = [eye[0] + d[0] * 30, eye[1] + d[1] * 30, eye[2] + d[2] * 30];
-          const ft4 = flight(eye, end, 10);
+          const end = [eye[0] + d[0] * 25, eye[1] + d[1] * 25, eye[2] + d[2] * 25];
+          const ft4 = flight(eye, end, 20);
           g.emit('throw', { who: o, from: eye, to: end, time: ft4, color: 0x7a4dff, wave: true });
-          later(kit, ft4 + -0.3, () => g.lineEffect(o, eye, end, 1.8, 'near+deaf', 2));
+          later(kit, ft4 + -0.3, () => g.lineEffect(o, eye, end, 4.3, 'near+deaf', 2));
         },
       },
       e: {
-        name: 'Shade', desc: 'Hold the orb: your view follows the smoke out through walls, and the sphere shows exactly where it will form. It passes through walls: hold right click to push it farther (up to 70 m), press R to make it stop at the first wall instead, left click to cast. Lasts 15 s.', charges: 2, cooldown: 40,
+        name: 'Shade', desc: 'Hold the orb: your view follows the smoke out through walls, and the sphere shows exactly where it will form. It passes through walls: hold right click to push it farther (up to 80 m), press R to make it stop at the first wall instead, left click to cast. Lasts 15 s.', charges: 2, cooldown: 40,
         armHint: 'LEFT CLICK: CAST · HOLD RIGHT CLICK: FARTHER · R: STOP AT WALLS', shadowSight: true,
-        smokePreview: 3.8, distance: { min: 4, max: 70, start: 16, speed: 22 },
+        smokePreview: 3.8, distance: { min: 4, max: 80, start: 16, speed: 22 },
         preview(kit) { return smokeTarget(kit, 3.8); },
         use(kit) {
           const o = kit.owner, pos = [...target(kit, this)];
@@ -404,17 +404,17 @@ export const AGENTS = {
           const o = kit.owner, pos = aimPoint(o, 12 + 38 * (kit.power ?? 1), { back: 0.3, bodies: true });
           const ft5 = flight(o.eye(), pos, 30);
           o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft5, color: 0x6ab7ff });
-          later(kit, ft5 + 0.05, () => o.game.explode(o, pos, 4, 75, 1, src('arcdart', 'Arc Dart'), 0x6ab7ff));
+          later(kit, ft5 + 0.05, () => o.game.explode(o, pos, 4, 75, 1, src('arcdart', 'Arc Dart'), 0x6ab7ff, false, false, 1.5)); // full damage within 1.5 m
         },
       },
       e: {
-        name: 'Sonar Bolt', desc: 'Draw the bow. Hold left click to charge (up to 60 m), release to fire. The bolt pulses twice, revealing every enemy in its line of sight within 30 m.', charges: 1, cooldown: 50, item: 'bow', charge: 1.2,
+        name: 'Sonar Bolt', desc: 'Draw the bow. Hold left click to charge (up to 60 m), release to fire. The bolt pulses twice, 1 s apart, revealing every enemy in its line of sight within 30 m.', charges: 1, cooldown: 50, item: 'bow', charge: 1.2,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 15 + 45 * (kit.power ?? 1), { back: 0.2 });
           const ft6 = flight(o.eye(), pos, 30);
           o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft6, color: 0x6ab7ff });
           later(kit, ft6 + 0.1, () => o.game.pulse(o, pos, 30, 'reveal', 2.5, 0x6ab7ff, true));
-          later(kit, ft6 + 1.9, () => o.game.pulse(o, pos, 30, 'reveal', 2.5, 0x6ab7ff, true));
+          later(kit, ft6 + 1.1, () => o.game.pulse(o, pos, 30, 'reveal', 2.5, 0x6ab7ff, true)); // two scans 1 s apart
         },
       },
       x: {
@@ -432,7 +432,7 @@ export const AGENTS = {
     blurb: 'An inventor who holds ground with machines: hidden swarm grenades, a hunting alarm bot, an automatic turret and a lockdown nobody walks out of.',
     abilities: {
       c: {
-        item: 'grenade', name: 'Hive', desc: 'Throw a hidden swarm grenade (15 m). Once both are out — or you have none left — press C again to detonate them: 45/s for 4 s in a 3 m radius.', charges: 2, cooldown: 40,
+        item: 'grenade', name: 'Hive', desc: 'Throw a hidden swarm grenade (15 m). Once both are out — or you have none left — press C again to detonate them: after 1 s, 45/s for 5 s in a 3 m radius.', charges: 2, cooldown: 40,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 15, { floor: true, back: 0.4 });
           const ft7 = flight(o.eye(), pos, 13);
@@ -446,7 +446,7 @@ export const AGENTS = {
           if (!mine.length) return false;
           for (const d of mine) {
             d.removed = true;
-            g.addZone({ kind: 'fire', color: 0x9be15d, owner: kit.owner, pos: d.pos, r: 3, life: 4, dps: 45, heal: 0, def: src('hive', 'Hive') }, kit.now);
+            g.addZone({ kind: 'fire', color: 0x9be15d, owner: kit.owner, pos: d.pos, r: 3, life: 6, armAt: kit.now + 1, dps: 45, heal: 0, def: src('hive', 'Hive') }, kit.now); // 1 s windup, then 5 s
           }
           g.emit('ability', { who: kit.owner, type: 'swarm' });
           return true;
@@ -460,17 +460,18 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'device', name: 'Sentry', desc: 'Deploy a turret (10 m) facing where you aim. For 40 s it shoots enemies in its 180° view (7 damage a shot).', charges: 1, cooldown: 45,
+        item: 'device', name: 'Sentry', desc: 'Deploy a turret (10 m) facing where you aim. It shoots enemies in its 180° view (7 damage a shot) until it is destroyed (60 s to get it back) or picked up (20 s). Placing a new one takes the old one down.', charges: 1, cooldown: 60,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 10, { floor: true, back: 0.5 });
-          o.game.addDevice({ kind: 'turret', owner: o, pos, yaw: o.yaw, aimYaw: o.yaw, life: 40, next: kit.now + 0.8 });
+          for (const d of o.game.devices) if (d.kind === 'turret' && d.owner === o) d.removed = true; // one turret at a time
+          o.game.addDevice({ kind: 'turret', owner: o, pos, yaw: o.yaw, aimYaw: o.yaw, life: 1e5, next: kit.now + 0.8 });
         },
       },
       x: {
-        name: 'Clampdown', desc: 'Plant a device that charges for 13 s, then detains every enemy within 32 m for 8 s: they cannot fire and move 60% slower.', points: 9,
+        name: 'Clampdown', desc: 'Plant a device that charges for 13 s, then detains every enemy within 32.5 m for 8 s: they cannot fire and move 60% slower.', points: 9,
         use(kit) {
           const o = kit.owner;
-          o.game.addZone({ kind: 'lockdown', owner: o, pos: [...o.pos], r: 32, life: 13.1, armAt: kit.now + 13, dur: 8, slow: 0.6 }, kit.now);
+          o.game.addZone({ kind: 'lockdown', owner: o, pos: [...o.pos], r: 32.5, life: 13.1, armAt: kit.now + 13, dur: 8, slow: 0.6 }, kit.now);
           o.game.emit('ability', { who: o, type: 'ult' });
         },
       },
@@ -503,7 +504,7 @@ export const AGENTS = {
           const d = mine[0];
           d.removed = true;
           g.knockback(kit.owner, d.pos, 3.8, 16, 12.5);
-          g.explode(kit.owner, d.pos, 3, 50, 30, src('kicker', 'Kicker'), 0xffb547);
+          g.explode(kit.owner, d.pos, 5, 50, 20, src('kicker', 'Kicker'), 0xffb547, false, false, 2); // 50 within 2 m, down to 20 at 5 m
           return true;
         },
       },
@@ -514,22 +515,22 @@ export const AGENTS = {
           pos[1] += 0.2;
           const ft9 = flight(o.eye(), pos, 13);
           g.emit('throw', { who: o, from: o.eye(), to: pos, time: ft9, color: 0xffb547 });
-          later(kit, ft9 + 0.2, () => {
-            g.explode(o, pos, 4, 55, 25, src('splatter', 'Splatter'), 0xffb547);
+          later(kit, Math.max(ft9, 2.25), () => { // goes off 2.25 s after the throw
+            g.explode(o, pos, 5.5, 55, 15, src('splatter', 'Splatter'), 0xffb547);
             for (let i = 0; i < 4; i++) {
               const a = i * Math.PI / 2 + Math.random() * 0.8, dd = 1.5 + Math.random() * 1.8;
               const p = [pos[0] + Math.cos(a) * dd, pos[1], pos[2] + Math.sin(a) * dd];
               const ft10 = flight(pos, p, 13);
               g.emit('throw', { who: o, from: pos, to: p, time: ft10, color: 0xff7ab8 });
-              later(kit, ft10 + 0.1 + i * 0.12, () => g.explode(o, p, 3, 55, 20, src('splatter', 'Splatter'), 0xff7ab8));
+              later(kit, 0.667 + i * 0.05, () => g.explode(o, p, 5.25, 55, 1, src('splatter', 'Splatter'), 0xff7ab8)); // bomblets 0.67 s later
             }
           });
         },
       },
       x: {
-        name: 'Finale', desc: 'Pull out a rocket launcher and left click to fire one rocket: 150 damage on a direct hit, big splash around it.', points: 8,
+        name: 'Finale', desc: 'Pull out a rocket launcher and left click to fire one rocket within 10 s: 150 damage within 4 m, falling to 30 at 7 m.', points: 8,
         use(kit) {
-          kit.launcher = { ready: kit.now + 0.8 };
+          kit.launcher = { ready: kit.now + 1.4, until: kit.now + 10 }; // 1.4 s to draw it, 10 s to fire
           kit.owner.game.emit('ability', { who: kit.owner, type: 'ult' });
         },
       },
@@ -541,7 +542,7 @@ export const AGENTS = {
     blurb: 'An old commander who fights from the map: sky smokes and orbital fire wherever he points, a stim beacon for the push and an incendiary to hold it.',
     abilities: {
       c: {
-        item: 'device', name: 'Rally', desc: 'Throw a beacon (10 m) that sets up a field for 12 s. You and teammates standing in it get 10% faster fire rate and 15% faster movement, lasting 4 s after you leave.', charges: 1, cooldown: 30,
+        item: 'device', name: 'Rally', desc: 'Throw a beacon (10 m) that sets up a field for 12 s. You and teammates standing in it get 10% faster fire rate and 10% faster movement, lasting 4 s after you leave.', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 10, { floor: true, back: 0.4 });
           o.game.addZone({ kind: 'stim', color: 0xffb547, owner: o, pos, r: 6, life: 12 }, kit.now);
@@ -561,13 +562,13 @@ export const AGENTS = {
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
-            key: 'e', title: 'OVERCAST', hint: 'Click up to ' + kit.charges.e + ' spots · E or right click to call them in', max: kit.charges.e, color: '#e0844f', radius: 4, range: 34,
+            key: 'e', title: 'OVERCAST', hint: 'Click up to ' + kit.charges.e + ' spots · E or right click to call them in', max: kit.charges.e, color: '#e0844f', radius: 5, range: 55,
             confirm: (picks) => {
               for (const p of picks) {
                 kit.charges.e--;
                 if (!kit.ready.e) kit.ready.e = kit.now + this.cooldown;
                 o.game.emit('throw', { who: o, from: [p[0], p[1] + 30, p[2]], to: [p[0], p[1] + 2, p[2]], time: 0.8, color: 0xe0844f });
-                later(kit, 0.8, () => o.game.addSmoke(o, [p[0], p[1] + 2, p[2]], kit.now, { radius: 4.1, life: 19.25, color: 0x9a8f86 }));
+                later(kit, 0.8, () => o.game.addSmoke(o, [p[0], p[1] + 2, p[2]], kit.now, { radius: 5, life: 19.25, color: 0x9a8f86 }));
               }
               kit.lastUse.e = kit.now;
             },
@@ -576,15 +577,15 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Sky Hammer', desc: 'Open the map and click a spot: after 2 s a 5 m orbital strike burns it for 3 s (90/s).', points: 8,
+        name: 'Sky Hammer', desc: 'Open the map and click a spot: after 2 s an 8 m orbital strike burns it for 4 s (125/s).', points: 8,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
-            key: 'x', title: 'SKY HAMMER', hint: 'Click a spot to strike · Right click or X to cancel', max: 1, color: '#ff4655', radius: 5,
+            key: 'x', title: 'SKY HAMMER', hint: 'Click a spot to strike · Right click or X to cancel', max: 1, color: '#ff4655', radius: 8,
             confirm: (picks) => {
               kit.ultPoints = 0;
               kit.lastUse.x = kit.now;
-              o.game.addZone({ kind: 'fire', color: 0xff3344, orbital: true, owner: o, pos: picks[0], r: 5, life: 5, armAt: kit.now + 2, dps: 90, heal: 0, burnsOwner: true, def: src('skyhammer', 'Sky Hammer') }, kit.now);
+              o.game.addZone({ kind: 'fire', color: 0xff3344, orbital: true, owner: o, pos: picks[0], r: 8, life: 6, armAt: kit.now + 2, dps: 125, heal: 0, burnsOwner: true, def: src('skyhammer', 'Sky Hammer') }, kit.now);
               o.game.emit('ability', { who: o, type: 'ult' });
             },
           };
@@ -600,12 +601,12 @@ export const AGENTS = {
     passive: { name: 'Fuel', desc: 'Gas drains fuel while on and refills while everything is off. Toxin decays enemies inside it.' },
     abilities: {
       c: {
-        item: 'grenade', name: 'Acid Vial', desc: 'Throw a vial (20 m) that leaves a pool of acid for 6.5 s: 12/s and Vulnerable (double damage, so 24/s) while standing in it.', charges: 2, cooldown: 25,
+        item: 'grenade', name: 'Acid Vial', desc: 'Throw a vial (20 m) that leaves a pool of acid for 6.5 s: 12.5/s and Vulnerable (double damage, so 25/s) while standing in it.', charges: 2, cooldown: 25,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.4 });
           const ft12 = flight(o.eye(), pos, 13);
           o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft12, color: 0x9be15d });
-          later(kit, ft12, () => o.game.addZone({ kind: 'fire', color: 0x9be15d, acid: true, owner: o, pos, r: 3.5, life: 6.5, dps: 12, heal: 0, burnsOwner: true, def: src('acid', 'Acid Vial') }, kit.now));
+          later(kit, ft12, () => o.game.addZone({ kind: 'fire', color: 0x9be15d, acid: true, owner: o, pos, r: 3.5, life: 6.5, dps: 12.5, heal: 0, burnsOwner: true, def: src('acid', 'Acid Vial') }, kit.now));
         },
       },
       q: {
@@ -647,11 +648,11 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Nest', desc: 'Flood the area around you with a huge toxic cloud for 15 s. Enemies inside are nearsighted and decaying; you can see through it and enemies inside are outlined for you.', points: 9,
+        name: 'Nest', desc: 'Flood the area around you with a huge toxic cloud. It lasts as long as you stay inside it, and 8 s after you leave. Enemies inside are nearsighted and decaying; you can see through it and enemies inside are outlined for you.', points: 9,
         use(kit) {
           const o = kit.owner, g = o.game, p = [...o.pos];
-          kit.nest = g.addSmoke(o, [p[0], p[1] + 2, p[2]], kit.now, { radius: 9, life: 15, color: 0x3f9a50, kind: 'gas', nest: true });
-          g.addZone({ kind: 'fire', color: 0x58c76a, owner: o, pos: p, r: 9, life: 15, dps: 10, heal: 0, nearsight: true, def: src('nest', 'Nest') }, kit.now);
+          kit.nest = g.addSmoke(o, [p[0], p[1] + 2, p[2]], kit.now, { radius: 9, life: 8, color: 0x3f9a50, kind: 'gas', nest: true });
+          kit.nestZone = g.addZone({ kind: 'fire', color: 0x58c76a, owner: o, pos: p, r: 9, life: 8, dps: 10, heal: 0, nearsight: true, def: src('nest', 'Nest') }, kit.now);
           g.emit('ability', { who: o, type: 'ult' });
         },
       },
@@ -664,33 +665,34 @@ export const AGENTS = {
     passive: { name: 'Soul Harvest', desc: 'Enemies you kill drop a soul orb for 3 s.' },
     abilities: {
       c: {
-        name: 'Glare', desc: 'Hold the eye: a marker shows where it will go, 12 m straight ahead, through walls. Left click to cast it. Every enemy who looks at it is nearsighted, for 2.5 s.', charges: 2, cooldown: 20,
+        name: 'Glare', desc: 'Hold the eye: a marker shows where it will go, 12 m straight ahead, through walls. Left click to cast it. Every enemy who looks at it is nearsighted. The eye lasts 2 s.', charges: 2, cooldown: 20,
         smokePreview: 0.45,
         preview(kit) { return glareSpot(kit.owner); },
         use(kit) {
           const o = kit.owner, pos = [...target(kit, this)];
           const ft14 = flight(o.eye(), pos, 16);
           o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft14, color: 0xd65cff, straight: true });
-          later(kit, ft14, () => o.game.addDevice({ kind: 'leer', owner: o, pos, life: 2.5 }));
+          later(kit, ft14, () => o.game.addDevice({ kind: 'leer', owner: o, pos, life: 2 }));
         },
       },
       q: {
-        name: 'Feast', desc: 'Press Q to consume the nearest soul orb within 15 m: heal 100 over 3 s. You can go above 100 HP; the extra fades.', charges: 2, cooldown: 0, item: 'grab', instant: true,
+        name: 'Feast', desc: 'Press Q to consume the nearest soul orb within 15 m: heal 50 over 3 s (2.5 s in Ravenous). You can go above 100 HP; the extra stays 10 s, then fades (it stays for good in Ravenous). Shares its 2 charges with Vanish.', charges: 2, cooldown: 0, item: 'grab', instant: true,
         use(kit) {
           if (!kit.takeOrb()) return false;
           kit.grab = { until: kit.now + 0.35 };
-          kit.healOver(100, 3);
+          kit.healOver(50, kit.now < kit.empressUntil ? 2.5 : 3, 150);
           kit.owner.game.emit('ability', { who: kit.owner, type: 'heal' });
         },
       },
       e: {
-        name: 'Vanish', desc: 'Press E to consume the nearest soul orb within 15 m: it pulls you along at high speed for 2 s, intangible. You steer with the mouse but can’t stop or slow down, and can’t shoot.', charges: 2, cooldown: 0, item: 'grab', instant: true,
+        name: 'Vanish', desc: 'Press E to consume the nearest soul orb within 15 m: it pulls you along at high speed for 1.5 s, intangible (and invisible in Ravenous). Uses Feast’s charges. You steer with the mouse but can’t stop or slow down, and can’t shoot.', charges: 2, cooldown: 0, item: 'grab', instant: true, shares: 'q',
         use(kit) {
           if (!kit.takeOrb()) return false;
           const o = kit.owner;
           kit.grab = { until: kit.now + 0.35 };
-          o.st.intangibleUntil = kit.now + 2;
-          o.forced = { until: kit.now + 2, speed: 9.5 };
+          o.st.intangibleUntil = kit.now + 1.5;
+          if (kit.now < kit.empressUntil) o.st.hiddenUntil = kit.now + 1.5;
+          o.forced = { until: kit.now + 1.5, speed: 9.5 };
           o.game.emit('ability', { who: o, type: 'dismiss' });
         },
       },
@@ -709,22 +711,22 @@ export const AGENTS = {
     blurb: 'Breaks positions open from the other side of the wall: blasts, flashes and shockwaves that go straight through cover.',
     abilities: {
       c: {
-        name: 'Rubble', desc: 'Set a charge on the wall in front of you (8 m): three bursts on the far side, 60 damage each.', charges: 1, cooldown: 25,
+        name: 'Rubble', desc: 'Set a charge on the wall in front of you (8 m): two bursts on the far side, 80 damage each.', charges: 1, cooldown: 25,
         use(kit) {
           const o = kit.owner, g = o.game, p = throughWall(o, 8, 2.2);
           if (!p) return false;
           g.emit('throw', { who: o, from: o.eye(), to: p, time: 0.3, color: 0xf28c38, wave: true });
-          for (const t of [0.9, 1.5, 2.1]) later(kit, t, () => g.explode(o, [p[0], p[1] + 0.6, p[2]], 3, 60, 60, src('rubble', 'Rubble'), 0xf28c38, false, true));
+          for (const t of [1.9, 2.5]) later(kit, t, () => g.explode(o, [p[0], p[1] + 0.6, p[2]], 3, 80, 80, src('rubble', 'Rubble'), 0xf28c38, false, true));
         },
       },
       q: {
-        name: 'Glimmer', desc: 'Fire a flash through the wall in front of you (8 m). It bursts on the far side after 0.4 s, blinding for 2 s.', charges: 2, cooldown: 18,
+        name: 'Glimmer', desc: 'Fire a flash through the wall in front of you (8 m). It bursts on the far side after 0.5 s, blinding for 2.25 s.', charges: 2, cooldown: 18,
         use(kit) {
           const o = kit.owner, g = o.game, p = throughWall(o, 8, 2.5);
           if (!p) return false;
           p[1] += 1.4;
-          g.emit('throw', { who: o, from: o.eye(), to: p, time: 0.8, color: 0xffd28a, wave: true });
-          later(kit, 0.9, () => g.flash(o, p, 2.0));
+          g.emit('throw', { who: o, from: o.eye(), to: p, time: 0.5, color: 0xffd28a, wave: true });
+          later(kit, 0.5, () => g.flash(o, p, 2.25));
         },
       },
       e: {
@@ -734,15 +736,15 @@ export const AGENTS = {
           const o = kit.owner, g = o.game, f = fwd2(o.yaw), len = 8 + 32 * (kit.power ?? 1);
           const a = [o.pos[0], o.pos[1] + 1, o.pos[2]], b = [a[0] + f[0] * len, a[1], a[2] + f[1] * len];
           g.emit('quakeLine', { from: a, to: b, width: 2.2 });
-          later(kit, 0.6, () => g.lineEffect(o, a, b, 2.2, 'stun', 2.5));
+          later(kit, 1.1, () => g.lineEffect(o, a, b, 4, 'stun', 2.5)); // 1.1 s windup, 8 m wide
         },
       },
       x: {
-        name: 'Aftershock Wave', desc: 'Unleash a huge 32 m cone of seismic force through every wall: enemies in it are knocked up and stunned for 6 s.', points: 8,
+        name: 'Aftershock Wave', desc: 'Unleash a huge 32 m cone of seismic force through every wall: enemies in it are knocked up and stunned for 4 s.', points: 8,
         use(kit) {
           const o = kit.owner, g = o.game;
           g.emit('quakeLine', { from: [o.pos[0], o.pos[1] + 1, o.pos[2]], yaw: o.yaw, cone: true });
-          later(kit, 0.6, () => g.cone(o, 32, 25 * DEG, (c) => { c.st.stunUntil = kit.now + 6; c.st.slowUntil = kit.now + 6; c.st.slowAmt = 0.4; c.vel[1] = 6; c.grounded = false; }));
+          later(kit, 1.2, () => g.cone(o, 32, 15.7 * DEG, (c) => { c.st.stunUntil = kit.now + 4; c.st.slowUntil = kit.now + 4; c.st.slowAmt = 0.4; c.vel[1] = 6; c.grounded = false; }));
           g.emit('ability', { who: o, type: 'ult' });
         },
       },
@@ -755,14 +757,14 @@ export const AGENTS = {
     passive: { name: 'Energy', desc: 'High Gear runs on energy, which drains while sprinting and slowly refills.' },
     abilities: {
       c: {
-        instant: true, name: 'Static Lanes', desc: 'Instantly fire two parallel walls of static 30 m straight ahead, through walls. They block sight for 6 s.', charges: 1, cooldown: 25,
+        instant: true, name: 'Static Lanes', desc: 'Instantly fire two parallel walls of static 45 m straight ahead, through walls. They block sight for 4 s.', charges: 1, cooldown: 25,
         use(kit) {
           const o = kit.owner, g = o.game, f = fwd2(o.yaw), r = right(o.yaw);
           for (const side of [-1.8, 1.8]) {
-            for (let d = 1.5; d <= 30; d += 1.6) {
+            for (let d = 1.5; d <= 45; d += 1.6) {
               const x = o.pos[0] + f[0] * d + r[0] * side, z = o.pos[2] + f[1] * d + r[1] * side;
               const fl = g.floorAt(x, z);
-              if (fl && fl[1] < o.pos[1] + 3) g.addSmoke(o, [fl[0], fl[1] + SLAB.h / 2, fl[2]], kit.now + d * 0.01, { radius: 1, life: 6, color: 0x3fb8ff, kind: 'lane', slab: { dir: f, len: 1.7, th: SLAB.th, h: SLAB.h } });
+              if (fl && fl[1] < o.pos[1] + 3) g.addSmoke(o, [fl[0], fl[1] + SLAB.h / 2, fl[2]], kit.now + d * 0.01, { radius: 1, life: 4, color: 0x3fb8ff, kind: 'lane', slab: { dir: f, len: 1.7, th: SLAB.th, h: SLAB.h } });
             }
           }
           g.emit('ability', { who: o, type: 'lane' });
@@ -850,12 +852,12 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Riftwalk', desc: 'Hold the rift: left click sends it crawling forward along the ground, right click leaves it where you stand. Press E again any time in the next 15 s to teleport to it. Enemies can shoot it.', charges: 1, cooldown: 30,
+        name: 'Riftwalk', desc: 'Hold the rift: left click sends it crawling forward along the ground, right click leaves it where you stand. Press E again any time in the next 20 s to teleport to it. Enemies can shoot it.', charges: 1, cooldown: 30,
         armHint: 'LEFT CLICK: SEND IT · RIGHT CLICK: LEAVE IT HERE',
         use(kit, mode) {
           const o = kit.owner, f = fwd2(o.yaw), still = mode === 'right';
           const pos = still ? [...o.pos] : [o.pos[0] + f[0] * 0.8, o.pos[1], o.pos[2] + f[1] * 0.8];
-          kit.gate = o.game.addDevice({ kind: 'gate', owner: o, pos, dir: [f[0], 0, f[1]], life: 15, still });
+          kit.gate = o.game.addDevice({ kind: 'gate', owner: o, pos, dir: [f[0], 0, f[1]], life: 20, still });
         },
         reuse(kit) {
           const gt = kit.gate;
@@ -869,11 +871,11 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Phase Out', desc: 'Slip into another dimension for 9 s: enemies can’t see or hurt you, but you can’t shoot. Press X to come back early.', points: 8,
+        name: 'Phase Out', desc: 'Slip into another dimension for 10 s: enemies can’t see or hurt you, but you can’t shoot. Press X to come back early.', points: 8,
         use(kit) {
           const o = kit.owner;
-          kit.drift = { until: kit.now + 9 };
-          o.st.hiddenUntil = o.st.intangibleUntil = kit.now + 9;
+          kit.drift = { until: kit.now + 10 };
+          o.st.hiddenUntil = o.st.intangibleUntil = kit.now + 10;
           o.game.emit('ability', { who: o, type: 'ult' });
         },
       },
@@ -885,7 +887,7 @@ export const AGENTS = {
     blurb: 'A ranger who scouts with her animals: a tiger you pilot, a hawk that bursts into light, and seekers that hunt the closest enemies.',
     abilities: {
       c: {
-        name: 'Bloom', desc: 'Hold C to channel: every hurt teammate you can see within 18 m heals 30 HP/s. One charge holds a 100 HP pool — let go to stop, hold C again to keep spending it. You cannot shoot while channelling, and it cannot heal you.', charges: 1, cooldown: 25, instant: true,
+        name: 'Bloom', desc: 'Hold C to channel: every hurt teammate you can see within 18 m heals 20 HP/s. One charge holds a 100 HP pool — let go to stop, hold C again to keep spending it. You cannot shoot while channelling, and it cannot heal you.', charges: 1, cooldown: 25, instant: true,
         use(kit) {
           kit.regrow = { pool: BLOOM.pool, on: true, botUntil: kit.now + 4 };
           kit.owner.game.emit('ability', { who: kit.owner, type: 'heal' });
@@ -905,17 +907,18 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Lantern Hawk', desc: 'Hold the hawk, left click to release it; it flies slowly where you aim. Press E again to make it burst, blinding anyone facing it for 2 s (it bursts on its own after 2.5 s).', charges: 2, cooldown: 60,
+        name: 'Lantern Hawk', desc: 'Hold the hawk, left click to release it; it flies slowly where you aim. Press E again to make it burst, blinding anyone facing it for 1 to 2.25 s, longer the farther it flew (it bursts on its own after 2 s).', charges: 2, cooldown: 60,
         use(kit) {
           const o = kit.owner, e = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
-          kit.hawk = o.game.addDevice({ kind: 'hawk', owner: o, pos: [e[0] + d[0], e[1], e[2] + d[2]], dir: d, life: 3, steer: true, fly: true, speed: 9 });
+          kit.hawk = o.game.addDevice({ kind: 'hawk', owner: o, pos: [e[0] + d[0], e[1], e[2] + d[2]], dir: d, life: 2, steer: true, fly: true, speed: 9 });
         },
         reuse(kit) {
           const h = kit.hawk;
           if (!h || h.removed) { kit.hawk = null; return false; }
           h.removed = true;
           kit.hawk = null;
-          later(kit, 0.25, () => kit.owner.game.flash(kit.owner, [...h.pos], 2.0));
+          const len = 1 + 1.25 * Math.min(1, (kit.now - h.born) / 1.5); // the longer it flew, the longer the blind (1-2.25 s)
+          later(kit, 0.3, () => kit.owner.game.flash(kit.owner, [...h.pos], len));
           return true;
         },
       },
@@ -968,12 +971,12 @@ export const AGENTS = {
           }
           if (!best) return false;
           best.removed = true;
-          g.addSmoke(o, [best.pos[0], best.pos[1] + 1.6, best.pos[2]], kit.now, { radius: 3.4, life: 7.25, color: 0xb9c3d1, kind: 'cage' });
+          g.addSmoke(o, [best.pos[0], best.pos[1] + 1.6, best.pos[2]], kit.now, { radius: 3.72, life: 7.25, color: 0xb9c3d1, kind: 'cage' });
           return true;
         },
       },
       e: {
-        item: 'device', name: 'Watcher', desc: 'Hold the camera, left click to stick it on the surface you aim at (30 m). Press E again to look through it; enemies it sees are revealed, and left click fires a tracking dart (pings every 2 s for 8 s). E again to leave.', charges: 1, cooldown: 45,
+        item: 'device', name: 'Watcher', desc: 'Hold the camera, left click to stick it on the surface you aim at (30 m). Press E again to look through it; enemies it sees are revealed, and left click fires a tracking dart (pings every 2 s for 8 s). E again to leave.', charges: 1, cooldown: 60,
         use(kit) {
           const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           const hit = g.world.raycast(eye, d, 30);
@@ -989,11 +992,11 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Mindread', desc: 'Look at an enemy’s body (12 m) and press X to read their mind: every living enemy is revealed twice, 3 s apart.', points: 6,
+        name: 'Mindread', desc: 'Look at an enemy’s body (12 m) and press X to read their mind: every living enemy is revealed twice, 2 s apart.', points: 7,
         use(kit) {
           if (!allyInView(kit, { dead: true, enemy: true, range: 12, maxDeg: 18 })) return false;
           const g = kit.owner.game;
-          for (const t of [0.5, 3.5]) later(kit, t, () => g.revealAll(kit.owner, 2));
+          for (const t of [2, 4]) later(kit, t, () => g.revealAll(kit.owner, 2));
           g.emit('ability', { who: kit.owner, type: 'ult' });
         },
       },
@@ -1012,12 +1015,12 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Grasp', desc: 'Throw an orb (20 m) that bursts 0.6 s after landing: enemies within 6 m are held in place and deafened for 4.5 s and lose 75 health to Decay (never lethal).', charges: 1, cooldown: 25,
+        name: 'Grasp', desc: 'Throw an orb (20 m) that bursts 0.6 s after landing: enemies within 6.6 m are held in place and deafened for 4.5 s and lose 75 health to Decay (never lethal).', charges: 1, cooldown: 25,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.4 });
           const ft18 = flight(o.eye(), pos, 13);
           o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft18, color: 0xb07a9a });
-          later(kit, ft18 + 0.6, () => { for (const c of o.game.pulse(o, [pos[0], pos[1] + 1, pos[2]], 6, 'hold+deaf', 4.5, 0xb07a9a)) o.game.decay(c, 75); });
+          later(kit, ft18 + 0.6, () => { for (const c of o.game.pulse(o, [pos[0], pos[1] + 1, pos[2]], 6.58, 'hold+deaf', 4.5, 0xb07a9a)) o.game.decay(c, 75); });
         },
       },
       e: {
@@ -1026,18 +1029,18 @@ export const AGENTS = {
           const o = kit.owner, g = o.game, pos = aimPoint(o, 30, { back: 0.6 });
           const ft19 = flight(o.eye(), pos, 13);
           g.emit('throw', { who: o, from: o.eye(), to: pos, time: ft19, color: 0xb07a9a });
-          later(kit, ft19 + 0.2, () => { g.addDevice({ kind: 'haunt', owner: o, pos, life: 2.5 }); g.pulse(o, pos, 30, 'reveal', 4, 0xb07a9a, true); });
+          later(kit, ft19 + 0.2, () => { g.addDevice({ kind: 'haunt', owner: o, pos, life: 1.5 }); g.pulse(o, pos, 30, 'reveal', 4, 0xb07a9a, true); });
         },
       },
       x: {
-        name: 'Terror', desc: 'Unleash a 40 m wave of nightmare through walls: everyone it hits is revealed and deafened for 12 s and decays (loses up to 50 health, never lethal).', points: 8,
+        name: 'Terror', desc: 'Unleash a 40 m wave of nightmare through walls: everyone it hits is revealed and deafened for 8 s and decays (loses up to 75 health, never lethal).', points: 8,
         use(kit) {
           const o = kit.owner, g = o.game;
           g.emit('quakeLine', { from: [o.pos[0], o.pos[1] + 1, o.pos[2]], yaw: o.yaw, cone: true, color: 0xb07a9a });
-          later(kit, 0.8, () => g.cone(o, 40, 30 * DEG, (c) => {
-            c.st.revealUntil = kit.now + 12;
-            c.st.deafUntil = kit.now + 12;
-            const n = Math.min(50, c.hp + c.armor - 1);
+          later(kit, 0.8, () => g.cone(o, 40, 14 * DEG, (c) => { // 40 m long, 20 m wide
+            c.st.revealUntil = kit.now + 8;
+            c.st.deafUntil = kit.now + 8;
+            const n = Math.min(75, c.hp + c.armor - 1);
             if (n > 0) g.damage(c, o, n, { part: 'body', def: src('terror', 'Terror'), dist: 0, point: c.eye(), wallbang: true, dot: true });
           }));
           g.emit('ability', { who: o, type: 'ult' });
@@ -1051,12 +1054,12 @@ export const AGENTS = {
     blurb: 'A healer who shapes ice. Walls off a lane, slows a push, patches herself up — and refuses to stay down.',
     abilities: {
       c: {
-        item: 'orb', name: 'Frost Wall', desc: 'Hold the crystal: a preview shows the wall where you aim (12 m). Right click rotates it, left click raises a solid ice wall (6 m × 2.6 m) that stops bullets for 30 s. You can stand on it — raise it under yourself to boost up.', charges: 1, cooldown: 40, rotate: true,
+        item: 'orb', name: 'Frost Wall', desc: 'Hold the crystal: a preview shows the wall where you aim (12 m). Right click rotates it, left click raises a solid ice wall (6 m × 2.6 m) that stops bullets for 40 s. You can stand on it — raise it under yourself to boost up.', charges: 1, cooldown: 40, rotate: true,
         preview(kit) { const o = kit.owner; return aimPoint(o, 12, { floor: true, back: 0.4, bodies: false }); },
         wallPreview: { half: 3, h: 2.6, th: 0.4 },
         use(kit) {
           const o = kit.owner, pos = target(kit, this);
-          return o.game.addWall(o, pos, o.yaw + (kit.rot ? Math.PI / 2 : 0), 30, { half: 3, h: 2.6, th: 0.2, style: 'ice', lift: true });
+          return o.game.addWall(o, pos, o.yaw + (kit.rot ? Math.PI / 2 : 0), 40, { half: 3, h: 2.6, th: 0.2, style: 'ice', lift: true });
         },
       },
       q: {
@@ -1069,24 +1072,24 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'orb', name: 'Mend', desc: 'Hold the healing orb. Aim at a teammate (20 m) and left click to heal them 100 HP over 5 s; aim anywhere else to heal yourself 60 HP over 4 s.', charges: 1, cooldown: 45,
+        item: 'orb', name: 'Mend', desc: 'Hold the healing orb. Aim at a teammate (20 m) and left click to heal them 100 HP over 5 s; aim anywhere else to heal yourself 50 HP over 5 s.', charges: 1, cooldown: 45,
         use(kit) {
           const o = kit.owner, ally = allyInView(kit, { range: 20 });
           if (ally && ally.hp < PLAYER.hp) { healAlly(ally, 100, 5); o.game.emit('ability', { who: ally, type: 'heal' }); return; }
           if (o.hp >= PLAYER.hp) return false;
-          kit.healOver(60, 4);
+          kit.healOver(50, 5);
           o.game.emit('ability', { who: o, type: 'heal' });
         },
       },
       x: {
-        name: 'Second Dawn', desc: 'Look at a fallen teammate’s body (12 m) and press X: after 1.5 s of channelling they rise where they fell with full health.', points: 8,
+        name: 'Second Dawn', desc: 'Look at a fallen teammate’s body (12 m) and press X: after 2 s of channelling they rise where they fell with full health.', points: 7,
         use(kit) {
           const o = kit.owner, g = o.game, ally = allyInView(kit, { dead: true, range: 12, maxDeg: 18 });
           if (!ally || !g.mode) return false;
-          o.st.channelUntil = kit.now + 1.5;
-          o.st.slowUntil = kit.now + 1.5; o.st.slowAmt = 0.95;
+          o.st.channelUntil = kit.now + 2;
+          o.st.slowUntil = kit.now + 2; o.st.slowAmt = 0.95;
           g.emit('ability', { who: o, type: 'ult' });
-          mine(kit, 1.5, () => { if (!ally.alive && g.mode && g.mode.phase !== 'end') g.resurrect(ally, o); });
+          mine(kit, 2, () => { if (!ally.alive && g.mode && g.mode.phase !== 'end') g.resurrect(ally, o); });
         },
       },
     },
@@ -1098,21 +1101,21 @@ export const AGENTS = {
     passive: { name: 'Stars', desc: 'You have 4 stars per life. Press E (not looking at a star) to place them on the map, then look at a star and press C, Q or E to activate it.' },
     abilities: {
       c: {
-        name: 'Gravity Well', desc: 'Look at one of your stars and press C: after 1.5 s it pulls nearby enemies (5.5 m) to its centre for 2 s, then makes them Vulnerable (double damage) for 4 s.', charges: 1, cooldown: 0, instant: true,
+        name: 'Gravity Well', desc: 'Look at one of your stars and press C: after 1.25 s it pulls nearby enemies (4.75 m) to its centre for 2 s, then makes them Vulnerable (double damage) for 2.5 s.', charges: 1, cooldown: 0, instant: true,
         use() { return false; },
         reuse(kit) {
           const st = lookAt(kit, 'star');
           if (!st) return false;
           st.removed = true;
           const g = kit.owner.game, p = [st.pos[0], st.pos[1] + 1, st.pos[2]];
-          g.emit('pulse', { pos: p, r: 5.5, type: 'well', color: 0xe6b34a, owner: kit.owner });
-          for (let i = 0; i < 8; i++) later(kit, 1.5 + i * 0.25, () => g.pull(kit.owner, p, 5.5, 4.5));
-          later(kit, 3.5, () => g.pulse(kit.owner, p, 5.5, 'vuln', 4, 0xe6b34a));
+          g.emit('pulse', { pos: p, r: 4.75, type: 'well', color: 0xe6b34a, owner: kit.owner });
+          for (let i = 0; i < 8; i++) later(kit, 1.25 + i * 0.25, () => g.pull(kit.owner, p, 4.75, 4.5));
+          later(kit, 3.25, () => g.pulse(kit.owner, p, 4.75, 'vuln', 2.5, 0xe6b34a));
           return true;
         },
       },
       q: {
-        name: 'Nova Pulse', desc: 'Look at one of your stars and press Q: after 1 s it bursts, stunning enemies within 4.75 m for 3.5 s.', charges: 1, cooldown: 0, instant: true,
+        name: 'Nova Pulse', desc: 'Look at one of your stars and press Q: after 1 s it bursts, stunning enemies within 4.75 m for 2.5 s.', charges: 1, cooldown: 0, instant: true,
         use() { return false; },
         reuse(kit) {
           const st = lookAt(kit, 'star');
@@ -1120,12 +1123,12 @@ export const AGENTS = {
           st.removed = true;
           const p = [st.pos[0], st.pos[1] + 1, st.pos[2]];
           kit.owner.game.emit('pulse', { pos: p, r: 1.5, type: 'well', color: 0xe6b34a, owner: kit.owner });
-          later(kit, 1.0, () => kit.owner.game.pulse(kit.owner, p, 4.75, 'stun', 3.5, 0xe6b34a));
+          later(kit, 1.0, () => kit.owner.game.pulse(kit.owner, p, 4.75, 'stun', 2.5, 0xe6b34a));
           return true;
         },
       },
       e: {
-        name: 'Astral Form', desc: 'Press E to open the map and click to place your stars (up to the 4 you have). Look at a placed star and press E to turn it into a 14.25 s smoke.', charges: 1, cooldown: 0, instant: true,
+        name: 'Astral Form', desc: 'Press E to open the map and click to place your stars (up to the 4 you have). Look at a placed star and press E to turn it into a 14.25 s smoke (it forms 0.75 s later).', charges: 1, cooldown: 0, instant: true,
         use(kit) {
           if (kit.starsLeft <= 0) return false;
           const o = kit.owner;
@@ -1141,12 +1144,13 @@ export const AGENTS = {
           const st = lookAt(kit, 'star');
           if (!st) return false;
           st.removed = true;
-          kit.owner.game.addSmoke(kit.owner, [st.pos[0], st.pos[1] + 2, st.pos[2]], kit.now, { radius: 3.7, life: 14.25, color: 0x6b4d8f });
+          const at = [st.pos[0], st.pos[1] + 2, st.pos[2]];
+          later(kit, 0.75, () => kit.owner.game.addSmoke(kit.owner, at, kit.now, { radius: 4.75, life: 14.25, color: 0x6b4d8f }));
           return true;
         },
       },
       x: {
-        name: 'Rift Line', desc: 'Open the map and click a point: a wall of cosmic energy splits the whole map through it (along the way you face) for 21 s. Nothing gets through — not bullets, not sight.', points: 7,
+        name: 'Rift Line', desc: 'Open the map and click a point: a wall of cosmic energy splits the whole map through it (along the way you face) for 21 s, after a 2.7 s windup. Nothing gets through — not bullets, not sight.', points: 7,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -1154,7 +1158,8 @@ export const AGENTS = {
             confirm: (picks) => {
               kit.ultPoints = 0;
               kit.lastUse.x = kit.now;
-              o.game.divide(o, picks[0], o.yaw, 21);
+              const yaw = o.yaw;
+              later(kit, 2.667, () => o.game.divide(o, picks[0], yaw, 21)); // the wall rises after the windup
               o.game.emit('ability', { who: o, type: 'ult' });
             },
           };
@@ -1229,20 +1234,20 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'orb', name: 'Lagoon', desc: 'Hold the orb, left click to throw it (20 m). It becomes a water dome 4.5 m across for 12 s that blocks sight and stops bullets until it takes 500 damage.', charges: 1, cooldown: 35,
+        name: 'Riptide', desc: 'Send a wall of water racing forward up to 40 m, through walls. Hold Q and turn to steer it. It blocks sight and slows for 15 s.', charges: 1, cooldown: 40, instant: true,
+        use(kit) {
+          const o = kit.owner, f = fwd2(o.yaw);
+          o.game.addDevice({ kind: 'blaze', owner: o, pos: [o.pos[0] + f[0] * 1.2, o.pos[1], o.pos[2] + f[1] * 1.2], yaw: o.yaw, life: 3.0, speed: 15, travelled: 0, nextSeg: 0, key: 'abQHeld', maxDist: 40, through: true,
+            seg: { spacing: 1.25, slab: true, smoke: { radius: 1, life: 15, color: 0x2fb3a8, kind: 'water' }, zone: { kind: 'slowfield', color: 0x2fb3a8, r: 0.7, life: 15, slowField: 0.3 } } });
+        },
+      },
+      e: {
+        item: 'orb', name: 'Lagoon', desc: 'Hold the orb, left click to throw it (20 m). It becomes a water dome 4.5 m across for 19.25 s that blocks sight and stops bullets until it takes 680 damage.', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.6 });
           const ft = flight(o.eye(), pos, 13);
           o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft, color: 0x2fb3a8 });
-          later(kit, ft, () => o.game.addSmoke(o, [pos[0], pos[1] + 1.4, pos[2]], kit.now, { radius: 4.5, life: 12, color: 0x2fb3a8, kind: 'cove' }));
-        },
-      },
-      e: {
-        name: 'Riptide', desc: 'Send a wall of water racing forward up to 40 m, through walls. Hold E and turn to steer it. It blocks sight and slows for 15 s.', charges: 1, cooldown: 40, instant: true,
-        use(kit) {
-          const o = kit.owner, f = fwd2(o.yaw);
-          o.game.addDevice({ kind: 'blaze', owner: o, pos: [o.pos[0] + f[0] * 1.2, o.pos[1], o.pos[2] + f[1] * 1.2], yaw: o.yaw, life: 3.0, speed: 15, travelled: 0, nextSeg: 0, key: 'abEHeld', maxDist: 40, through: true,
-            seg: { spacing: 1.25, slab: true, smoke: { radius: 1, life: 15, color: 0x2fb3a8, kind: 'water' }, zone: { kind: 'slowfield', color: 0x2fb3a8, r: 0.7, life: 15, slowField: 0.3 } } });
+          later(kit, ft, () => o.game.addSmoke(o, [pos[0], pos[1] + 1.4, pos[2]], kit.now, { radius: 4.5, life: 19.25, color: 0x2fb3a8, kind: 'cove' }));
         },
       },
       x: {
@@ -1313,12 +1318,12 @@ export const AGENTS = {
     passive: { name: 'Refraction', desc: 'Refract comes back after two kills instead of on a timer.' },
     abilities: {
       c: {
-        item: 'grenade', name: 'Saturate', desc: 'Hold a cluster of light, left click to throw it (20 m). It bursts where it lands: every enemy within 5 m is Hindered for 4 s (30% slower, lower jumps, 20% slower fire rate).', charges: 1, cooldown: 30,
+        item: 'grenade', name: 'Saturate', desc: 'Hold a cluster of light, left click to throw it (20 m). It bursts where it lands: every enemy within 5 m is Hindered for 3 s (30% slower, lower jumps, 20% slower fire rate).', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.5 });
           const ft = flight(o.eye(), pos, 16);
           o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft, color: 0xffe680 });
-          later(kit, ft, () => o.game.pulse(o, [pos[0], pos[1] + 0.8, pos[2]], 5, 'hinder', 4, 0xffe680));
+          later(kit, ft, () => o.game.pulse(o, [pos[0], pos[1] + 0.8, pos[2]], 5, 'hinder', 3, 0xffe680));
         },
       },
       q: {
@@ -1337,18 +1342,20 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Refract', desc: 'Drop a beacon of light where you stand. Press E again within 15 s to snap back to it — untouchable on the way. Recharges after two kills.', charges: 1, cooldown: 1e9, instant: true, recharge: 'kills',
+        name: 'Refract', desc: 'Drop a beacon of light where you stand. Press E again within 8 s to travel back to it (0.35 to 2 s, by distance), untouchable on the way. Recharges after two kills.', charges: 1, cooldown: 1e9, instant: true, recharge: 'kills',
         use(kit) {
           const o = kit.owner;
-          kit.refract = o.game.addDevice({ kind: 'anchor', owner: o, pos: [...o.pos], life: 15 });
+          kit.refract = o.game.addDevice({ kind: 'anchor', owner: o, pos: [...o.pos], life: 8 });
           o.game.emit('ability', { who: o, type: 'windup' });
         },
         reuse(kit) {
           const b = kit.refract;
           if (!b || b.removed || kit.now - b.born < 0.3) return false;
-          const o = kit.owner;
-          o.st.intangibleUntil = kit.now + 0.35;
-          o.game.teleport(o, b.pos);
+          const o = kit.owner, to = [...b.pos];
+          const travel = Math.min(2, Math.max(0.35, Math.hypot(to[0] - o.pos[0], to[1] - o.pos[1], to[2] - o.pos[2]) / 15));
+          o.st.intangibleUntil = kit.now + travel;
+          o.st.channelUntil = kit.now + travel; // no shooting on the way
+          mine(kit, travel, () => o.game.teleport(o, to));
           b.removed = true; kit.refract = null;
           o.game.emit('ability', { who: o, type: 'dash' });
           return true;
@@ -1377,33 +1384,34 @@ export const AGENTS = {
     blurb: 'A veteran artillery officer. Scouts with a drone, tags with sticky charges and calls guided missiles onto the map.',
     abilities: {
       c: {
-        item: 'device', name: 'Scout Drone', desc: 'Hold the drone, left click to launch it. Fly it with your mouse for up to 6 s; left click to pulse: enemies within 7 m are revealed for 4 s and nearsighted.', charges: 1, cooldown: 40,
+        item: 'device', name: 'Scout Drone', desc: 'Hold the drone, left click to launch it. Fly it with your mouse for up to 6 s; left click to pulse: enemies within 16 m are revealed for 4 s and nearsighted.', charges: 1, cooldown: 40,
         use(kit) {
           const o = kit.owner, e = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           kit.pilot = o.game.addDevice({ kind: 'sdrone', owner: o, pos: [e[0] + d[0], e[1], e[2] + d[2]], dir: d, life: 6, steer: true, fly: true, speed: 6 });
         },
       },
       q: {
-        item: 'grenade', name: 'Sticky Charge', desc: 'Hold the charge, left click to throw it (20 m). It sticks where it lands and 1.2 s later stuns everyone within 4.5 m for 3 s.', charges: 2, cooldown: 25,
+        item: 'grenade', name: 'Sticky Charge', desc: 'Hold the charge, left click to throw it (20 m). It sticks where it lands and 1.2 s later bursts: up to 35 damage and a 2.5 s stun within 5.25 m.', charges: 2, cooldown: 25,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 20, { back: 0.3 });
           const ft = flight(o.eye(), pos, 13);
           o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft, color: 0xd9a441 });
           later(kit, ft, () => o.game.addDevice({ kind: 'satchel', owner: o, pos, life: 1.2 }));
-          later(kit, ft + 1.2, () => o.game.pulse(o, pos, 4.5, 'stun', 3, 0xd9a441));
+          later(kit, ft + 1.2, () => { o.game.pulse(o, pos, 5.25, 'stun', 2.5, 0xd9a441); o.game.explode(o, pos, 5.25, 35, 20, src('sticky', 'Sticky Charge'), 0xd9a441, false, false, 1.25); });
         },
       },
       e: {
-        name: 'Missile Call', desc: 'Open the map and mark up to two targets; press E (or right click) to fire. Each missile lands 1.5 s later for up to 70 damage in 4.5 m.', charges: 1, cooldown: 35, instant: true, recharge: 'none',
+        name: 'Missile Call', desc: 'Open the map and mark a target per charge (2 charges, 45 m); press E (or right click) to fire. Each missile lands 1.5 s later for up to 65 damage in 4.5 m.', charges: 2, cooldown: 35, instant: true, recharge: 'none',
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
-            key: 'e', title: 'MISSILE CALL', hint: 'Click up to 2 targets · E or right click to fire', max: 2, color: '#d9a441', radius: 4.5,
+            key: 'e', title: 'MISSILE CALL', hint: 'Click up to ' + kit.charges.e + ' targets · E or right click to fire', max: kit.charges.e, color: '#d9a441', radius: 4.5, range: 45,
             confirm: (picks) => {
-              kit.charges.e--; if (!kit.ready.e) kit.ready.e = kit.now + this.cooldown; kit.lastUse.e = kit.now;
+              kit.lastUse.e = kit.now;
               for (const p of picks) {
+                kit.charges.e--; if (!kit.ready.e) kit.ready.e = kit.now + this.cooldown;
                 o.game.emit('throw', { who: o, from: [o.pos[0], o.pos[1] + 20, o.pos[2]], to: p, time: 1.5, color: 0xff8c2e, rocket: true });
-                later(kit, 1.5, () => o.game.explode(o, [p[0], p[1] + 0.5, p[2]], 4.5, 70, 25, src('missile', 'Missile Call'), 0xff8c2e));
+                later(kit, 1.5, () => o.game.explode(o, [p[0], p[1] + 0.5, p[2]], 4.5, 65, 25, src('missile', 'Missile Call'), 0xff8c2e));
               }
             },
           };
@@ -1438,24 +1446,24 @@ export const AGENTS = {
     blurb: 'A war machine built to end abilities. Flashes, frags and a suppression knife — and when it overloads, it won’t stay down.',
     abilities: {
       c: {
-        item: 'grenade', name: 'Fragment', desc: 'Hold the frag, left click to throw it (20 m). It sticks to the floor and pulses four times over 3 s (up to 60 per pulse, 4.5 m).', charges: 1, cooldown: 30,
+        item: 'grenade', name: 'Fragment', desc: 'Hold the frag, left click to throw it (20 m). It sticks to the floor and pulses four times over 3 s (up to 60 per pulse, 4 m).', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.4 });
           const ft = flight(o.eye(), pos, 13), g = o.game;
           g.emit('throw', { who: o, from: o.eye(), to: pos, time: ft, color: 0x6fa8ff });
           later(kit, ft, () => g.addDevice({ kind: 'satchel', owner: o, pos, life: 3.2 }));
-          for (let i = 0; i < 4; i++) later(kit, ft + 0.4 + i * 0.9, () => g.explode(o, [pos[0], pos[1] + 0.5, pos[2]], 4.5, 60, 25, src('fragment', 'Fragment'), 0x6fa8ff));
+          for (let i = 0; i < 4; i++) later(kit, ft + 0.4 + i * 0.9, () => g.explode(o, [pos[0], pos[1] + 0.5, pos[2]], 4, 60, 25, src('fragment', 'Fragment'), 0x6fa8ff));
         },
       },
       q: {
-        item: 'flash', name: 'Flashpoint', desc: 'Hold the flash. Left click: long throw that pops after 1.6 s. Right click: short lob that pops after 0.7 s. Blinds anyone facing it for 2 s.', charges: 2, cooldown: 20,
+        item: 'flash', name: 'Flashpoint', desc: 'Hold the flash. Left click: long throw that pops after 1.6 s. Right click: short lob that pops after 0.7 s. Blinds anyone facing it for 2 s (2.25 s for the lob).', charges: 2, cooldown: 20,
         armHint: 'LEFT CLICK: LONG THROW · RIGHT CLICK: SHORT LOB',
         use(kit, mode) {
           const o = kit.owner, g = o.game, short = mode === 'right';
           const pos = aimPoint(o, short ? 6 : 18, { back: 0.6 });
           const fuse = short ? 0.7 : 1.6;
           g.emit('throw', { who: o, from: o.eye(), to: pos, time: fuse, color: 0xffffff });
-          later(kit, fuse, () => g.flash(o, pos, 2.0));
+          later(kit, fuse, () => g.flash(o, pos, short ? 2.25 : 2.0));
         },
       },
       e: {
@@ -1469,13 +1477,13 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Overload', desc: 'Overload for 12 s: pulses every 2 s reveal and suppress enemies within 30 m, you fire 10% faster — and if you would die, you go down instead and reboot 3 s later at full health.', points: 8,
+        name: 'Overload', desc: 'Overload for 12 s: pulses every 2 s reveal and suppress enemies within 42.5 m for 4 s, you fire 10% faster — and if you would die, you go down instead and reboot 3 s later at full health.', points: 8,
         use(kit) {
           const o = kit.owner, g = o.game;
           kit.nullUntil = kit.now + 12;
           kit.nullSaved = false;
           kit.nullArmor = o.armor; // comes back with the shields it had, not free ones
-          for (let t = 0; t < 12; t += 2) mine(kit, t, () => g.pulse(o, o.eye(), 30, 'suppress', 2.5, 0x6fa8ff));
+          for (let t = 0; t < 12; t += 2) mine(kit, t, () => g.pulse(o, o.eye(), 42.5, 'suppress', 4, 0x6fa8ff));
           g.emit('ability', { who: o, type: 'ult' });
         },
       },
@@ -1489,43 +1497,44 @@ export const AGENTS = {
     passive: { name: 'Afterlife', desc: 'Ruse (E) works even while you are dead, until the round (or your respawn) comes.' },
     abilities: {
       c: {
-        instant: true, name: 'Pick-Me-Up', desc: 'Instantly absorb the life force of an enemy who died in the last 10 s that you damaged: +100 temporary health (fades) and 15% haste for 10 s.', charges: 1, cooldown: 30,
+        instant: true, name: 'Pick-Me-Up', desc: 'Instantly absorb the life force of an enemy who died in the last 10 s that you damaged: +50 temporary health for 10 s (then it fades) and 15% haste for 3 s.', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, g = o.game;
           const prey = g.combatants.find(c => !c.alive && g.isEnemy(o, c) && c.diedAt > kit.now - 10 && (c.damagedBy?.has(o) || c.killedBy?.killer === o) && !c.soulTaken);
           if (!prey) return false;
           prey.soulTaken = true;
-          o.hp = Math.min(200, o.hp + 100);
-          o.st.hasteUntil = kit.now + 10; o.st.hasteAmt = 0.15;
+          o.hp = Math.min(150, o.hp + 50);
+          kit.overhealUntil = kit.now + 10;
+          o.st.hasteUntil = kit.now + 3; o.st.hasteAmt = 0.15;
           g.emit('ability', { who: o, type: 'heal' });
         },
       },
       q: {
-        item: 'orb', name: 'Meddle', desc: 'Hold the fragment, left click to throw it (20 m). After 1 s it erupts in a 6 m burst: enemies caught lose 75 health to Decay (never lethal), which slowly comes back.', charges: 1, cooldown: 25,
+        item: 'orb', name: 'Meddle', desc: 'Hold the fragment, left click to throw it (20 m). 0.75 s after landing it erupts in a 6 m burst: enemies caught lose 90 health to Decay (never lethal), which slowly comes back.', charges: 1, cooldown: 25,
         use(kit) {
           const o = kit.owner, g = o.game, pos = aimPoint(o, 20, { floor: true, back: 0.4 });
           const ft = flight(o.eye(), pos, 13);
           g.emit('throw', { who: o, from: o.eye(), to: pos, time: ft, color: 0xe07bd0 });
-          later(kit, ft + 1, () => {
+          later(kit, ft + 0.75, () => {
             g.emit('pulse', { pos: [pos[0], pos[1] + 1, pos[2]], r: 6, type: 'decay', color: 0xe07bd0, owner: o });
-            for (const c of g.combatants) if (c.alive && g.isEnemy(o, c) && Math.hypot(c.pos[0] - pos[0], c.pos[2] - pos[2]) < 6 && Math.abs(c.pos[1] - pos[1]) < 3) g.decay(c, 75);
+            for (const c of g.combatants) if (c.alive && g.isEnemy(o, c) && Math.hypot(c.pos[0] - pos[0], c.pos[2] - pos[2]) < 6 && Math.abs(c.pos[1] - pos[1]) < 3) g.decay(c, 90);
           });
         },
       },
       e: {
-        name: 'Ruse', desc: 'Open the map and click up to two spots (one per charge); press E or right click to drop smokes there (14 s). Works while you are dead.', charges: 2, cooldown: 40, instant: true,
+        name: 'Ruse', desc: 'Open the map and click up to two spots (one per charge); press E or right click to drop smokes there (14 s; 60 m). Works while you are dead: one smoke, 6 s.', charges: 2, cooldown: 40, instant: true,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
-            key: 'e', title: 'RUSE', hint: 'Click up to ' + kit.charges.e + ' spots · E or right click to drop the smokes', max: kit.charges.e, color: '#e07bd0', radius: 3.6, range: 30,
+            key: 'e', title: 'RUSE', hint: 'Click up to ' + kit.charges.e + ' spots · E or right click to drop the smokes', max: o.alive ? kit.charges.e : Math.min(1, kit.charges.e), color: '#e07bd0', radius: 4, range: 60,
             confirm: (picks) => {
               for (const p of picks) {
                 kit.charges.e--;
                 if (!kit.ready.e) kit.ready.e = kit.now + this.cooldown;
                 o.game.emit('throw', { who: o, from: [p[0], p[1] + 25, p[2]], to: [p[0], p[1] + 2, p[2]], time: 0.7, color: 0xe07bd0 });
                 const at = [p[0], p[1] + 2, p[2]];
-                const t0 = kit.now;
-                kit.timers.push({ at: t0 + 0.7, dead: true, fn: () => o.game.addSmoke(o, at, kit.now, { radius: 3.6, life: 14, color: 0x7a3f74 }) });
+                const t0 = kit.now, life = o.alive ? 14 : 6;
+                kit.timers.push({ at: t0 + 0.7, dead: true, fn: () => o.game.addSmoke(o, at, kit.now, { radius: 4, life, color: 0x7a3f74 }) });
               }
               kit.lastUse.e = kit.now;
             },
@@ -1534,7 +1543,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Not Dead Yet', desc: 'After you die, press X to come back where you fell. You then have 12 s to get a kill or damage an enemy — otherwise you die again.', points: 8,
+        name: 'Not Dead Yet', desc: 'After you die, press X to come back where you fell. You then have 10 s to get a kill or damage an enemy — otherwise you die again.', points: 8,
         use(kit) { kit.owner.game.emit('abilityFail', { who: kit.owner, key: 'x' }); return false; }, // only from the grave
       },
     },
@@ -1600,6 +1609,7 @@ export class Kit {
     this.power = undefined;
     this.focusWind = 0;
     this.nest = null;
+    this.nestZone = null;
     this.starsLeft = 4;
     this.mustScoreUntil = 0;
     this.dist = undefined; this.phase = false;
@@ -1744,8 +1754,9 @@ export class Kit {
     if (r === false) { this.owner.game.emit('abilityFail', { who: this.owner, key: k }); return false; } // keep holding it
     this.armed = null;
     if (r === 'pending') return; // spends its own charges once confirmed (map picks)
-    this.charges[k]--;
-    if (!this.ready[k]) this.ready[k] = this.now + ab.cooldown;
+    const ck = ab.shares || k; // Devour and Dismiss draw on one pool
+    this.charges[ck]--;
+    if (!this.ready[ck]) this.ready[ck] = this.now + ab.cooldown;
     this.lastUse[k] = this.now;
     this.owner.game.emit('abilityUsed', { who: this.owner, key: k });
   }
@@ -1779,7 +1790,7 @@ export class Kit {
       if (this.mapPick && this.mapPick.key === k) { this.mapConfirm(); continue; } // press again to confirm map picks
       if (ab[k].reuse && (!this.busy() || this.view || this.pilot) && ab[k].reuse(this)) continue; // second press: detonate / toggle / teleport
       if (this.busy()) continue;
-      if (this.charges[k] <= 0) continue;
+      if (this.charges[ab[k].shares || k] <= 0) continue;
       if (!ab[k].instant) { this.armed = { k, at: now }; o.gun.onHolster(); g.emit('abilityArm', { who: o, key: k }); continue; } // equip first
       this.spend(k);
     }
@@ -1917,7 +1928,7 @@ export class Kit {
     o.pos = [...p]; o.prevPos = [...p]; o.vel = [0, 0, 0];
     o.prevEyeY = p[1] + o.eyeOff;
     o.respawnAt = Infinity;
-    this.mustScoreUntil = this.now + 12;
+    this.mustScoreUntil = this.now + 10;
     o.equip(o.inv.primary ? 'primary' : 'secondary', this.now, true);
     g.emit('respawn', { who: o, revived: true });
     g.emit('ability', { who: o, type: 'rekindled' });
@@ -2022,7 +2033,7 @@ export class Kit {
     if (this.blades && def === BLADES) this.blades.left = BLADES.count; // a blade kill refills the set
     else if (!this.blades && !this.beams) this.ultPoints = Math.min(this.ultCost, this.ultPoints + 1);
     if (this.id === 'vex' && victim) {
-      if (this.now < this.empressUntil) { this.empressUntil = this.now + 30; this.healOver(100, 3); } // Empress: kills feed you
+      if (this.now < this.empressUntil) { this.empressUntil = this.now + 30; this.healOver(100, 3, 150); } // Empress: kills feed you
       else this.orbs.push({ pos: victim.eye(), until: this.now + 3, life: 3 }); // soul orb to Devour or Dismiss
       this.owner.game.emit('orb', { kit: this, orb: this.orbs[this.orbs.length - 1] });
     }
@@ -2032,7 +2043,7 @@ export class Kit {
   tickWave3(now) {
     const o = this.owner, inp = o.input, g = o.game, DT = 1 / 128;
     if (this.highGear) {
-      if (!this.overdrive) this.energy -= 12 * DT; // in Overload the sprint runs on Overload's meter
+      if (!this.overdrive) this.energy -= 10 * DT; // in Overload the sprint runs on Overload's meter
       if (this.energy <= 0) { this.energy = 0; this.highGear = null; }
       else if (((inp.crouch && !this.prevCrouch) || inp.altPressed) && now >= this.slideAt && o.grounded) {
         const len = Math.hypot(inp.fwd, inp.side), sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
@@ -2088,8 +2099,8 @@ export class Kit {
       else if (t.kind === 'sdrone' && inp.firePressed && now - t.born > 0.25) {
         t.removed = true;
         this.pilot = null;
-        g.pulse(o, t.pos, 7, 'reveal', 4, 0xd9a441);
-        g.pulse(o, t.pos, 7, 'near', 2.5, 0xd9a441);
+        g.pulse(o, t.pos, 16, 'reveal', 4, 0xd9a441);
+        g.pulse(o, t.pos, 16, 'near', 2.5, 0xd9a441);
       }
     }
 
@@ -2097,7 +2108,7 @@ export class Kit {
       const cam = this.view;
       if (cam.removed) this.view = null;
       else if (inp.firePressed && now >= (cam.dartReady || 0)) {
-        cam.dartReady = now + 12;
+        cam.dartReady = now + 6;
         const d = dirFromAngles(o.yaw, o.pitch), res = g.trace(o, cam.pos, d, 0);
         g.emit('tracer', { who: o, gun: { def: OVERDRIVE }, from: cam.pos, to: [cam.pos[0] + d[0] * res.endT, cam.pos[1] + d[1] * res.endT, cam.pos[2] + d[2] * res.endT], device: true });
         if (res.hit) cam.dart = { target: res.hit.c, until: now + 8, next: now };
@@ -2105,7 +2116,8 @@ export class Kit {
     }
   }
 
-  healOver(amount, time) { this.healOverUntil = this.now + time; this.healOverRate = amount / time; }
+  // Heal `amount` over `time`, up to `cap` health. Overheal above 100 stays for 10 s after the heal, then fades.
+  healOver(amount, time, cap = PLAYER.hp) { this.healOverUntil = this.now + time; this.healOverRate = amount / time; this.healCap = cap; this.overhealUntil = this.now + time + 10; }
 
   // The nearest soul orb within 15 m that you can see, consumed if found (Devour and Dismiss find it themselves).
   takeOrb() {
@@ -2152,8 +2164,12 @@ export class Kit {
       if (rg.pool <= 0.01) this.regrow = null;
     }
     // Heal over time (Devour), overheal decays back to 100
-    if (now < this.healOverUntil) o.hp = Math.min(150, o.hp + this.healOverRate * DT);
-    else if (o.hp > PLAYER.hp) o.hp = Math.max(PLAYER.hp, o.hp - 5 * DT);
+    if (now < this.healOverUntil) { if (o.hp < this.healCap) o.hp = Math.min(this.healCap, o.hp + this.healOverRate * DT); }
+    else if (o.hp > PLAYER.hp && now >= (this.overhealUntil || 0) && !(now < this.empressUntil)) o.hp = Math.max(PLAYER.hp, o.hp - 25 * DT);
+    // Viper's Pit holds while Venom stays inside it; once she leaves it ends 8 s later.
+    const nz = this.nestZone;
+    if (nz && now < nz.until && o.alive && Math.hypot(o.pos[0] - nz.pos[0], o.pos[2] - nz.pos[2]) < nz.r) { nz.until = now + 8; if (this.nest) this.nest.until = now + 8; }
+    if (this.launcher && now >= this.launcher.until) this.launcher = null; // Finale: 10 s to fire it
     this.orbs = this.orbs.filter(b => b.until > now);
     // Viper fuel: drains while any gas is on, refills when it's all off
     const groups = Object.values(this.gas.groups);
@@ -2167,7 +2183,7 @@ export class Kit {
       this.launcher = null;
       const pos = aimPoint(o, 120, { back: 0.3, bodies: true });
       g.emit('throw', { who: o, from: o.eye(), to: pos, time: Math.max(0.1, Math.hypot(pos[0] - o.pos[0], pos[2] - o.pos[2]) / 45), color: 0xff8c2e, rocket: true });
-      later(this, Math.max(0.1, Math.hypot(pos[0] - o.pos[0], pos[2] - o.pos[2]) / 45), () => g.explode(o, pos, 7, 150, 30, src('rocket', 'Finale'), 0xff8c2e, true));
+      later(this, Math.max(0.1, Math.hypot(pos[0] - o.pos[0], pos[2] - o.pos[2]) / 45), () => g.explode(o, pos, 7, 150, 30, src('rocket', 'Finale'), 0xff8c2e, true, false, 4));
       g.emit('ability', { who: o, type: 'rocket' });
     }
   }

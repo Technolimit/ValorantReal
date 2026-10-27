@@ -14,7 +14,8 @@ Opening `index.html` straight from disk (`file://`) won't work: browsers block E
 It also works as-is on any static host (GitHub Pages, Netlify, an S3 bucket).
 
 `node tools/check-abilities.mjs` runs headless checks of ability interactions in Chromium (it needs
-`playwright`). Pass `--offline` to skip the two-tab online checks. `node tools/check-agent-select.mjs` checks the
+`playwright`). Pass `--offline` to skip the two-tab online checks, or `--only <text>` to run just the checks whose
+name contains it. `node tools/check-agent-select.mjs` checks the
 agent select: the pick rules, offline 5v5, and an online room with a player joining mid-match. `node tools/check-spike.mjs`
 checks that bots carry the spike out of spawn and plant it on Divide. `node tools/check-bot-wallbang.mjs` checks that bots
 stop shooting when their target ducks behind a wall, and still shoot when they can see it.

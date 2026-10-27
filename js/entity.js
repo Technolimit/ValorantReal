@@ -91,7 +91,7 @@ export class Combatant {
     if (this.st.slowUntil > now) m *= 1 - this.st.slowAmt; // ability slows (traps, stuns, lockdown)
     if (this.kit?.highGear) m = 9.1; // sprint
     if (this.st.intangibleUntil > now && !this.kit?.drift) m *= 1.5; // Vanish
-    if (this.st.stimUntil > now) m *= 1.15;
+    if (this.st.stimUntil > now) m *= 1.1; // Stim Beacon: +10% since patch 11.08
     if (this.st.hasteUntil > now) m *= 1 + this.st.hasteAmt;
     if (this.st.castLockUntil > now) m *= 0.4; // casting an ult that holds you in place (Convergent Paths)
     if (this.st.hinderUntil > now) m *= 0.7; // Hindered: slower everything

@@ -2,6 +2,7 @@
 //   npm i -D playwright && npx playwright install chromium   (once)
 //   node tools/check-abilities.mjs            all checks
 //   node tools/check-abilities.mjs --offline  skip the two-tab online checks
+//   node tools/check-abilities.mjs --only Bots   only the checks whose name contains 'Bots' (implies --offline)
 // Serves this folder on a local port, drives the real game through window.__game with the loop frozen,
 // and ticks the simulation by hand. Exits with code 1 if any check fails.
 import { createServer } from 'node:http';
@@ -11,7 +12,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png' };
-const offline = process.argv.includes('--offline');
+const only = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1] : null;
+const offline = process.argv.includes('--offline') || !!only;
 
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
@@ -99,7 +101,7 @@ const checks = [
     const g = await __start({ agent: 'cinder' });
     const p = g.player, k = p.kit;
     p.pitch = -0.3;
-    k.agent.abilities.e.use(k); // Ember: fire pool when it lands
+    k.agent.abilities.q.use(k); // Ember: fire pool when it lands
     g.kill(p, g.bots[0], { part: 'body', def: { id: 'x', name: 'x' } });
     __tick(g, 1.5);
     const landed = g.zones.length > 0;
@@ -229,7 +231,7 @@ const checks = [
     const [x, y, z] = o.pos;
     __box(g, [x - 1, y, z - 8], [x + 1, y + 1, z - 6]); // 1 m crate
     __aim(o, [x, y + 1, z - 6.2]); // its top, near the front edge
-    k.agent.abilities.e.use(k); __tick(g, 2);
+    k.agent.abilities.q.use(k); __tick(g, 2);
     const fire = g.zones.find(zz => zz.def?.id === 'ember');
     return { pass: !!fire && Math.abs(fire.pos[1] - (y + 1)) < 0.05, fireHeight: fire && +(fire.pos[1] - y).toFixed(2) };
   }],
@@ -437,6 +439,36 @@ const checks = [
     const vanished = k.orbs.length === 0 && p.st.intangibleUntil > g.time;
     return { pass: !!placed && beyondWall && fed && healing && vanished, placed: !!placed, beyondWall, nearestFirst: fed, healing, vanished };
   }],
+  ['Bots step out of an enemy molly, draw the sidearm when caught reloading up close, and save together when that buys rifles next round', async () => {
+    let g = await __start({ botMode: 'fight' });
+    let b = g.bots[0], p = g.player;
+    if (!__place(g, b, 10)) return { error: 'no open ground' };
+    b.hp = p.hp = 1e6; p.pos = [0, -50, 0]; p.prevPos = [...p.pos]; // nobody to fight
+    const z = g.addZone({ kind: 'fire', owner: p, pos: [...b.pos], r: 4.5, life: 7, dps: 60, heal: 0, def: { id: 'test', name: 'Test', cat: 'Ability', dmg: [[50, 0, 0, 0]] } }, g.time);
+    __tick(g, 2);
+    const leftMolly = Math.hypot(b.pos[0] - z.pos[0], b.pos[2] - z.pos[2]) > z.r;
+    g = await __start({ botMode: 'fight' });
+    b = g.bots[0]; p = g.player;
+    b.hp = p.hp = 1e6;
+    b.kit.charges = { c: 0, q: 0, e: 0 }; b.kit.ultPoints = 0; b.kit.ready = { c: 0, q: 0, e: 0 }; // no abilities: just the guns
+    p.pos = [0, -50, 0]; p.prevPos = [...p.pos];
+    b.equip('primary', g.time, true); __tick(g, 1.2);
+    if (!__place(g, b, 10)) return { error: 'no open ground' }; // placed after the draw, so it faces the target
+    const at = __ahead(b, 8); p.pos = [at[0], b.pos[1], at[2]]; p.prevPos = [...p.pos]; p.vel = [0, 0, 0];
+    b.gun.mag = 0; // empties it: the reload starts on its own
+    __tick(g, 1);
+    const drewSidearm = b.slot === 'secondary';
+    g = await __start({ mode: 'rounds', map: 'divide' });
+    const m = g.mode; m.round = 3; m.lossStreak = [0, 1];
+    for (const c of g.combatants) { c.credits = c.team === 1 ? 2000 : 4200; c.inv.primary = null; }
+    const calls = [m.teamBuyCall(0), m.teamBuyCall(1)];
+    m.buyCall = calls;
+    const saver = g.bots.find(c => c.team === 1);
+    m.boughtThisRound = new Map(); m.phase = 'buy';
+    m.botBuy(saver);
+    const saved = !saver.inv.primary && saver.credits >= 1500;
+    return { pass: leftMolly && drewSidearm && calls[0] === 'full' && calls[1] === 'eco' && saved, leftMolly, drewSidearm, calls, saverCredits: saver.credits };
+  }],
   ['Buy phase: any ability can be held; set-up utility (camera, Sentry, Anchor) can be placed', async () => {
     const press = (g, c, key, aim) => { c.input['ab' + key] = true; g.tick(); __tick(g, 0.35); if (aim) aim(); c.input.firePressed = true; g.tick(); __tick(g, 0.2); };
     const out = {};
@@ -449,10 +481,10 @@ const checks = [
     }
     const g = await __start({ mode: 'rounds', map: 'divide', agent: 'cinder' });
     __tick(g, 2);
-    const p = g.player; p.kit.charges.q = 1; p.input.abQ = true; g.tick(); __tick(g, 0.35);
-    const held = p.kit.armed?.k === 'q';
+    const p = g.player; p.kit.charges.e = 1; p.input.abE = true; g.tick(); __tick(g, 0.35); // Sunflare (Curveball) is the signature now
+    const held = p.kit.armed?.k === 'e';
     p.input.firePressed = true; g.tick(); __tick(g, 0.2);
-    const stillHeld = p.kit.armed?.k === 'q' && p.kit.charges.q === 1;
+    const stillHeld = p.kit.armed?.k === 'e' && p.kit.charges.e === 1;
     return { pass: Object.values(out).every(Boolean) && held && stillHeld, placed: out, flareHeldInBuy: held, flareNotThrownInBuy: stillHeld };
   }],
   ['Nightwalk: untouchable while the shade forms, arrives after 4 s; shooting the shade cancels it', async () => {
@@ -742,6 +774,7 @@ await page.goto(url);
 await page.waitForFunction(() => window.__game);
 await page.addScriptTag({ content: PAGE_HELPERS });
 for (const [name, fn] of checks) {
+  if (only && !name.includes(only)) continue;
   try { report(name, await page.evaluate(fn)); } catch (e) { report(name, { error: String(e).slice(0, 300) }); }
 }
 
