@@ -202,7 +202,7 @@ Passive: **Stars**: You have 4 stars per life. Press E (not looking at a star) t
 |---|---|---|---|---|---|
 | C | **Breaker** (Cascade; Valorant now has Storm Surge here) | 1 × 200 | bought only | 30 s | Hold the water, left click to send a wave rolling forward (7 m/s) through walls for 18 m. It blocks sight and slows anyone it passes through. |
 | Q | **Riptide** (High Tide) | 1 × 300 | bought only | 40 s | Send a wall of water racing forward up to 40 m, through walls. Hold Q and turn to steer it. It blocks sight and slows for 15 s. |
-| E | **Lagoon** (Cove) | 1 free | 30 s | 30 s | Hold the orb, left click to throw it (20 m). It becomes a water dome 4.5 m across for 19.25 s that blocks sight and stops bullets until it takes 680 damage. |
+| E | **Lagoon** (Cove) | 1 free | 30 s | 30 s | Hold the orb, left click to throw it (20 m). It becomes a water dome 9.2 m across for 19.25 s that blocks sight and stops bullets until it takes 680 damage. |
 | X | **Undertow** (Reckoning) | 7 points | | | Flood the ground ahead (30 m cone, through walls). Three geysers strike over 3 s; every enemy standing in it when one hits is stunned for 3 s. |
 
 ## Vanta (Iso) · Duelist
@@ -278,15 +278,15 @@ Second pass, every ability against its official wiki page (October 2026):
   two kills) and Hot Hands a 200-credit basic (Q); Harbor's Cove is the signature (E: 30 s, 19.25 s, 680 HP
   shield) and High Tide the 300-credit Q. Reyna's Devour and Dismiss share one pool of 2 charges.
 - Jett: Cloudburst 3.35 m, flies 2 s; Tailwind dash 11 m over 0.45 s; Blade Storm 1 s draw, 150/50/42.
-- Omen: Shrouded Step 15 m, 0.7 s; Paranoia 25 m at 20 m/s, 4.3 m wide; Dark Cover up to 80 m.
+- Omen: Shrouded Step 15 m, 0.7 s; Paranoia 25 m at 20 m/s, 4.3 m wide; Dark Cover 4.1 m radius, up to 80 m.
 - Sova: Shock Bolt 75 within 1.5 m, 1 at 4 m; Recon Bolt scans 1 s apart; Owl Drone 100 HP; Hunter's Fury
   66 m x 1.76 m, 1 s reveal.
 - Killjoy: Nanoswarm 1 s windup then 5 s; Turret 100 HP, 50% faster fire, 60 s after destruction, one at a
   time, no time limit; Alarmbot 50% faster; Lockdown 32.5 m, 200 HP.
 - Raze: Boom Bot 60 HP; Blast Pack 50 within 2 m to 20 at 5 m; Paint Shells 2.25 s fuse, 5.5 m, bomblets
   0.67 s later, 5.25 m; Showstopper 1.4 s draw, 10 s to fire, 150 within 4 m to 30 at 7 m.
-- Brimstone: Stim +10% speed; Sky Smoke 5 m radius, 55 m range; Orbital Strike 8 m, 4 s, 125/s.
-- Viper: Snake Bite 12.5/s; Viper's Pit lasts while she is inside and 8 s after she leaves.
+- Brimstone: Stim +10% speed; Sky Smoke 4.15 m radius, 55 m range; Orbital Strike 8 m, 4 s, 125/s.
+- Viper: Poison Cloud 4.5 m radius; Snake Bite 12.5/s; Viper's Pit lasts while she is inside and 8 s after she leaves.
 - Reyna: Leer 2 s; Devour 50 HP over 3 s (2.5 s in Empress), overheal kept 10 s (for good in Empress);
   Dismiss 1.5 s, invisible in Empress.
 - Breach: Aftershock 2 x 80; Flashpoint 2.25 s, 0.5 s pop; Fault Line 1.1 s windup, 8 m wide; Rolling Thunder
