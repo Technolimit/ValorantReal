@@ -563,7 +563,7 @@ export class Renderer {
     g.on('drop', (d) => this.fxDrop(d));
     g.on('device', (d) => this.fxDevice(d));
     g.on('quakeLine', (q) => this.fxQuake(q));
-    g.on('orb', ({ kit, orb }) => { if (orb) this.fxOrb(orb); });
+    g.on('orb', ({ kit, orb }) => { if (orb) this.fxOrb(orb, kit.owner === g.player); });
     g.on('beam', (b) => this.fxBeam(b));
     g.on('tag', ({ pos }) => this.fxRing(pos, 0.8, 0xff3344, 0.4));
     g.on('ability', ({ who, type, pos, kit }) => {
@@ -786,7 +786,7 @@ export class Renderer {
   }
 
   // A thrown projectile flying from `from` to `to` in `time` seconds, with a little arc.
-  fxThrow({ from, to, via, time, color, wave }) {
+  fxThrow({ from, to, via, time, color, wave, straight }) {
     const m = wave
       ? new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
       : new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color }));
@@ -799,9 +799,9 @@ export class Renderer {
       if (via) { // curving throw: quadratic curve through the bend point
         const p = lerp3(lerp3(from, via, k), lerp3(via, to, k), k);
         m.position.set(...p);
-      } else if (wave) {
+      } else if (wave || straight) { // straight line (waves, Glare's eye)
         m.position.set(...lerp3(from, to, k));
-        m.lookAt(m.position.x + (to[0] - from[0]), m.position.y, m.position.z + (to[2] - from[2]));
+        if (wave) m.lookAt(m.position.x + (to[0] - from[0]), m.position.y, m.position.z + (to[2] - from[2]));
       } else {
         m.position.set(from[0] + (to[0] - from[0]) * k, from[1] + (to[1] - from[1]) * k + Math.sin(k * Math.PI) * Math.min(2, d * 0.12), from[2] + (to[2] - from[2]) * k);
       }
@@ -849,10 +849,23 @@ export class Renderer {
   }
 
   // Soul orb: a floating purple wisp that fades after 3 s.
-  fxOrb(orb) {
+  // A soul orb. Its owner also sees a small bar under it running down until it expires.
+  fxOrb(orb, mine) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 10), new THREE.MeshBasicMaterial({ color: 0xd65cff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
     m.position.set(...orb.pos);
     this.fxAdd(m, () => orb.until, (now) => { m.position.y = orb.pos[1] + Math.sin(now * 4) * 0.1; m.scale.setScalar(1 + 0.15 * Math.sin(now * 9)); });
+    if (!mine) return;
+    const W = 0.6, H = 0.07, bar = new THREE.Group();
+    const back = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0x1a0f22, transparent: true, opacity: 0.75, depthWrite: false }));
+    const fill = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xd65cff, depthWrite: false }));
+    back.scale.set(W, H, 1);
+    bar.add(back, fill);
+    bar.position.set(orb.pos[0], orb.pos[1] - 0.45, orb.pos[2]);
+    this.fxAdd(bar, () => orb.until, (now) => {
+      const k = Math.max(0.01, Math.min(1, (orb.until - now) / (orb.life || 3)));
+      fill.scale.set(W * k, H * 0.7, 1);
+      fill.center.set(0.5 / k, 0.5); // left edges line up, so the bar shrinks toward the left
+    });
   }
 
   // Aim preview for held abilities: a landing ring (Rift, Fissure range) or a ghost wall (Frost Wall).
@@ -1133,9 +1146,10 @@ export class Renderer {
     this.vmCamera.updateProjectionMatrix();
   }
 
-  // Vertical FOV from the fixed horizontal FOV and the current zoom.
+  // Vertical FOV from the fixed horizontal FOV and the current zoom. As in Valorant, a zoom of N divides the
+  // horizontal FOV angle by N (103° -> 82.4° at 1.25x), which is what the 1/N scoped sensitivity is matched to.
   vfov(zoom = this.fovZoom) {
-    return 2 * Math.atan(Math.tan((HFOV * DEG) / 2) / zoom / this.aspect);
+    return 2 * Math.atan(Math.tan((HFOV * DEG) / zoom / 2) / this.aspect);
   }
 
   // The melee type a combatant carries: yours from settings, everyone else's from what they sent (bots pick one).

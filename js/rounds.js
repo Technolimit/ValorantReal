@@ -1,7 +1,8 @@
 // 5v5 round mode, following Valorant's rules:
 //   * Attackers carry the spike and must plant it on site A or B; defenders stop them or defuse it.
-//   * Buy phase 30 s (barriers up), round 100 s, spike timer 45 s, plant 4 s, defuse 7 s (progress is kept
-//     once you pass the halfway mark at 3.5 s).
+//   * Buy phase 30 s (45 s in the first round of each half and in overtime; barriers up), round 100 s, spike
+//     timer 45 s, plant 4 s, defuse 7 s (progress is kept once you pass the halfway mark at 3.5 s), 7 s
+//     between the end of a round and the next buy phase.
 //   * First to 13 rounds. Sides swap after round 12. At 12-12 the match goes to overtime: win by two,
 //     sides swap every round and everyone gets 5000 credits each overtime round.
 //   * Economy: 800 to start, 9000 cap, +3000 per round win, +1900 / 2400 / 2900 for 1 / 2 / 3+ losses in a
@@ -18,7 +19,7 @@ import { Bot, BOT_NAMES } from './bot.js';
 import { Kit, AGENTS, AGENT_ORDER } from './abilities.js';
 import { PLAYER, DT } from './config.js';
 
-export const ROUND = { buy: 30, round: 100, spike: 45, plant: 4, defuse: 7, defuseHalf: 3.5, orb: 3, end: 6, toWin: 13, half: 12, firstBuy: 30 };
+export const ROUND = { buy: 30, round: 100, spike: 45, plant: 4, defuse: 7, defuseHalf: 3.5, orb: 3, end: 7, toWin: 13, half: 12, firstBuy: 45 };
 export const ECON = { start: 800, max: 9000, win: 3000, loss: [1900, 2400, 2900], kill: 200, plant: 300, save: 1000, ot: 5000 };
 // Regen Shield (patch 9.10): 25 shield that refills from a 50-point reserve after a moment out of combat.
 export const SHIELDS = { light: { name: 'Light Shields', cost: 400, armor: 25 }, regen: { name: 'Regen Shield', cost: 650, armor: 25, pool: 50 }, heavy: { name: 'Heavy Shields', cost: 1000, armor: 50 } };
@@ -119,7 +120,7 @@ export class RoundMode {
     this.spike = { state: 'dropped', carrier: null, pos: this.spikeSpawnPos(), plantProg: 0, defuseProg: 0, defuser: null, plantedAt: 0, site: null };
     this.resetOrbs();
     this.phase = 'buy';
-    this.phaseEnd = now + (this.round === 1 || half ? ROUND.firstBuy : ROUND.buy);
+    this.phaseEnd = now + (this.round === 1 || half || ot ? ROUND.firstBuy : ROUND.buy);
     this.setBarriers(true);
     for (const c of g.bots) this.botBuy(c);
     this.plan = null;
@@ -158,6 +159,8 @@ export class RoundMode {
     // Refill ammo for the new round.
     for (const gun of [inv.primary, inv.secondary]) if (gun) { gun.mag = gun.def.mag; gun.reserve = gun.def.reserve; gun.reloading = false; }
     const kitCharges = c.kit ? { ...c.kit.charges } : null;
+    // Utility picked up this round whose charge hadn't come back yet still belongs to its owner.
+    if (c.kit) for (const t of c.kit.timers || []) if (t.refund) kitCharges[t.refund]++;
     // Unfired Headhunter-style bullets go back into the ability's charges.
     const bk = c.kit && PRICES[c.kit.id]?.bullets;
     if (bk && c.inv.ability?.abilityKey === bk) kitCharges[bk] += c.inv.ability.mag;

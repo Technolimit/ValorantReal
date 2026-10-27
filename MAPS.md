@@ -265,14 +265,15 @@ Each map can change the match rules. Leave out anything you don't want to change
 ```json
 "physics": { "gravity": 22, "jumpSpeed": 6.95 },
 "rules": {
-  "rounds": { "buyTime": 30, "roundTime": 100, "spikeTime": 45, "plantTime": 4, "defuseTime": 7, "roundsToWin": 13, "halftimeAfter": 12 },
+  "rounds": { "buyTime": 30, "firstBuyTime": 45, "roundTime": 100, "spikeTime": 45, "plantTime": 4, "defuseTime": 7, "roundsToWin": 13, "halftimeAfter": 12 },
   "economy": { "startCredits": 800, "maxCredits": 9000, "winReward": 3000, "lossRewards": [1900, 2400, 2900], "killReward": 200, "plantReward": 300 },
   "deathmatch": { "respawnTime": 3, "healOnKill": true }
 }
 ```
 
 Try `"gravity": 11` for a moon map, or `"roundsToWin": 5` for short matches. Times are in seconds. `lossRewards`
-are the credits after 1, 2 and 3+ lost rounds in a row; `defuseHalfway` is when defuse progress is saved, `orbTime` is how long taking an ultimate orb takes, `saveReward`
+are the credits after 1, 2 and 3+ lost rounds in a row; `firstBuyTime` is the longer buy phase of the first round of
+each half and of overtime rounds; `defuseHalfway` is when defuse progress is saved, `orbTime` is how long taking an ultimate orb takes, `saveReward`
 is what attackers get for surviving a round lost on time, and `overtimeCredits` is everyone's money in overtime.
 
 ## Everything else

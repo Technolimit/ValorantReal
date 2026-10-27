@@ -18,12 +18,13 @@
   "rules": {
     "rounds": {
       "buyTime": 30,
+      "firstBuyTime": 45,
       "roundTime": 100,
       "spikeTime": 45,
       "plantTime": 4,
       "defuseTime": 7,
       "defuseHalfway": 3.5,
-      "roundEndTime": 6,
+      "roundEndTime": 7,
       "roundsToWin": 13,
       "halftimeAfter": 12
     },
