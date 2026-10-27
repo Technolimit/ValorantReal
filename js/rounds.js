@@ -418,10 +418,12 @@ export class RoundMode {
       const cur = c.inv[def.slot];
       if (cur && cur.def.id === def.id) return 'Already owned';
       if (c.credits < def.cost) return 'Not enough credits';
-      // Selling back what you bought this round in that slot first.
-      const prev = bought.find(b => b.type === 'weapon' && WEAPONS[b.id].slot === def.slot);
+      // The gun in that slot: sold back if you bought it this round, otherwise dropped at your feet (as in
+      // Valorant). Online the host drops it and tells everyone; the client's mirror just swaps.
+      const prev = bought.find(b => b.type === 'weapon' && WEAPONS[b.id].slot === def.slot && cur?.def.id === b.id);
       c.credits -= def.cost;
       if (prev) { c.credits += WEAPONS[prev.id].cost; bought.splice(bought.indexOf(prev), 1); }
+      else if (cur && !this.mirror) this.game.dropGun(c, def.slot, false);
       c.give(def.id);
       c.equip(def.slot, this.game.time, true);
     } else if (item.type === 'shield') {
