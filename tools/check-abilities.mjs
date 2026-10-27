@@ -419,7 +419,7 @@ const checks = [
     const marshalCut = !m.reloading;
     return { pass: stillReloading && full === 25 && auto && loaded === 3 && marshalCut, stillReloading, shotsMid, full, autoReload: auto, marshalLoaded: loaded, marshalCut };
   }],
-  ['Vex: Glare goes 12 m straight ahead through a wall, where its preview showed; Feast and Vanish take the nearest soul orb on the key press', async () => {
+  ['Vex: Glare goes 12 m straight ahead through a wall, where its preview showed; Feast and Vanish take the nearest soul orb at any distance on the key press', async () => {
     const g = await __start({ agent: 'vex' });
     const p = g.player, k = p.kit;
     if (!__place(g, p, 14)) return { error: 'no open ground' };
@@ -431,13 +431,23 @@ const checks = [
     const placed = eye && shown && Math.hypot(eye.pos[0] - shown[0], eye.pos[1] - shown[1], eye.pos[2] - shown[2]) < 0.01;
     const beyondWall = eye && eye.pos[2] < p.pos[2] - 5;
     const e = p.eye();
-    k.orbs = [{ pos: [e[0] + 6, e[1], e[2]], until: g.time + 3, life: 3 }, { pos: [e[0] + 2, e[1], e[2]], until: g.time + 3, life: 3 }];
+    // Both orbs far out of range and behind the wall: distance and sight don't matter, nearest goes first.
+    k.orbs = [{ pos: [e[0], e[1], e[2] - 60], until: g.time + 3, life: 3 }, { pos: [e[0], e[1], e[2] - 30], until: g.time + 3, life: 3 }];
     p.hp = 50; k.charges.q = 1; p.input.abQ = true; g.tick();
-    const fed = k.orbs.length === 1 && k.orbs[0].pos[0] === e[0] + 6, healing = g.time < k.healOverUntil;
+    const fed = k.orbs.length === 1 && k.orbs[0].pos[2] === e[2] - 60, healing = g.time < k.healOverUntil;
     __tick(g, 0.5);
-    k.charges.e = 1; p.input.abE = true; g.tick();
+    const walk = p.maxSpeed(g.time);
+    k.charges.e = 1; p.input.abE = true; g.tick(); __tick(g, 0.4);
     const vanished = k.orbs.length === 0 && p.st.intangibleUntil > g.time;
-    return { pass: !!placed && beyondWall && fed && healing && vanished, placed: !!placed, beyondWall, nearestFirst: fed, healing, vanished };
+    // Vanish: much faster, steered by WASD in any direction (here straight sideways), and the gun can't fire.
+    const x0 = p.pos[0], mag = p.gun.mag;
+    p.input.side = 1; p.input.fwd = 0;
+    for (let i = 0; i < 64; i++) { p.input.fire = p.input.firePressed = true; g.tick(); }
+    p.input.fire = p.input.firePressed = false; p.input.side = 0;
+    const fast = p.maxSpeed(g.time) > walk * 1.6, strafed = p.pos[0] - x0 > 2, noGun = p.gun.mag === mag;
+    __tick(g, 2);
+    const over = !(p.st.intangibleUntil > g.time) && Math.abs(p.maxSpeed(g.time) - walk) < 0.01;
+    return { pass: !!placed && beyondWall && fed && healing && vanished && fast && strafed && noGun && over, placed: !!placed, beyondWall, nearestAnyDistance: fed, healing, vanished, fast, strafed, noGun, over };
   }],
   ['Bots step out of an enemy molly, draw the sidearm when caught reloading up close, and save together when that buys rifles next round', async () => {
     let g = await __start({ botMode: 'fight' });

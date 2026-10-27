@@ -364,12 +364,12 @@ export const AGENTS = {
       e: {
         name: 'Shade', desc: 'Hold the orb: your view follows the smoke out through walls, and the sphere shows exactly where it will form. It passes through walls: hold right click to push it farther (up to 80 m), press R to make it stop at the first wall instead, left click to cast. Lasts 15 s.', charges: 2, cooldown: 40,
         armHint: 'LEFT CLICK: CAST · HOLD RIGHT CLICK: FARTHER · R: STOP AT WALLS', shadowSight: true,
-        smokePreview: 3.8, distance: { min: 4, max: 80, start: 16, speed: 22 },
-        preview(kit) { return smokeTarget(kit, 3.8); },
+        smokePreview: 4.1, distance: { min: 4, max: 80, start: 16, speed: 22 },
+        preview(kit) { return smokeTarget(kit, 4.1); },
         use(kit) {
           const o = kit.owner, pos = [...target(kit, this)];
           o.game.emit('throw', { who: o, from: [pos[0], pos[1] + 14, pos[2]], to: pos, time: 0.4, color: 0xa67bff });
-          later(kit, 0.4, () => o.game.addSmoke(o, pos, kit.now, { radius: 3.8, life: 15, color: 0x5b3f8f }));
+          later(kit, 0.4, () => o.game.addSmoke(o, pos, kit.now, { radius: 4.1, life: 15, color: 0x5b3f8f }));
         },
       },
       x: {
@@ -562,13 +562,13 @@ export const AGENTS = {
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
-            key: 'e', title: 'OVERCAST', hint: 'Click up to ' + kit.charges.e + ' spots · E or right click to call them in', max: kit.charges.e, color: '#e0844f', radius: 5, range: 55,
+            key: 'e', title: 'OVERCAST', hint: 'Click up to ' + kit.charges.e + ' spots · E or right click to call them in', max: kit.charges.e, color: '#e0844f', radius: 4.15, range: 55,
             confirm: (picks) => {
               for (const p of picks) {
                 kit.charges.e--;
                 if (!kit.ready.e) kit.ready.e = kit.now + this.cooldown;
                 o.game.emit('throw', { who: o, from: [p[0], p[1] + 30, p[2]], to: [p[0], p[1] + 2, p[2]], time: 0.8, color: 0xe0844f });
-                later(kit, 0.8, () => o.game.addSmoke(o, [p[0], p[1] + 2, p[2]], kit.now, { radius: 5, life: 19.25, color: 0x9a8f86 }));
+                later(kit, 0.8, () => o.game.addSmoke(o, [p[0], p[1] + 2, p[2]], kit.now, { radius: 4.15, life: 19.25, color: 0x9a8f86 }));
               }
               kit.lastUse.e = kit.now;
             },
@@ -613,7 +613,7 @@ export const AGENTS = {
         item: 'device', name: 'Miasma', desc: 'Throw a gas emitter (12 m). It releases a toxic cloud; press Q again to switch the cloud off and on (uses fuel).', charges: 1, cooldown: 0,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 12, { floor: true, back: 0.6 });
-          const gr = { points: [pos], r: 4.4, active: false, items: [] };
+          const gr = { points: [pos], r: 4.5, active: false, items: [] };
           kit.gas.groups.cloud = gr;
           o.game.addDevice({ kind: 'emitter', owner: o, pos, life: 99999 });
           const ft13 = flight(o.eye(), pos, 13);
@@ -1242,12 +1242,12 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'orb', name: 'Lagoon', desc: 'Hold the orb, left click to throw it (20 m). It becomes a water dome 4.5 m across for 19.25 s that blocks sight and stops bullets until it takes 680 damage.', charges: 1, cooldown: 30,
+        item: 'orb', name: 'Lagoon', desc: 'Hold the orb, left click to throw it (20 m). It becomes a water dome 9.2 m across for 19.25 s that blocks sight and stops bullets until it takes 680 damage.', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.6 });
           const ft = flight(o.eye(), pos, 13);
           o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft, color: 0x2fb3a8 });
-          later(kit, ft, () => o.game.addSmoke(o, [pos[0], pos[1] + 1.4, pos[2]], kit.now, { radius: 4.5, life: 19.25, color: 0x2fb3a8, kind: 'cove' }));
+          later(kit, ft, () => o.game.addSmoke(o, [pos[0], pos[1] + 1.4, pos[2]], kit.now, { radius: 4.6, life: 19.25, color: 0x2fb3a8, kind: 'cove' }));
         },
       },
       x: {
@@ -1639,6 +1639,7 @@ export class Kit {
     this.gas = { fuel: 100, groups: {} };
     this.orbs = [];
     this.empressUntil = 0;
+    this.vanishUntil = 0;
     this.healOverUntil = 0;
     this.energy = 100;
     this.highGear = null;
@@ -2119,13 +2120,13 @@ export class Kit {
   // Heal `amount` over `time`, up to `cap` health. Overheal above 100 stays for 10 s after the heal, then fades.
   healOver(amount, time, cap = PLAYER.hp) { this.healOverUntil = this.now + time; this.healOverRate = amount / time; this.healCap = cap; this.overhealUntil = this.now + time + 10; }
 
-  // The nearest soul orb within 15 m that you can see, consumed if found (Devour and Dismiss find it themselves).
+  // The nearest live soul orb at any distance, consumed if found (Devour and Dismiss find it themselves).
   takeOrb() {
-    const o = this.owner, e = o.eye();
-    let i = -1, best = 15;
+    const e = this.owner.eye();
+    let i = -1, best = Infinity;
     this.orbs.forEach((b, j) => {
       const dist = Math.hypot(b.pos[0] - e[0], b.pos[1] - e[1], b.pos[2] - e[2]);
-      if (b.until > this.now && dist <= best && o.game.world.lineOfSight(e, b.pos)) { best = dist; i = j; }
+      if (b.until > this.now && dist < best) { best = dist; i = j; }
     });
     if (i < 0) return false;
     this.orbs[i].until = 0;
@@ -2207,15 +2208,6 @@ export function applyDash(c, now, dt) {
   }
 }
 
-// Forced movement (Vanish): full speed along where you look; WASD can't slow or stop it.
-export function applyForced(c, now) {
-  if (!c.forced) return;
-  if (now >= c.forced.until) { c.forced = null; return; }
-  c.vel[0] = -Math.sin(c.yaw) * c.forced.speed;
-  c.vel[2] = -Math.cos(c.yaw) * c.forced.speed;
-  c.airCap = c.forced.speed;
-}
-
 export function applyGlide(c) {
   if (c.kit?.id === 'zephyr' && !c.grounded && c.input.jumpHeld && c.vel[1] < -GLIDE_FALL) c.vel[1] = -GLIDE_FALL;
 }
@@ -2250,7 +2242,7 @@ export function smokeBlocks(smokes, a, b, now) {
   for (const s of smokes) {
     if (now < s.born + SMOKE.grow * 0.6 || now > s.until) continue;
     if (s.slab) { if (segHitsSlab(s, a, b)) return true; continue; }
-    const r = s.radius * 0.92;
+    const r = s.radius; // the cloud is one sphere of this radius: block exactly what is drawn
     const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
     const len2 = dx * dx + dy * dy + dz * dz || 1e-9;
     let t = ((s.pos[0] - a[0]) * dx + (s.pos[1] - a[1]) * dy + (s.pos[2] - a[2]) * dz) / len2;

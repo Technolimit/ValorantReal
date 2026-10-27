@@ -629,7 +629,7 @@ export class Renderer {
     this.shake = Math.min(1.5, this.shake + f.shake * camM);
   }
 
-  // Smoke clouds: a few overlapping soft spheres that swell in and thin out at the end.
+  // Smoke clouds: a single soft sphere (sized per agent) that swells in and thins out at the end.
   addSmoke(s) {
     if (!this.smokeMat) {
       this.smokeMat = new THREE.MeshLambertMaterial({ color: 0xd8e3ec, emissive: 0x56626e, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false });
@@ -660,20 +660,17 @@ export class Renderer {
       this.smokes.push({ s, group, mat, fire, slab: true });
       return;
     }
-    const puffs = [[0, 0, 0, 1], [0.42, 0.22, 0.2, 0.72], [-0.38, 0.28, -0.22, 0.74], [0.15, -0.3, -0.38, 0.68], [-0.2, -0.28, 0.42, 0.7], [0.08, 0.46, 0.05, 0.62], [0.5, -0.1, -0.3, 0.55], [-0.5, -0.05, 0.25, 0.55]];
-    // Inner shell: shown instead of the puffs while the camera is inside, so the inside of the smoke reads as a
+    // Inner shell: shown instead of the cloud while the camera is inside, so the inside of the smoke reads as a
     // clear pocket walled off by the cloud (as in the real game) rather than a solid wall of fog.
     const shellMat = mat.clone(); shellMat.side = THREE.BackSide;
     const shell = new THREE.Mesh(this.smokeGeo, shellMat);
     shell.scale.setScalar(R * 0.98); shell.visible = false; shell.userData.shell = true; shell.userData.spin = 0; shell.frustumCulled = false; shell.renderOrder = 2;
     group.add(shell); group.userData.shell = shell;
-    for (const [x, y, z, r] of puffs) {
-      const m = new THREE.Mesh(this.smokeGeo, mat);
-      m.position.set(x * R, y * R * (fire ? 0.7 : 1), z * R);
-      m.scale.set(r * R, r * R * (fire ? 1.3 : 1), r * R);
-      m.userData.spin = (Math.random() - 0.5) * 0.4;
-      group.add(m);
-    }
+    // One sphere, exactly the smoke's radius, so what you see is what blocks sight.
+    const ball = new THREE.Mesh(this.smokeGeo, mat);
+    ball.scale.set(R, R * (fire ? 1.3 : 1), R);
+    ball.userData.spin = 0;
+    group.add(ball);
     group.position.set(...s.pos);
     this.scene.add(group);
     this.smokes.push({ s, group, mat, fire });
