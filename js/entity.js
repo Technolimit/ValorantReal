@@ -4,7 +4,7 @@ import { rayAABB } from './world.js';
 import { WEAPONS } from './weapons.js';
 import { Gun } from './gun.js';
 import { MELEE_ORDER } from './melee.js';
-import { applyDash, applyGlide, applyForced } from './abilities.js';
+import { applyDash, applyGlide } from './abilities.js';
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const CROUCH_DIFF = PLAYER.standHeight - PLAYER.crouchHeight;
@@ -90,7 +90,8 @@ export class Combatant {
     if (alt && alt.moveMult && g.adsT > 0) m *= lerp(1, alt.moveMult, g.adsT);
     if (this.st.slowUntil > now) m *= 1 - this.st.slowAmt; // ability slows (traps, stuns, lockdown)
     if (this.kit?.highGear) m = 9.1; // sprint
-    if (this.st.intangibleUntil > now && !this.kit?.drift) m *= 1.5; // Vanish
+    if (this.kit?.vanishUntil > now) m *= 1.75; // Vanish: much faster, any direction
+    else if (this.st.intangibleUntil > now && !this.kit?.drift) m *= 1.5;
     if (this.st.stimUntil > now) m *= 1.15;
     if (this.st.hasteUntil > now) m *= 1 + this.st.hasteAmt;
     if (this.st.castLockUntil > now) m *= 0.4; // casting an ult that holds you in place (Convergent Paths)
@@ -136,7 +137,6 @@ export class Combatant {
     this.tagTime = -100;
     this.report.clear();
     this.dash = null;
-    this.forced = null;
     this.burn = 0;
     this.damagedBy = new Set();
     this.decay = 0;
@@ -245,7 +245,6 @@ export class Combatant {
       else { this.vel[0] += (dvx / dl) * rate; this.vel[2] += (dvz / dl) * rate; }
     }
     applyDash(this, now, dt);
-    applyForced(this, now);
     this.vel[1] -= PLAYER.gravity * dt;
     applyGlide(this);
     this.climbRope();

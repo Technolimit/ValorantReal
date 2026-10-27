@@ -675,7 +675,7 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Feast', desc: 'Press Q to consume the nearest soul orb within 15 m: heal 100 over 3 s. You can go above 100 HP; the extra fades.', charges: 2, cooldown: 0, item: 'grab', instant: true,
+        name: 'Feast', desc: 'Press Q to consume your nearest soul orb, at any distance: heal 100 over 3 s. You can go above 100 HP; the extra fades.', charges: 2, cooldown: 0, item: 'grab', instant: true,
         use(kit) {
           if (!kit.takeOrb()) return false;
           kit.grab = { until: kit.now + 0.35 };
@@ -684,13 +684,12 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Vanish', desc: 'Press E to consume the nearest soul orb within 15 m: it pulls you along at high speed for 2 s, intangible. You steer with the mouse but can’t stop or slow down, and can’t shoot.', charges: 2, cooldown: 0, item: 'grab', instant: true,
+        name: 'Vanish', desc: 'Press E to consume your nearest soul orb, at any distance: for 2 s you’re intangible and move much faster in any direction, but can’t use your gun.', charges: 2, cooldown: 0, item: 'grab', instant: true,
         use(kit) {
           if (!kit.takeOrb()) return false;
           const o = kit.owner;
           kit.grab = { until: kit.now + 0.35 };
-          o.st.intangibleUntil = kit.now + 2;
-          o.forced = { until: kit.now + 2, speed: 9.5 };
+          o.st.intangibleUntil = kit.vanishUntil = kit.now + 2; // intangible also keeps the gun down
           o.game.emit('ability', { who: o, type: 'dismiss' });
         },
       },
@@ -1629,6 +1628,7 @@ export class Kit {
     this.gas = { fuel: 100, groups: {} };
     this.orbs = [];
     this.empressUntil = 0;
+    this.vanishUntil = 0;
     this.healOverUntil = 0;
     this.energy = 100;
     this.highGear = null;
@@ -2107,13 +2107,13 @@ export class Kit {
 
   healOver(amount, time) { this.healOverUntil = this.now + time; this.healOverRate = amount / time; }
 
-  // The nearest soul orb within 15 m that you can see, consumed if found (Devour and Dismiss find it themselves).
+  // The nearest live soul orb at any distance, consumed if found (Devour and Dismiss find it themselves).
   takeOrb() {
-    const o = this.owner, e = o.eye();
-    let i = -1, best = 15;
+    const e = this.owner.eye();
+    let i = -1, best = Infinity;
     this.orbs.forEach((b, j) => {
       const dist = Math.hypot(b.pos[0] - e[0], b.pos[1] - e[1], b.pos[2] - e[2]);
-      if (b.until > this.now && dist <= best && o.game.world.lineOfSight(e, b.pos)) { best = dist; i = j; }
+      if (b.until > this.now && dist < best) { best = dist; i = j; }
     });
     if (i < 0) return false;
     this.orbs[i].until = 0;
@@ -2187,15 +2187,6 @@ export function applyDash(c, now, dt) {
     c.airCap = ex;
     c.dash = null;
   }
-}
-
-// Forced movement (Vanish): full speed along where you look; WASD can't slow or stop it.
-export function applyForced(c, now) {
-  if (!c.forced) return;
-  if (now >= c.forced.until) { c.forced = null; return; }
-  c.vel[0] = -Math.sin(c.yaw) * c.forced.speed;
-  c.vel[2] = -Math.cos(c.yaw) * c.forced.speed;
-  c.airCap = c.forced.speed;
 }
 
 export function applyGlide(c) {

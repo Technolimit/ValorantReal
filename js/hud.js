@@ -191,7 +191,6 @@ export class Hud {
     else if (kit?.armed) { const a = kit.agent.abilities[kit.armed.k]; mode = `${a.name.toUpperCase()} · ${a.armHint || 'LEFT CLICK TO USE'} · ${kit.armed.k.toUpperCase()} TO PUT AWAY`; }
     else if (g.devices.some(d => d.kind === 'cloud' && d.owner === p)) mode = 'VEIL · STEER WITH MOUSE · RELEASE C TO BURST';
     else if (g.devices.some(d => d.kind === 'blaze' && d.owner === p)) mode = kit?.id === 'marina' ? 'RIPTIDE · HOLD E AND TURN TO STEER IT' : 'FIREBREAK · HOLD C AND TURN TO BEND IT';
-    else if (p.forced) mode = 'VANISH · STEER WITH MOUSE';
     else if (kit?.tailwind) mode = g.time >= kit.tailwind.readyAt ? `SLIPSTREAM READY · PRESS E · ${(kit.tailwind.until - g.time).toFixed(1)}s` : 'GATHERING WIND…';
     else if (kit?.shadow?.phase === 'channel') mode = `NIGHTWALK · ${(kit.shadow.until - g.time).toFixed(1)}s`;
     else if (kit?.rebirth) mode = `REKINDLE · ${(kit.rebirth.until - g.time).toFixed(1)}s`;
@@ -206,6 +205,7 @@ export class Hud {
     else if (p.st.disarmUntil > g.time) mode = `DETAINED · ${(p.st.disarmUntil - g.time).toFixed(1)}s`;
     else if (p.st.suppressUntil > g.time) mode = `SUPPRESSED · ${(p.st.suppressUntil - g.time).toFixed(1)}s`;
     else if (p.st.deafUntil > g.time) mode = `DEAFENED · ${(p.st.deafUntil - g.time).toFixed(1)}s`;
+    else if (kit?.vanishUntil > g.time) mode = `VANISHED · NO GUN · ${(kit.vanishUntil - g.time).toFixed(1)}s`;
     else if (p.st.intangibleUntil > g.time) mode = 'VANISHED';
     else if (kit && g.time < kit.empressUntil) mode = `RAVENOUS · ${(kit.empressUntil - g.time).toFixed(0)}s`;
     else if (kit?.orbs?.length) mode = 'SOUL ORB · Q FEAST · E VANISH';

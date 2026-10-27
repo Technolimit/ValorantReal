@@ -107,8 +107,8 @@ Passive: **Soul Harvest**: Enemies you kill drop a soul orb for 3 s.
 | Key | Ability | 5v5 charges · price | 5v5 recharge | Deathmatch cooldown | What it does |
 |---|---|---|---|---|---|
 | C | **Glare** (Leer) | 2 × 250 | bought only | 20 s | Hold the eye: a marker shows where it will go, 12 m straight ahead, through walls. Left click to cast it. Every enemy who looks at it is nearsighted, for 2.5 s. |
-| Q | **Feast** (Devour) | 2 × 200 (1 free) | bought only | — | Press Q to consume the nearest soul orb within 15 m: heal 100 over 3 s. You can go above 100 HP; the extra fades. |
-| E | **Vanish** (Dismiss) | 2 free | — | — | Press E to consume the nearest soul orb within 15 m: it pulls you along at high speed for 2 s, intangible. You steer with the mouse but can’t stop or slow down, and can’t shoot. |
+| Q | **Feast** (Devour) | 2 × 200 (1 free) | bought only | — | Press Q to consume your nearest soul orb, at any distance: heal 100 over 3 s. You can go above 100 HP; the extra fades. |
+| E | **Vanish** (Dismiss) | 2 free | — | — | Press E to consume your nearest soul orb, at any distance: for 2 s you’re intangible and move much faster in any direction, but can’t use your gun. |
 | X | **Ravenous** (Empress) | 7 points | | | Enter a frenzy for 30 s: 15% faster fire rate, equip and reload, and every kill heals you 100 and resets the timer. |
 
 ## Quake (Breach) · Initiator
@@ -270,7 +270,7 @@ they could be found (October 2026), with Liquipedia and other stat sites as a fa
 - Damage: Shock Bolt up to 75 (4.08), Snake Bite 12/s doubled by its Vulnerable (about 78 over 6.5 s, as listed),
   Showstopper 30-150 over 7 m, Boom Bot 30-80.
 - Vex (Reyna), issue #37: Glare (Leer) shows where it goes and travels straight through walls; Feast and Vanish
-  (Devour, Dismiss) use the nearest soul orb as soon as you press the key.
+  (Devour, Dismiss) use the nearest soul orb, at any distance, as soon as you press the key.
 
 Not checked against a primary source (kept as they were): basic-ability cooldowns used in deathmatch, most damage
 numbers, and the reworked kits (Harbor, Iso, Yoru's 2026 changes).
