@@ -328,7 +328,7 @@ export class Hud {
       let have, frac = 0, ready;
       if (k === 'x') { have = kit.ultPoints; ready = have >= AB.x.points && !kit.blades; }
       else {
-        have = kit.charges[k];
+        have = kit.charges[AB[k].shares || k]; // Dismiss shows Devour's pool
         ready = have > 0 || (k === 'c' && !!kit.regrow);
         if (kit.ready[k] && AB[k].cooldown) frac = kit.cooldownLeft(k, now) / AB[k].cooldown;
       }

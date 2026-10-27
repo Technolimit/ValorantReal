@@ -4,14 +4,14 @@
 // Signatures (E) are free and refill every round unless they're listed here as purchasable.
 export const PRICES = {
   zephyr:   { c: [200, 2], q: [150, 1] },                         // Jett: Cloudburst, Updraft
-  cinder:   { c: [150, 1], q: [250, 2] },                         // Phoenix: Blaze, Curveball
+  cinder:   { c: [150, 1], q: [200, 1], e: [250, 2, 1] },         // Phoenix: Blaze, Hot Hands (Q), Curveball (E: signature, 1 free)
   umbra:    { c: [100, 2], q: [250, 1], e: [150, 2, 1] },         // Omen: Shrouded Step (C), Paranoia (Q), Dark Cover (E, 1 free)
   hawke:    { c: [400, 1], q: [150, 2] },                         // Sova: Owl Drone (C), Shock Bolt (Q)
   bastion:  { c: [200, 2], q: [200, 1] },                         // Killjoy: Nanoswarm, Alarmbot
   blitz:    { c: [300, 1], q: [200, 2] },                         // Raze: Boom Bot, Blast Pack
   granite:  { c: [200, 1], q: [250, 1], e: [100, 3, 1] },         // Brimstone: Stim Beacon, Incendiary, Sky Smoke (1 free)
   venom:    { c: [300, 1], q: [200, 1] },                         // Viper: Snake Bite, Poison Cloud
-  vex:      { c: [250, 2], q: [200, 2, 1] },                      // Reyna: Leer, Devour (1 free)
+  vex:      { c: [250, 2], q: [200, 2, 1] },                      // Reyna: Leer, Devour + Dismiss (one shared pool, 1 free)
   quake:    { c: [200, 1], q: [250, 2] },                         // Breach: Aftershock, Flashpoint
   volt:     { c: [300, 1], q: [200, 1] },                         // Neon: Fast Lane, Relay Bolt
   mirage:   { c: [200, 1], q: [250, 1] },                         // Yoru: Fakeout, Blindside
@@ -21,9 +21,9 @@ export const PRICES = {
   solace:   { c: [300, 1], q: [200, 2] },                         // Sage: Barrier Orb, Slow Orb
   stella:   { c: [150, 1], q: [150, 1] },                         // Astra: stars, 150 each
   regent:   { c: [200, 1], q: [100, 8], bullets: 'q' },           // Chamber: Trademark, Headhunter (100 per bullet, 8 max)
-  marina:   { c: [200, 1], q: [300, 1] },                         // Harbor: Storm Surge, High Tide
+  marina:   { c: [200, 1], q: [300, 1] },                         // Harbor: Storm Surge, High Tide (Q); Cove is the signature (E)
   vanta:    { c: [200, 1], q: [300, 1] },                         // Iso: Contingency, Undercut
-  ballast:  { c: [400, 1], q: [200, 1] },                         // Tejo: Stealth Drone, Special Delivery
+  ballast:  { c: [400, 1], q: [200, 1], e: [150, 2, 1] },         // Tejo: Stealth Drone, Special Delivery, Guided Salvo (1 free)
   override: { c: [200, 1], q: [250, 2] },                         // KAY/O: FRAG/ment, FLASH/drive
   thistle:  { c: [200, 1], q: [250, 1], e: [150, 2, 1] },         // Clove: Pick-me-up, Meddle, Ruse (1 free)
   lumen:    { c: [300, 1], q: [300, 1] },                         // Waylay: Saturate, Lightspeed
