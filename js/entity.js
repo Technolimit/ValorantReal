@@ -4,7 +4,7 @@ import { rayAABB } from './world.js';
 import { WEAPONS } from './weapons.js';
 import { Gun } from './gun.js';
 import { MELEE_ORDER } from './melee.js';
-import { applyDash, applyGlide, applyForced } from './abilities.js';
+import { applyDash, applyGlide } from './abilities.js';
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const CROUCH_DIFF = PLAYER.standHeight - PLAYER.crouchHeight;
@@ -136,7 +136,6 @@ export class Combatant {
     this.tagTime = -100;
     this.report.clear();
     this.dash = null;
-    this.forced = null;
     this.burn = 0;
     this.damagedBy = new Set();
     this.decay = 0;
@@ -245,7 +244,6 @@ export class Combatant {
       else { this.vel[0] += (dvx / dl) * rate; this.vel[2] += (dvz / dl) * rate; }
     }
     applyDash(this, now, dt);
-    applyForced(this, now);
     this.vel[1] -= PLAYER.gravity * dt;
     applyGlide(this);
     this.climbRope();

@@ -1639,6 +1639,7 @@ export class Kit {
     this.gas = { fuel: 100, groups: {} };
     this.orbs = [];
     this.empressUntil = 0;
+    this.vanishUntil = 0;
     this.healOverUntil = 0;
     this.energy = 100;
     this.highGear = null;
@@ -2119,13 +2120,13 @@ export class Kit {
   // Heal `amount` over `time`, up to `cap` health. Overheal above 100 stays for 10 s after the heal, then fades.
   healOver(amount, time, cap = PLAYER.hp) { this.healOverUntil = this.now + time; this.healOverRate = amount / time; this.healCap = cap; this.overhealUntil = this.now + time + 10; }
 
-  // The nearest soul orb within 15 m that you can see, consumed if found (Devour and Dismiss find it themselves).
+  // The nearest live soul orb at any distance, consumed if found (Devour and Dismiss find it themselves).
   takeOrb() {
-    const o = this.owner, e = o.eye();
-    let i = -1, best = 15;
+    const e = this.owner.eye();
+    let i = -1, best = Infinity;
     this.orbs.forEach((b, j) => {
       const dist = Math.hypot(b.pos[0] - e[0], b.pos[1] - e[1], b.pos[2] - e[2]);
-      if (b.until > this.now && dist <= best && o.game.world.lineOfSight(e, b.pos)) { best = dist; i = j; }
+      if (b.until > this.now && dist < best) { best = dist; i = j; }
     });
     if (i < 0) return false;
     this.orbs[i].until = 0;
@@ -2203,15 +2204,6 @@ export function applyDash(c, now, dt) {
     c.airCap = ex;
     c.dash = null;
   }
-}
-
-// Forced movement (Vanish): full speed along where you look; WASD can't slow or stop it.
-export function applyForced(c, now) {
-  if (!c.forced) return;
-  if (now >= c.forced.until) { c.forced = null; return; }
-  c.vel[0] = -Math.sin(c.yaw) * c.forced.speed;
-  c.vel[2] = -Math.cos(c.yaw) * c.forced.speed;
-  c.airCap = c.forced.speed;
 }
 
 export function applyGlide(c) {

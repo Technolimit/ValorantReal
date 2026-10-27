@@ -270,7 +270,7 @@ they could be found (October 2026), with Liquipedia and other stat sites as a fa
 - Damage: Shock Bolt up to 75 (4.08), Snake Bite 12/s doubled by its Vulnerable (about 78 over 6.5 s, as listed),
   Showstopper 30-150 over 7 m, Boom Bot 30-80.
 - Vex (Reyna), issue #37: Glare (Leer) shows where it goes and travels straight through walls; Feast and Vanish
-  (Devour, Dismiss) use the nearest soul orb as soon as you press the key.
+  (Devour, Dismiss) use the nearest soul orb, at any distance, as soon as you press the key.
 
 Second pass, every ability against its official wiki page (October 2026):
 
