@@ -190,22 +190,22 @@ const STYLES = {
   },
 
   // Orbital Vandal: thumb the latch and the spent orb pops up out of the ring, spinning, and is flicked away
-  // (shrinking out); the off-hand brings a fresh one up from below and presses it in until it seats.
+  // (shrinking out); the off-hand brings a fresh one down from above and presses it in until it seats.
   orb(t, P) {
     const o = P.orb;
     if (o) {
       if (t < 0.4) {
         const pop = ss(t, 0.14, 0.24), fly = ss(t, 0.24, 0.38);
-        o.position.x -= 0.05 * pop + 0.12 * fly;
-        o.position.y += 0.05 * pop + 0.08 * fly;
+        o.position.x -= 0.1 * fly;
+        o.position.y += 0.06 * pop + 0.1 * fly;
         o.position.z += 0.06 * fly;
         o.rotation.y += 9 * (pop + fly);
         o.scale.setScalar(1 - 0.9 * fly);
         o.visible = fly < 0.99;
       } else {
         const k = 1 - ss(t, 0.42, 0.66);
-        o.position.x -= 0.08 * k;
-        o.position.y -= 0.09 * k;
+        o.position.x -= 0.07 * k;
+        o.position.y += 0.08 * k;
         o.position.z += 0.03 * k;
         o.rotation.y -= 3 * k;
         o.visible = t > 0.42;
@@ -275,9 +275,9 @@ export const RELOAD_TRACK = {
   phantom: [[0, Z], [0.1, { rx: 1.35, rz: 0.5, py: 0.07 }], [0.5, { rx: 1.35, rz: 0.5, py: 0.07 }], [0.68, { rx: 1.2, rz: -0.15, py: 0.06 }], [0.85, { rx: 1.0, rz: -0.1, py: 0.05 }], [1, Z]],
   // Vandal: rolled left and tipped for the mag swap, then vertical for the rack.
   vandal: [[0, Z], [0.12, { rx: 0.8, rz: 0.8, ry: 0.15, py: 0.04 }], [0.45, { rx: 0.8, rz: 0.85, ry: 0.2, px: -0.02, py: 0.04 }], [0.62, { rx: 1.3, rz: 0.3, py: 0.07 }], [0.85, { rx: 1.3, rz: 0.25, py: 0.07 }], [1, Z]],
-  // Orbital Vandal: swung left and rolled so the reactor ring faces you, held there through the swap, a
-  // little nod as the old orb pops and as the new one seats.
-  vandalOrb: [[0, Z], [0.12, { rx: 0.2, ry: 0.65, rz: -0.25, px: -0.04, py: 0.03 }], [0.4, { rx: 0.25, ry: 0.7, rz: -0.3, px: -0.05, py: 0.035 }], [0.7, { rx: 0.2, ry: 0.7, rz: -0.3, px: -0.05, py: 0.03 }], [0.84, { rx: 0.35, ry: 0.2, rz: 0.1, py: 0.02 }], [1, Z]],
+  // Orbital Vandal: tipped up and rolled so the top of the gun, and the reactor ring on it, faces you through
+  // the swap; a little nod as the old orb pops and as the new one seats.
+  vandalOrb: [[0, Z], [0.12, { rx: 0.3, ry: 0.2, rz: 0.75, px: -0.03, py: 0.03 }], [0.4, { rx: 0.35, ry: 0.25, rz: 0.8, px: -0.04, py: 0.035 }], [0.7, { rx: 0.3, ry: 0.25, rz: 0.8, px: -0.04, py: 0.03 }], [0.84, { rx: 0.35, ry: 0.1, rz: 0.2, py: 0.02 }], [1, Z]],
   warden: [[0, Z], [0.12, { rx: 0.9, rz: 0.6, py: 0.05 }], [0.6, { rx: 0.9, rz: 0.6, py: 0.05 }], [0.75, { rx: 1.2, rz: 0.2, py: 0.06 }], [1, Z]],
   // Operator: bolt up, tipped muzzle-up to pull the mag, dropped low-left to seat the new one, bolt home.
   operator: [[0, Z], [0.12, { rx: 0.05, rz: 0.1 }], [0.3, { rx: 0.9, rz: -0.6, ry: -0.1, py: 0.04 }], [0.5, { rx: 0.4, rz: 0.9, ry: 0.5, px: -0.12, py: -0.08 }], [0.7, { rx: 0.3, rz: 0.6, ry: 0.4, px: -0.08, py: -0.05 }], [0.85, { rx: 0.05, rz: 0.1 }], [1, Z]],

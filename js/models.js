@@ -617,32 +617,32 @@ const DESIGNS = {
     return { muzzle: [0, 0.014, -0.615], sightY: 0.054 };
   },
 
-  // Orbital skin's Vandal: a heavier receiver split around a reactor ring (axis across the gun) that holds a
+  // Orbital skin's Vandal: a heavier receiver split around a reactor ring (open to the top) that holds a
   // glowing orb, part `orb`: the inspect floats it out and the reload pops it and seats a fresh one.
   vandalOrb(k) {
-    // Receiver, rear and front halves with the reactor bay between them (z -0.115 to -0.185).
+    // Receiver, rear and front halves with the reactor bay between them (z -0.115 to -0.185), a low cradle in it.
     k.prof([[0.06, -0.026], [0.06, 0.048], [-0.02, 0.054], [-0.115, 0.054], [-0.115, -0.026]], 0.058, 'body');
     k.prof([[-0.185, -0.026], [-0.185, 0.054], [-0.3, 0.05], [-0.32, 0.028], [-0.32, -0.026]], 0.058, 'body');
+    k.box(0.058, 0.056, 0.07, 'trim', 0, 0.002, -0.15);
     k.box(0.06, 0.004, 0.16, 'accent', 0, 0.002, -0.02);
     k.box(0.06, 0.004, 0.12, 'accent', 0, 0.002, -0.25);
-    k.box(0.04, 0.012, 0.09, 'trim', 0, -0.02, -0.15); // keel under the bay
-    // Top spine bridging the bay, gold clamps either side of the sight line.
-    k.box(0.034, 0.012, 0.36, 'trim', 0, 0.06, -0.13);
+    k.box(0.06, 0.004, 0.07, 'accent', 0, 0.002, -0.15);
+    // Top spine either side of the ring, gold clamps either side of the sight line.
+    k.box(0.034, 0.012, 0.15, 'trim', 0, 0.06, -0.03);
+    k.box(0.034, 0.012, 0.11, 'trim', 0, 0.06, -0.255);
     for (const z of [-0.035, -0.265]) for (const x of [-0.016, 0.016]) {
       k.box(0.008, 0.03, 0.014, 'metal', x, 0.074, z);
       k.box(0.008, 0.008, 0.024, 'metal', x, 0.09, z - 0.005);
     }
-    // Reactor ring: gunmetal housing, blue inner ring, gold latches top and bottom.
-    for (const x of [-0.025, 0.025]) {
-      k.tor(0.037, 0.009, 'trim', x, 0.014, -0.15, 0, PI / 2);
-      k.tor(0.028, 0.0035, 'glow', x * 1.22, 0.014, -0.15, 0, PI / 2);
-    }
-    k.box(0.062, 0.012, 0.02, 'metal', 0, 0.054, -0.15);
-    k.box(0.062, 0.012, 0.02, 'metal', 0, -0.026, -0.15);
-    k.part('orb', [0, 0.014, -0.15]);
-    k.ball(0.019, 'glow', 0, 0.014, -0.15);
-    k.tor(0.024, 0.0018, 'accent', 0, 0.014, -0.15, 0.6, 0.3);
-    k.tor(0.024, 0.0018, 'glow', 0, 0.014, -0.15, -0.5, 1.2);
+    // Reactor ring, open to the top of the cradle and tipped a little toward your side so you see into it:
+    // gunmetal housing, blue inner ring, gold latches either side.
+    k.tor(0.036, 0.009, 'trim', 0, 0.042, -0.15, PI / 2, 0.4);
+    k.tor(0.027, 0.0035, 'glow', -0.003, 0.05, -0.15, PI / 2, 0.4);
+    for (const x of [-0.044, 0.044]) k.box(0.01, 0.02, 0.022, 'metal', x, 0.04, -0.15);
+    k.part('orb', [0, 0.052, -0.15]);
+    k.ball(0.019, 'glow', 0, 0.052, -0.15);
+    k.tor(0.024, 0.0018, 'accent', 0, 0.052, -0.15, 0.6, 0.3);
+    k.tor(0.024, 0.0018, 'glow', 0, 0.052, -0.15, -0.5, 1.2);
     k.part(null);
     // Handguard: chunky shroud with neon vents and a gold name plate on each side.
     k.prof([[-0.32, -0.026], [-0.32, 0.05], [-0.49, 0.04], [-0.5, 0.018], [-0.49, -0.014]], 0.054, 'trim');
@@ -842,7 +842,7 @@ function offHands(g, parts, mats) {
     add(parts.mag, c.x - o.x - 0.01, b.min.y - o.y - 0.012, c.z - o.z + 0.01, [-0.06, -0.12, 0.13]);
   }
   if (parts.shell) add(parts.shell, 0.014, -0.016, 0.04, [0.06, -0.12, 0.16]);
-  if (parts.orb) add(parts.orb, -0.012, -0.036, 0.012, [-0.06, -0.12, 0.13]); // cups the fresh orb from below
+  if (parts.orb) add(parts.orb, -0.03, 0.022, 0.012, [-0.07, 0.04, 0.15]); // presses the fresh orb in from above-left
   return hands;
 }
 

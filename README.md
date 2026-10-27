@@ -106,7 +106,7 @@ presets, and other online players see your skins.
 **Model skins** replace the gun itself, not just its paint: a skin's `models` maps a weapon to its own design in
 `js/models.js`, which brings its own inspect (`MODEL_INSPECTS` in `js/melee.js`) and reload (keyed by the design in
 `js/reloadanim.js`), and the skin menu only offers it on those weapons. The first is **Orbital** (Vandal): a
-purple and gold receiver built around a reactor ring holding a glowing orb. Inspect floats the orb out of the
+purple and gold receiver with a reactor ring on top holding a glowing orb. Inspect floats the orb out of the
 ring while the gun is turned side-on in front of you; reload pops the spent orb out and seats a fresh one.
 
 **Melee types** (Skins → Melee): Tactical Knife, Hatchet, Katana, Karambit, Balisong, Kunai and Arc Blade.
