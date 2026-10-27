@@ -15,13 +15,13 @@ const TURRET = { id: 'sentry', name: 'Sentry', cat: 'Ability', dmg: [[50, 0, 0, 
 const BOOMER = { id: 'boomer', name: 'Boomer', cat: 'Ability', dmg: [[50, 0, 0, 0]] };
 // Utility enemies can shoot down, as in Valorant: health, and a hit sphere (centre height above pos, radius).
 export const SHOOTABLE = {
-  turret: { hp: 125, y: 0.5, r: 0.45 }, alarm: { hp: 20, y: 0.25, r: 0.3 }, swarm: { hp: 20, y: 0.1, r: 0.25 },
-  cam: { hp: 15, y: 0, r: 0.22 }, wire: { hp: 20, y: 0, r: 0.22 }, boombot: { hp: 100, y: 0.25, r: 0.35 },
-  tiger: { hp: 100, y: 0.5, r: 0.5 }, decoy: { hp: 1, y: 1, r: 0.45 }, zknife: { hp: 1, y: 0, r: 0.22 },
-  prowler: { hp: 1, y: 0.4, r: 0.35 }, haunt: { hp: 1, y: 0.3, r: 0.3 }, owl: { hp: 1, y: 0, r: 0.3 },
+  turret: { hp: 100, y: 0.5, r: 0.45 }, alarm: { hp: 20, y: 0.25, r: 0.3 }, swarm: { hp: 20, y: 0.1, r: 0.25 },
+  cam: { hp: 15, y: 0, r: 0.22 }, wire: { hp: 20, y: 0, r: 0.22 }, boombot: { hp: 60, y: 0.25, r: 0.35 },
+  tiger: { hp: 80, y: 0.5, r: 0.5 }, decoy: { hp: 1, y: 1, r: 0.45 }, zknife: { hp: 1, y: 0, r: 0.22 },
+  prowler: { hp: 60, y: 0.4, r: 0.35 }, haunt: { hp: 1, y: 0.3, r: 0.3 }, owl: { hp: 100, y: 0, r: 0.3 },
   gate: { hp: 1, y: 0.15, r: 0.3 }, shade: { hp: 1, y: 1, r: 0.5 }, // Riftwalk's rift, Nightwalk's shade
-  lockdown: { hp: 150, y: 0.5, r: 0.5 }, // the device, while it charges
-  cove: { hp: 500 }, // Lagoon's water dome: stops every bullet until it breaks
+  lockdown: { hp: 200, y: 0.5, r: 0.5 }, // the device, while it charges
+  cove: { hp: 680 }, // Lagoon's water dome: stops every bullet until it breaks
 };
 // The tuning a map's "rules" and "physics" can change, as shipped; every match starts from these.
 const BASE_RULES = { rounds: { ...ROUND }, economy: { ...ECON, loss: [...ECON.loss] }, deathmatch: { ...MATCH }, physics: { gravity: PLAYER.gravity, jumpVelocity: PLAYER.jumpVelocity } };
@@ -312,14 +312,15 @@ export class Game {
     if (type === 'hinder') c.st.hinderUntil = now + dur;
   }
 
-  // Area damage with falloff from max (centre) to min (edge); needs a clear line to the target's body.
-  explode(owner, pos, r, max, min, def, color, hitSelf = false, throughWalls = false) {
+  // Area damage: max within `inner` of the centre, falling off to min at the edge (r); needs a clear line to
+  // the target's body.
+  explode(owner, pos, r, max, min, def, color, hitSelf = false, throughWalls = false, inner = 0) {
     for (const c of this.combatants) {
       if (!c.alive || (!this.isEnemy(owner, c) && !(hitSelf && c === owner))) continue;
       const body = [c.pos[0], c.pos[1] + 1, c.pos[2]];
       const d = Math.hypot(body[0] - pos[0], body[1] - pos[1], body[2] - pos[2]);
       if (d > r || (!throughWalls && !this.world.lineOfSight(pos, body))) continue;
-      this.damage(c, owner, Math.round(max - (max - min) * d / r), { part: 'body', def, dist: d, point: body, wallbang: false });
+      this.damage(c, owner, Math.round(d <= inner ? max : max - (max - min) * (d - inner) / (r - inner)), { part: 'body', def, dist: d, point: body, wallbang: false });
     }
     this.emit('pulse', { pos, r, type: 'blast', color, owner });
   }
@@ -440,13 +441,14 @@ export class Game {
       if (!c.alive || !this.isEnemy(owner, c)) continue;
       const p = [c.pos[0], c.pos[1] + 1.1, c.pos[2]];
       const t = (p[0] - o[0]) * d[0] + (p[1] - o[1]) * d[1] + (p[2] - o[2]) * d[2];
-      if (t < 0) continue;
+      if (t < 0 || t > (B.range || Infinity)) continue;
       const dist = Math.hypot(o[0] + d[0] * t - p[0], (o[1] + d[1] * t - p[1]) * 0.6, o[2] + d[2] * t - p[2]);
       if (dist > B.width) continue;
-      if (this.affectable(c)) c.st.revealUntil = now + 2;
+      if (this.affectable(c)) c.st.revealUntil = now + (B.reveal ?? 2);
       this.damage(c, owner, B.dmg, { part: 'body', def: B, dist: t, point: p, wallbang: true });
     }
-    this.emit('beam', { who: owner, from: o, to: [o[0] + d[0] * 140, o[1] + d[1] * 140, o[2] + d[2] * 140] });
+    const len = B.range || 140;
+    this.emit('beam', { who: owner, from: o, to: [o[0] + d[0] * len, o[1] + d[1] * len, o[2] + d[2] * len] });
   }
 
   // Free floor for a player at pos (pos is the feet).
@@ -511,8 +513,8 @@ export class Game {
             d.removed = true;
             this.emit('pulse', { pos: [d.pos[0], d.pos[1] + 0.5, d.pos[2]], r: 2, type: 'vuln', color: 0x4fd1a5, owner: d.owner });
           } else {
-            d.pos[0] += dx / dist * 6 * DT;
-            d.pos[2] += dz / dist * 6 * DT;
+            d.pos[0] += dx / dist * 9 * DT; // 50% faster since patch 13.00
+            d.pos[2] += dz / dist * 9 * DT;
             const f = this.floorAt(d.pos[0], d.pos[2], d.pos[1] + 0.6); // up steps, down drops
             if (f && f[1] - d.pos[1] > -3) d.pos[1] = f[1];
           }
@@ -629,7 +631,7 @@ export class Game {
             const e = c.eye(), body = [d.pos[0], d.pos[1] + 1, d.pos[2]], dx = body[0] - e[0], dy = body[1] - e[1], dz = body[2] - e[2], dist = Math.hypot(dx, dy, dz);
             if (dist > 25 || !this.world.lineOfSight(e, body)) continue;
             const f = dirOf(c.yaw, c.pitch);
-            if ((f[0] * dx + f[1] * dy + f[2] * dz) / dist > 0.6) { d.removed = true; this.flash(d.owner, body, 1.75); break; }
+            if ((f[0] * dx + f[1] * dy + f[2] * dz) / dist > 0.6) { d.removed = true; this.flash(d.owner, body, 2); break; }
           }
           if (d.removed) continue;
         }
@@ -640,7 +642,7 @@ export class Game {
             d.removed = true;
             d.leapt = true;
             const p = near ? [near.pos[0], near.pos[1] + 0.8, near.pos[2]] : [d.pos[0] + d.dir[0] * 1.5, d.pos[1] + 0.8, d.pos[2] + d.dir[2] * 1.5];
-            this.pulse(d.owner, p, 4, 'stun', 3, 0x9be15d);
+            this.pulse(d.owner, p, 4, 'stun', 4, 0x9be15d);
             this.explode(d.owner, p, 4, 30, 30, { id: 'stalker', name: 'Stalker', cat: 'Ability', dmg: [[50, 0, 0, 0]] }, 0x9be15d, false, true);
             continue;
           }
@@ -674,7 +676,7 @@ export class Game {
         }
         const np = [d.pos[0] + d.dir[0] * d.speed * DT, d.pos[1] + d.dir[1] * d.speed * DT, d.pos[2] + d.dir[2] * d.speed * DT];
         if (this.world.lineOfSight(d.pos, np)) d.pos = np;
-        if (d.kind === 'hawk' && now + DT >= d.until) { d.removed = true; this.flash(d.owner, [...d.pos], 2.0); } // bursts on its own
+        if (d.kind === 'hawk' && now + DT >= d.until) { d.removed = true; this.flash(d.owner, [...d.pos], 2.25); } // bursts on its own, after its full 2 s flight
       } else if (d.kind === 'seeker') {
         const c = d.target;
         if (!c.alive) { d.removed = true; continue; }
@@ -715,7 +717,7 @@ export class Game {
         }
       } else if (d.kind === 'turret') {
         if (now < d.next) continue;
-        d.next = now + 0.25;
+        d.next = now + 0.25 / 1.5; // fire rate +50% (13.00)
         const head = [d.pos[0], d.pos[1] + 0.75, d.pos[2]];
         let best = null, bestD = 40;
         for (const c of enemiesOf(d)) {

@@ -14,7 +14,7 @@ import { buyPhaseAllows } from './abilities.js';
 
 const R = {
   zephyr: { x: 'ultGun' },
-  cinder: { c: 'wall', q: 'flash', e: 'molly', x: 'ultSelf' },
+  cinder: { c: 'wall', q: 'molly', e: 'flash', x: 'ultSelf' },
   umbra: { e: 'smoke', q: 'flash' },
   hawke: { q: 'molly', e: 'recon', x: 'ultGun' },
   bastion: { c: 'molly', q: 'trap', e: 'trap', x: 'ultPlace' },
@@ -31,7 +31,7 @@ const R = {
   solace: { c: 'wall', q: 'molly', e: 'allyHeal', x: 'revive' },
   stella: { x: 'ultMap' },
   regent: { c: 'trap', x: 'ultGun' },
-  marina: { c: 'wall', q: 'smoke', e: 'wall', x: 'ultFight' },
+  marina: { c: 'wall', q: 'wall', e: 'smoke', x: 'ultFight' },
   vanta: { c: 'wall', q: 'flash', e: 'ultSelf', x: 'ultFight' },
   ballast: { q: 'flash', e: 'mapDamage', x: 'ultMap' },
   override: { c: 'molly', q: 'flash', e: 'recon', x: 'ultSelf' },
