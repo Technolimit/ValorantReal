@@ -111,6 +111,30 @@ export class Bot {
   }
 
   think(now, dt) {
+    this.decide(now, dt);
+    // Standing in enemy fire, acid, a Hive, an orbital strike or a Clampdown about to go off: step out of it,
+    // still shooting if there's a fight on. (Not while defusing against the clock.)
+    const hz = this.mode === 'fight' && !this.goal?.commit && !this.me.kit?.busy() && this.hazard(now);
+    if (hz) {
+      const me = this.me;
+      this.moveDir(me.pos[0] - hz.pos[0] || 0.01, me.pos[2] - hz.pos[2]);
+      me.input.walk = false; me.input.crouch = false;
+    }
+  }
+
+  // The enemy area-damage zone this bot is standing in, if any. Thin ones (a fire wall, a gas wall) are just
+  // crossed: stepping out of those sideways would only keep a bot bouncing off them.
+  hazard(now) {
+    const me = this.me, g = this.game;
+    for (const z of g.zones) {
+      if (now >= z.until || z.gas || z.r < 1.5 || !g.isEnemy(z.owner, me)) continue;
+      if (!(z.kind === 'fire' && z.dps > 0) && z.kind !== 'lockdown') continue;
+      if (Math.hypot(me.pos[0] - z.pos[0], me.pos[2] - z.pos[2]) < z.r + 0.6 && Math.abs(me.pos[1] - z.pos[1]) < 3) return z;
+    }
+    return null;
+  }
+
+  decide(now, dt) {
     const me = this.me, inp = me.input;
     inp.fwd = 0; inp.side = 0; inp.walk = false; inp.fire = false; inp.alt = false; inp.use = false;
     inp.crouch = this.crouchSpray;
@@ -137,7 +161,13 @@ export class Bot {
     this.crouchSpray = false;
     this.burstLeft = 0;
 
-    if (me.gun.def.mag && me.gun.mag < me.gun.def.mag * 0.5 && !me.gun.reloading) inp.reload = true;
+    // Reload when it's safe: straight after a fight only if nearly empty, otherwise once nobody's been seen for
+    // a moment. A magazine reload can't be cut short, so starting one with an enemy around is how you die.
+    const gun = me.gun, full = gun.def.mag, quiet = now - this.lastSeen > 2.5;
+    if (full && !gun.reloading && gun.reserve > 0 && (gun.mag < full * 0.25 || (quiet && gun.mag < full * 0.6))) inp.reload = true;
+    // Switched to the sidearm mid-fight: back to the primary once it's over.
+    const prim = me.inv.primary;
+    if (quiet && me.slot === 'secondary' && prim && (prim.mag > 0 || prim.reserve > 0)) me.equip('primary', now);
 
     // Round mode: the team plan gives each bot a goal (hold a spot, stage, entry, plant, defuse, pick up).
     // Active play: after a contact (or right after throwing a flash) push the spot instead of waiting on
@@ -253,6 +283,13 @@ export class Bot {
       return;
     }
     if (gun.mag === 0 && gun.reserve === 0 && me.inv.secondary && me.slot !== 'secondary') me.equip('secondary', now);
+    // Caught mid-reload up close: drawing the sidearm is quicker than finishing the reload. Otherwise, while the
+    // gun can't fire, keep moving instead of standing still in the open.
+    if (gun.reloading && !def.perRound) {
+      if (me.slot === 'primary' && gun.reloadEnd - now > 0.9 && dist < 20 && me.inv.secondary?.mag > 0) { me.equip('secondary', now); return; }
+      this.strafe(now);
+      return;
+    }
 
     // Error between where the bullets will go and the aim point, against the size of what we're aiming at.
     const aimYaw = me.yaw + gun.offY, aimPitch = me.pitch + gun.offP;

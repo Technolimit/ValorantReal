@@ -437,6 +437,34 @@ const checks = [
     const vanished = k.orbs.length === 0 && p.st.intangibleUntil > g.time;
     return { pass: !!placed && beyondWall && fed && healing && vanished, placed: !!placed, beyondWall, nearestFirst: fed, healing, vanished };
   }],
+  ['Bots step out of an enemy molly, draw the sidearm when caught reloading up close, and save together when that buys rifles next round', async () => {
+    let g = await __start({ botMode: 'fight' });
+    let b = g.bots[0], p = g.player;
+    if (!__place(g, b, 10)) return { error: 'no open ground' };
+    b.hp = p.hp = 1e6; p.pos = [0, -50, 0]; p.prevPos = [...p.pos]; // nobody to fight
+    const z = g.addZone({ kind: 'fire', owner: p, pos: [...b.pos], r: 4.5, life: 7, dps: 60, heal: 0, def: { id: 'test', name: 'Test', cat: 'Ability', dmg: [[50, 0, 0, 0]] } }, g.time);
+    __tick(g, 2);
+    const leftMolly = Math.hypot(b.pos[0] - z.pos[0], b.pos[2] - z.pos[2]) > z.r;
+    g = await __start({ botMode: 'fight' });
+    b = g.bots[0]; p = g.player;
+    if (!__place(g, b, 10)) return { error: 'no open ground' };
+    b.hp = p.hp = 1e6;
+    const at = __ahead(b, 8); p.pos = [at[0], b.pos[1], at[2]]; p.prevPos = [...p.pos]; p.vel = [0, 0, 0];
+    b.equip('primary', g.time, true); __tick(g, 1.2);
+    b.gun.mag = 0; // empties it: the reload starts on its own
+    __tick(g, 1);
+    const drewSidearm = b.slot === 'secondary';
+    g = await __start({ mode: 'rounds', map: 'divide' });
+    const m = g.mode; m.round = 3; m.lossStreak = [0, 1];
+    for (const c of g.combatants) { c.credits = c.team === 1 ? 2000 : 4200; c.inv.primary = null; }
+    const calls = [m.teamBuyCall(0), m.teamBuyCall(1)];
+    m.buyCall = calls;
+    const saver = g.bots.find(c => c.team === 1);
+    m.boughtThisRound = new Map(); m.phase = 'buy';
+    m.botBuy(saver);
+    const saved = !saver.inv.primary && saver.credits >= 1500;
+    return { pass: leftMolly && drewSidearm && calls[0] === 'full' && calls[1] === 'eco' && saved, leftMolly, drewSidearm, calls, saverCredits: saver.credits };
+  }],
   ['Buy phase: any ability can be held; set-up utility (camera, Sentry, Anchor) can be placed', async () => {
     const press = (g, c, key, aim) => { c.input['ab' + key] = true; g.tick(); __tick(g, 0.35); if (aim) aim(); c.input.firePressed = true; g.tick(); __tick(g, 0.2); };
     const out = {};
