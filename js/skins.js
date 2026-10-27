@@ -5,6 +5,8 @@
 //   glow   emissive accent lines (intensity 0 = no glow)
 // A slot may name a procedural texture (`tex`) drawn at load time, see TEXTURES below, tinted with
 // `texColor` (the pattern) and `texBase` (the background) where the texture supports it.
+// Model skins also replace the gun itself: `models` maps a weapon id to a design in models.js (which brings
+// its own inspect and reload), and the skin is only offered on those weapons. They may add an `accent` glow.
 // Players can also design their own skins in the skin menu; those live in localStorage (CUSTOM_KEY) and are
 // merged into SKINS at load, so everything below treats preset and custom skins the same way.
 
@@ -128,6 +130,16 @@ export const SKINS = {
     metal: { color: 0x1e2227, rough: 0.25, metal: 0.9 },
     grip: { color: 0x15171a, rough: 0.95, metal: 0 },
     glow: { color: 0x3fffb0, intensity: 1.8 },
+  },
+  orbital: {
+    name: 'Orbital', tier: 'Ultra', blurb: 'A reactor ring at its heart holds a live orb. Inspect it; reload pops it out for a fresh one.',
+    models: { vandal: 'vandalOrb' },
+    body: { color: 0x3a2152, rough: 0.32, metal: 0.65 },
+    trim: { color: 0x2a2b33, rough: 0.4, metal: 0.75 },
+    metal: { color: 0xd4a640, rough: 0.28, metal: 1 },
+    grip: { color: 0x17161d, rough: 0.9, metal: 0 },
+    glow: { color: 0x3fb4ff, intensity: 2.6 },
+    accent: { color: 0xb44dff, intensity: 2.2 },
   },
 };
 
@@ -302,7 +314,11 @@ export const PATTERNS = {
 const PRESETS = Object.keys(SKINS);
 export const SKIN_ORDER = [...PRESETS];
 
-export const skinFor = (settings, weaponId) => SKINS[settings.skins?.[weaponId]] ? settings.skins[weaponId] : 'standard';
+// Whether a skin can go on a weapon (model skins only fit the weapons they have a model for).
+export const skinFits = (id, weaponId) => !!SKINS[id] && (!SKINS[id].models || !!SKINS[id].models[weaponId]);
+export const skinFor = (settings, weaponId) => skinFits(settings.skins?.[weaponId], weaponId) ? settings.skins[weaponId] : 'standard';
+// The model design a weapon is drawn with in a skin: the skin's own model, or the weapon's.
+export const designFor = (skinId, weaponId) => SKINS[skinId]?.models?.[weaponId] || weaponId;
 export const isCustom = (id) => id.startsWith('custom-');
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');

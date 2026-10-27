@@ -7,9 +7,9 @@ import { loadSettings, saveSettings, DEFAULTS } from './settings.js';
 import { ACTIONS, FIXED, DEFAULT_BINDS, actionFor, rebind, keyLabel } from './keybinds.js';
 import { DT, YAW_PER_COUNT } from './config.js';
 import { WEAPONS, BUY_GROUPS } from './weapons.js';
-import { SKINS, SKIN_ORDER, skinFor, swatch, isCustom, saveCustomSkin, deleteCustomSkin, skinCode, parseSkinCode, sanitizeSkin, registerSkin, PATTERNS } from './skins.js';
+import { SKINS, SKIN_ORDER, skinFor, skinFits, designFor, swatch, isCustom, saveCustomSkin, deleteCustomSkin, skinCode, parseSkinCode, sanitizeSkin, registerSkin, PATTERNS } from './skins.js';
 import { GunPreview } from './models.js';
-import { MELEE, MELEE_ORDER, isMelee, meleeId } from './melee.js';
+import { MELEE, MELEE_ORDER, MODEL_INSPECTS, isMelee, meleeId } from './melee.js';
 import { RELOAD_STYLE, RELOAD_SOUNDS } from './reloadanim.js';
 import { loadGameSounds } from './customsounds.js';
 import { AGENTS, AGENT_ORDER, Kit } from './abilities.js';
@@ -85,7 +85,7 @@ game.on('hit', ({ attacker, target, part, killed, dot }) => {
 });
 // The HUD's kill listener runs first (it was hooked when the HUD was built), so hud.streak already counts this kill.
 game.on('kill', ({ killer, victim }) => { if (isPlayer(killer) && !isPlayer(victim) && game.isEnemy(killer, victim)) sound.killStreak(hud.streak); });
-game.on('reload', ({ who, gun }) => { if (isPlayer(who)) sound.reload(gun.reloadDur, RELOAD_SOUNDS[RELOAD_STYLE[gun.def.id]], gun.def.id); });
+game.on('reload', ({ who, gun }) => { if (isPlayer(who)) sound.reload(gun.reloadDur, RELOAD_SOUNDS[RELOAD_STYLE[designFor(skinFor(settings, gun.def.id), gun.def.id)] || RELOAD_STYLE[gun.def.id]], gun.def.id); });
 game.on('reloadRound', ({ who }) => { if (isPlayer(who)) { sound.click(0, 0.3); sound.thunk(0.03); } });
 game.on('dry', ({ who }) => { if (isPlayer(who)) sound.click(0, 0.3); });
 game.on('equip', ({ who, gun }) => { if (isPlayer(who)) sound.equip(gun?.def?.id); });
@@ -595,14 +595,12 @@ function selectSkinWeapon(id) {
   // Picking a melee type in the menu equips it (it's what shows in your knife slot).
   if (isMelee(id) && meleeId(settings.melee) !== id) { settings.melee = id; saveSettings(settings); skinWeapon = id; buildSkinWeapons(); }
   skinWeapon = id;
-  inspectIdx = 0;
-  $('skin-inspect').hidden = !isMelee(id);
-  $('skin-inspect').textContent = 'Play inspect';
   for (const b of $('skin-weapons').querySelectorAll('button')) b.classList.toggle('sel', b.dataset.id === id);
   const grid = $('skin-grid');
   grid.innerHTML = '';
   const cur = skinFor(settings, id);
   for (const sid of SKIN_ORDER) {
+    if (!skinFits(sid, id)) continue; // model skins only show on the weapons they have a model for
     const s = SKINS[sid];
     const card = document.createElement('button');
     card.className = 'skin-card' + (sid === cur ? ' sel' : '');
@@ -618,6 +616,9 @@ function selectSkinWeapon(id) {
 
 function showSkin(id, sid) {
   preview.show(id, sid);
+  if (shownSkin !== sid) { inspectIdx = 0; $('skin-inspect').textContent = 'Play inspect'; }
+  shownSkin = sid;
+  $('skin-inspect').hidden = !previewInspects();
   $('skin-title').textContent = `${SKINS[sid].name} ${weaponName(id)}`;
   $('skin-sub').textContent = isMelee(id) && sid === 'standard' ? MELEE[id].blurb : SKINS[sid].blurb;
 }
@@ -635,7 +636,7 @@ $('pause-agent').onclick = () => openAgents(true);
 $('skins-back').onclick = closeSkins;
 $('skin-all').onclick = () => {
   const sid = skinFor(settings, skinWeapon);
-  for (const id of [...Object.keys(WEAPONS), ...MELEE_ORDER]) { if (sid === 'standard') delete settings.skins[id]; else settings.skins[id] = sid; }
+  for (const id of [...Object.keys(WEAPONS), ...MELEE_ORDER]) { if (!skinFits(sid, id)) continue; if (sid === 'standard') delete settings.skins[id]; else settings.skins[id] = sid; }
   saveSettings(settings);
   buildSkinWeapons();
   selectSkinWeapon(skinWeapon);
@@ -647,10 +648,11 @@ $('skin-reset').onclick = () => {
   selectSkinWeapon(skinWeapon);
 };
 addEventListener('keydown', (e) => { if (e.code === 'Escape' && !$('skins').hidden) closeSkins(); });
-// Melee types: play their inspects on the showcase, one after another.
-let inspectIdx = 0;
+// Melee types and model skins: play their inspects on the showcase, one after another.
+let inspectIdx = 0, shownSkin = null;
+const previewInspects = () => MELEE[skinWeapon]?.inspects || MODEL_INSPECTS[designFor(shownSkin, skinWeapon)];
 $('skin-inspect').onclick = () => {
-  const list = MELEE[skinWeapon]?.inspects;
+  const list = previewInspects();
   if (!list) return;
   const ins = list[inspectIdx++ % list.length];
   preview.inspect(ins);
