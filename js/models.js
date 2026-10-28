@@ -205,6 +205,14 @@ function star(k, x, y, z, r, slot, hub = null, n = 5, t = 0.0035) {
   if (hub) k.cyl(r * 0.3, 0.007, hub, x, y, z, 10, 0, 0, PI / 2);
 }
 
+// Silk cord wrap (Oathblade): a row of diamonds in `slot` down a handle, from (y0, z0) to (y1, z1).
+function wrap(k, n, y0, z0, y1, z1, w, d, slot, tilt = 0) {
+  for (let i = 0; i < n; i++) {
+    const f = n === 1 ? 0.5 : i / (n - 1);
+    k.box(w, d, d, slot, 0, y0 + (y1 - y0) * f, z0 + (z1 - z0) * f, PI / 4 + tilt);
+  }
+}
+
 // ---------- weapon designs ----------
 // Each returns { muzzle: [x, y, z], sightY } and adds its parts to the kit.
 const DESIGNS = {
@@ -312,6 +320,31 @@ const DESIGNS = {
     k.cyl(0.016, 0.018, 'trim', 0, 0, 0.094, 8);
     k.tor(0.0163, 0.0016, 'glow', 0, 0, 0.094);
     return { muzzle: [0, 0, -0.25], sightY: 0 };
+  },
+
+  // Oathblade Tanto: a straight blade with an angled chisel tip and a lit edge (part `edge`, pivoting at the
+  // gold collar so it can light from the collar to the tip), an oval guard, a crimson cord-wrapped handle, a
+  // gold pommel cap and a silk cord hanging from it (part `cord`).
+  tanto(k) {
+    k.prof([[-0.035, 0.013], [-0.215, 0.013], [-0.245, 0.006], [-0.228, -0.012], [-0.035, -0.012]], 0.0062, 'metal', 0, 0.001);
+    k.box(0.0064, 0.0025, 0.18, 'body', 0, 0.0118, -0.125);
+    k.part('edge', [0, -0.011, -0.035], 'w');
+    k.box(0.0068, 0.0026, 0.19, 'glow', 0, -0.0112, -0.13);
+    k.prof([[-0.222, -0.012], [-0.243, 0.004], [-0.239, 0.006], [-0.218, -0.009]], 0.0068, 'glow', 0, 0.0003);
+    k.part('w');
+    k.box(0.011, 0.03, 0.014, 'trim', 0, 0, -0.03);
+    k.cyl(0.026, 0.007, 'body', 0, 0, -0.02, 10);
+    k.tor(0.026, 0.0015, 'trim', 0, 0, -0.02);
+    k.box(0.024, 0.026, 0.11, 'body', 0, 0, 0.04);
+    wrap(k, 7, 0, -0.008, 0, 0.088, 0.026, 0.012, 'grip');
+    k.box(0.027, 0.029, 0.016, 'trim', 0, 0, 0.1);
+    k.ball(0.004, 'accent', 0, 0, 0.11);
+    k.part('cord', [0, -0.006, 0.105], 'w');
+    k.box(0.004, 0.004, 0.05, 'grip', 0, -0.0255, 0.1205, 0.9);
+    k.box(0.004, 0.004, 0.045, 'grip', 0.004, -0.026, 0.115, 1.1);
+    k.ball(0.006, 'accent', 0.002, -0.046, 0.136);
+    k.part('w');
+    return { muzzle: [0, 0, -0.24], sightY: 0 };
   },
 
   // Finale: a shoulder-fired launcher, painted like the rest of Blitz's gear. The loaded rocket's warhead
@@ -806,6 +839,98 @@ const DESIGNS = {
     return { muzzle: [0, 0.026, -0.435], sightY: 0.069 };
   },
 
+  // ---- Oathblade collection (model skins, see skins.js): black lacquer, gold leaf, folded steel, a lit edge ----
+  // Vandal: the handguard is a blade, a curved steel spine running from a gold guard ring to a tip past the
+  // muzzle, its lit edge underneath (part `edge`, pivoting at the guard so it lights guard-to-tip). The grip is
+  // cord-wrapped. A hidden off-hand (part `swipe`) runs along the spine to relight the edge during the reload.
+  vandalOath(k) {
+    k.prof([[0.06, -0.022], [0.06, 0.044], [-0.03, 0.05], [-0.25, 0.046], [-0.27, 0.024], [-0.27, -0.022]], 0.052, 'body');
+    for (const y of [0.03, -0.006]) k.box(0.0532, 0.0022, 0.3, 'trim', 0, y, -0.1);
+    k.box(0.0534, 0.004, 0.1, 'accent', 0, 0.012, -0.2);
+    // Guard ring between the receiver and the blade.
+    k.cyl(0.046, 0.008, 'body', 0, 0.012, -0.275, 16);
+    k.tor(0.046, 0.0025, 'trim', 0, 0.012, -0.275);
+    for (const a of [0.8, 2.35, 3.9, 5.5]) k.box(0.008, 0.008, 0.009, 'trim', Math.cos(a) * 0.034, 0.012 + Math.sin(a) * 0.034, -0.275, 0, 0, a);
+    // The blade: a curved steel spine over the barrel, gold collar at its root, black back strap.
+    k.prof([[-0.28, 0.006], [-0.28, 0.04], [-0.45, 0.038], [-0.6, 0.032], [-0.66, 0.022], [-0.69, 0.006], [-0.62, 0.004], [-0.45, 0.008]], 0.014, 'metal', 0, 0.0015);
+    k.box(0.0145, 0.004, 0.32, 'body', 0, 0.038, -0.44);
+    k.box(0.03, 0.04, 0.02, 'trim', 0, 0.024, -0.29);
+    k.part('edge', [0, 0.006, -0.28]);
+    k.box(0.0148, 0.003, 0.4, 'glow', 0, 0.0055, -0.48);
+    k.box(0.0148, 0.003, 0.04, 'glow', 0, 0.013, -0.68, 0.45);
+    k.part(null);
+    // Barrel and handguard under the blade.
+    k.prof([[-0.28, -0.022], [-0.28, 0.006], [-0.46, 0.006], [-0.47, -0.012]], 0.04, 'body');
+    k.teeth(4, -0.3, -0.44, 0.042, 0.004, 0.006, 'accent', 0, -0.008);
+    k.cyl(0.0105, 0.16, 'metal', 0, -0.006, -0.54);
+    k.cyl(0.016, 0.03, 'body', 0, -0.006, -0.6, 12);
+    k.tor(0.012, 0.0028, 'glow', 0, -0.006, -0.616);
+    k.part('mag');
+    k.box(0.028, 0.06, 0.04, 'body', 0, -0.05, -0.115, 0.28);
+    k.box(0.028, 0.06, 0.04, 'body', 0, -0.103, -0.088, 0.55);
+    k.box(0.0285, 0.003, 0.03, 'trim', 0, -0.075, -0.104, 0.4);
+    k.box(0.032, 0.008, 0.046, 'trim', 0, -0.13, -0.07, 0.55);
+    k.part(null);
+    charger(k, -0.04, 0.03, -0.031);
+    k.part('swipe', [0, 0.05, -0.3]);
+    k.part(null);
+    // Cord-wrapped grip with a gold cap; lacquered stock with gold hairlines and a crimson crest.
+    k.box(0.032, 0.1, 0.042, 'grip', 0, -0.06, 0.03, -0.3);
+    wrap(k, 4, -0.025, 0.018, -0.095, 0.04, 0.034, 0.016, 'trim', -0.3);
+    k.box(0.036, 0.01, 0.048, 'trim', 0, -0.11, 0.05, -0.3);
+    k.box(0.024, 0.005, 0.05, 'trim', 0, -0.028, -0.03);
+    k.prof([[0.06, 0.04], [0.29, 0.03], [0.3, -0.075], [0.26, -0.08], [0.12, -0.022], [0.06, -0.022]], 0.04, 'body');
+    k.box(0.041, 0.002, 0.2, 'trim', 0, 0.03, 0.17, 0.04);
+    k.box(0.041, 0.002, 0.15, 'trim', 0, -0.03, 0.2, -0.36);
+    k.ball(0.009, 'accent', 0.02, 0.0, 0.22);
+    k.ball(0.009, 'accent', -0.02, 0.0, 0.22);
+    k.box(0.046, 0.11, 0.02, 'grip', 0, -0.022, 0.3);
+    k.box(0.047, 0.012, 0.022, 'trim', 0, 0.03, 0.3);
+    irons(k, -0.25, -0.12, 0.05);
+    return { muzzle: [0, -0.006, -0.62], sightY: 0.06 };
+  },
+
+  // Sheriff: lacquered frame, a short blade riding on top of the barrel (lit edge, part `edge`), a gold guard
+  // ring at the front of the frame, a drum with six crimson chambers (part `cyl`), a cord-wrapped grip with a
+  // gold pommel cap. The whole gun is part `w` (pivots on the trigger guard) so inspects can roll it.
+  sheriffOath(k) {
+    k.part('w', [0, -0.02, 0.008]);
+    k.prof([[0.045, 0.0], [0.045, 0.05], [0.02, 0.058], [-0.04, 0.054], [-0.04, -0.01], [0.03, -0.02]], 0.03, 'body');
+    k.box(0.0305, 0.002, 0.08, 'trim', 0, 0.04, 0.0);
+    k.cyl(0.011, 0.2, 'metal', 0, 0.022, -0.14, 10);
+    k.box(0.02, 0.014, 0.19, 'body', 0, 0.0, -0.13);
+    k.box(0.0205, 0.002, 0.18, 'trim', 0, -0.006, -0.13);
+    k.cyl(0.015, 0.02, 'body', 0, 0.022, -0.235, 10);
+    k.tor(0.0105, 0.0024, 'glow', 0, 0.022, -0.246);
+    // Guard ring at the front of the frame.
+    k.cyl(0.04, 0.006, 'body', 0, 0.022, -0.045, 14);
+    k.tor(0.04, 0.0022, 'trim', 0, 0.022, -0.045);
+    // The blade on top: steel spine with a chisel tip, its edge lit along the barrel side.
+    k.prof([[-0.05, 0.034], [-0.05, 0.06], [-0.2, 0.056], [-0.255, 0.048], [-0.235, 0.034]], 0.009, 'metal', 0, 0.001);
+    k.box(0.0094, 0.003, 0.17, 'body', 0, 0.057, -0.13);
+    k.part('edge', [0, 0.036, -0.05], 'w');
+    k.box(0.0096, 0.0026, 0.19, 'glow', 0, 0.036, -0.145);
+    k.part('w');
+    k.part('cyl', [0, 0.027, -0.005], 'w');
+    k.cyl(0.03, 0.062, 'body', 0, 0.027, -0.005, 12);
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * PI * 2; k.cyl(0.0056, 0.064, 'accent', Math.cos(a) * 0.019, 0.027 + Math.sin(a) * 0.019, -0.005, 8); }
+    k.tor(0.0302, 0.0022, 'trim', 0, 0.027, -0.005);
+    k.part('w');
+    k.prof([[0.03, -0.01], [0.075, -0.035], [0.105, -0.11], [0.065, -0.12], [0.03, -0.06], [0.005, -0.02]], 0.032, 'grip');
+    wrap(k, 4, -0.03, 0.04, -0.095, 0.075, 0.034, 0.014, 'trim', 0.45);
+    k.box(0.036, 0.012, 0.044, 'trim', 0, -0.118, 0.086, -0.25);
+    k.ball(0.006, 'accent', 0, -0.126, 0.1);
+    k.box(0.022, 0.005, 0.045, 'trim', 0, -0.026, 0.008);
+    k.box(0.005, 0.018, 0.005, 'metal', 0, -0.015, 0.0, 0.3);
+    k.box(0.008, 0.02, 0.014, 'trim', 0, 0.062, 0.05, 0.4);
+    k.box(0.004, 0.01, 0.008, 'trim', 0, 0.065, -0.04);
+    k.box(0.003, 0.004, 0.004, 'glow', 0, 0.071, -0.04);
+    k.part('swipe', [0, 0.06, -0.05], 'w');
+    k.part(null);
+    shell(k, 0.006, 0.04);
+    return { muzzle: [0, 0.022, -0.25], sightY: 0.069 };
+  },
+
   warden(k) {
     k.prof([[0.08, -0.024], [0.08, 0.05], [-0.36, 0.05], [-0.38, 0.024], [-0.38, -0.024]], 0.054, 'body');
     k.box(0.055, 0.004, 0.36, 'glow', 0, 0.018, -0.13);
@@ -960,14 +1085,15 @@ const DESIGNS = {
 function offHands(g, parts, mats) {
   const hands = [];
   g.updateMatrixWorld(true);
-  const add = (group, gx, gy, gz, sleeveDir) => {
+  const add = (group, gx, gy, gz, sleeveDir, sleeveRot = [0.75, sleeveDir[0] > 0 ? -0.45 : 0.45, 0]) => {
     const glove = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.045, 0.065), mats.glove);
     glove.position.set(gx, gy, gz);
     glove.rotation.set(0.3, 0, -0.3);
     const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.32), mats.sleeve);
     sleeve.position.set(gx + sleeveDir[0], gy + sleeveDir[1], gz + sleeveDir[2]);
-    sleeve.rotation.set(0.75, sleeveDir[0] > 0 ? -0.45 : 0.45, 0);
-    for (const m of [glove, sleeve]) { m.visible = false; group.add(m); hands.push(m); }
+    sleeve.rotation.set(...sleeveRot);
+    const part = Object.keys(parts).find(n => parts[n] === group); // the reload can show each hand on its own
+    for (const m of [glove, sleeve]) { m.visible = false; m.userData.part = part; group.add(m); hands.push(m); }
   };
   if (parts.mag) {
     const b = new THREE.Box3().setFromObject(parts.mag), c = b.getCenter(new THREE.Vector3());
@@ -976,6 +1102,7 @@ function offHands(g, parts, mats) {
   }
   if (parts.shell) add(parts.shell, 0.014, -0.016, 0.04, [0.06, -0.12, 0.16]);
   if (parts.orb) add(parts.orb, -0.03, 0.022, 0.012, [-0.07, 0.04, 0.15]); // presses the fresh orb in from above-left
+  if (parts.swipe) add(parts.swipe, -0.016, 0.01, 0.0, [-0.016, -0.165, 0.04], [1.32, 0, 0]); // Oathblade: runs along the blade, arm hanging below
   return hands;
 }
 

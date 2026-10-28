@@ -89,7 +89,13 @@ game.on('finisher', ({ kind, pos }) => sound.finisher(kind, pos));
 game.on('reload', ({ who, gun }) => { if (isPlayer(who)) sound.reload(gun.reloadDur, RELOAD_SOUNDS[RELOAD_STYLE[designFor(skinFor(settings, gun.def.id), gun.def.id)] || RELOAD_STYLE[gun.def.id]], gun.def.id); });
 game.on('reloadRound', ({ who }) => { if (isPlayer(who)) { sound.click(0, 0.3); sound.thunk(0.03); } });
 game.on('dry', ({ who }) => { if (isPlayer(who)) sound.click(0, 0.3); });
-game.on('equip', ({ who, gun }) => { if (isPlayer(who)) sound.equip(gun?.def?.id); });
+// Oathblade guns and the Tanto ring like a blade leaving its sheath as they're drawn.
+const BLADE_DRAW = new Set(['vandalOath', 'sheriffOath', 'tanto']);
+game.on('equip', ({ who, gun }) => {
+  if (!isPlayer(who)) return;
+  const id = gun?.def?.id, w = id === 'knife' ? meleeId(settings.melee) : id;
+  sound.equip(id, !!w && BLADE_DRAW.has(designFor(skinFor(settings, w), w)));
+});
 game.on('swing', ({ who, heavy }) => { if (isPlayer(who)) sound.swing(heavy); });
 game.on('ability', ({ who, type }) => { if (isPlayer(who)) sound.ability(type); });
 game.on('smoke', ({ pos, kind }) => { if (kind !== 'fire') sound.smoke(pos); });

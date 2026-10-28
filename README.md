@@ -129,19 +129,29 @@ procedural patterns with their own colours, and glow. Custom skins are saved in 
   and *Cylinder roll* (drum swung out and spun up). Marshal: lit under-tube and a rowel bolt knob; *Long look*
   and *Spur cock*. Judge: twin barrels and a five-chamber drum; *Drum roll* and *Barrels up*. The Sheriff and
   Marshal pull out with a twirl round the trigger guard (`EQUIP_ANIMS` in `js/melee.js`).
+- **Oathblade** (Vandal, Sheriff, and the Tanto melee; Ink, Crimson Oath, Jade Court, First Snow): an original
+  samurai set in black lacquer, gold leaf, folded steel and cord-wrapped grips, every gun carrying a blade whose
+  edge lights up. Each draws like a blade, with a ring of steel: the Vandal comes up out of a low hip draw and cuts
+  into place, the Sheriff comes down in a cut with a roll about its barrel, the Tanto is flipped from a reverse
+  grip; the edge lights from the guard to the tip as it comes out. Reloads are quick and crisp, then the off-hand
+  runs along the blade and the edge relights behind it with a flash. Vandal: a curved blade over the barrel and a
+  guard ring; inspects *Edge light* and *Two cuts*. Sheriff: a blade on the barrel, crimson chambers; *Barrel roll*
+  and *Edge light*. Tanto: *Edge light*, *Reverse grip* and *Cord spin*.
 
 **Finishers**: Orbital's *Collapse* (the body is drawn into an orb that implodes in a shockwave) and Starspur's
-*Last Light* (a star rises spinning out of the body and flares out). Both leave nothing behind. As in Valorant, a
+*Last Light* (a star rises spinning out of the body and flares out), and Oathblade's *Last Stroke* (a beat of
+stillness, one stroke of light cuts across the body, and it comes apart into petals that drift up and fade). All
+of them leave nothing behind. As in Valorant, a
 finisher plays only on the kill that ends the round in 5v5 (in deathmatch, the kill that wins the match, with the
 scoreboard held back until it's done), and only if that kill was made with the skin, in the colours of the variant
 that got the kill. Everyone in the match sees them.
 
 **Melee types** (the Melee card): Tactical Knife, Hatchet, Katana, Karambit, Balisong, Kunai, Arc Blade and the
-Starspur Bowie. Each comes in one theme of its own (Standard Issue, Heirloom, Damascus, Nightglass, Tiger Stripe,
-Hexcore, Nebula, Starspur); equipping one puts it in your knife slot (they all hit like the knife). Each has its
+Starspur Bowie and the Oathblade Tanto. Each comes in one theme of its own (Standard Issue, Heirloom, Damascus,
+Nightglass, Tiger Stripe, Hexcore, Nebula, Starspur, Oathblade); equipping one puts it in your knife slot (they all hit like the knife). Each has its
 own inspects (`js/melee.js`): press **Y** to inspect, press it again mid-inspect to chain into the next one, and
 hold it to examine the weapon with the mouse. The skin screen's *Play inspect* button previews them. Bots carry
 random melee types, and other online players see yours.
 
 `node tools/check-skins.mjs [shots-dir]` checks the skin list, the collection and weapon screens, variants, the
-Starspur models with their inspects and reloads, and finishers.
+Starspur and Oathblade models with their inspects, pullouts and reloads, and finishers.
