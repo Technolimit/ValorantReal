@@ -556,13 +556,27 @@ export class Sound {
     this.tone({ dest: this.master, at: at + 0.04, freq: 5150, end: 4800, decay: 0.35, gain: 0.025 * gain });
   }
 
+  // Oathblade pullout (~0.55 s): a low rush of air as it comes up, two quick bright rings of steel, the second
+  // higher and crisper as it locks into place, and a soft thump.
+  bladeDraw() {
+    const d = this.master;
+    this.noiseHit({ dest: d, lp: 2400, hp: 250, attack: 0.18, decay: 0.24, gain: 0.12 });
+    this.noiseHit({ dest: d, at: 0.2, hp: 3500, lp: 9000, attack: 0.004, decay: 0.07, gain: 0.3 });
+    this.tone({ dest: d, at: 0.2, freq: 5300, end: 4900, decay: 0.16, gain: 0.035, type: 'triangle' });
+    this.noiseHit({ dest: d, at: 0.42, hp: 4200, lp: 11000, attack: 0.004, decay: 0.08, gain: 0.34 });
+    this.tone({ dest: d, at: 0.42, freq: 7100, end: 6700, decay: 0.24, gain: 0.03, type: 'triangle' });
+    this.tone({ dest: d, at: 0.42, freq: 3550, end: 3400, decay: 0.2, gain: 0.025 });
+    this.tone({ dest: d, at: 0.47, freq: 95, end: 55, decay: 0.13, gain: 0.1 });
+    this.noiseHit({ dest: d, at: 0.47, lp: 600, decay: 0.1, gain: 0.08 });
+  }
+
   // `blade`: the weapon draws like a blade (Oathblade), so it rings as it comes out.
   equip(id, blade = false) {
     if (!this.ctx) return;
     this.stopAction(); // swapping weapons cancels the reload or inspect
     const clip = this.clip(`${id}:equip`);
     if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
-    if (blade) { this.shing(0.03); this.click(0, 0.12); return; }
+    if (blade) { this.bladeDraw(); return; }
     this.noiseHit({ dest: this.master, lp: 1500, hp: 400, decay: 0.08, gain: 0.12 });
     this.click(0.1, 0.18);
   }
