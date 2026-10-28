@@ -78,9 +78,10 @@ function worldUV(geo) {
 // part(name, pivot) routes the following meshes into that group, rotating about `pivot`; part(null) ends it.
 function kit(g, mats) {
   const parts = {};
-  let cur = null;
+  let cur = null, aimHide = false;
   const put = (geo, slot, x, y, z, rx = 0, ry = 0, rz = 0) => {
     const m = new THREE.Mesh(worldUV(geo), mats[slot]);
+    if (aimHide || slot === 'glass') m.userData.aimHide = true; // not drawn while aiming down the sight (render.js)
     m.position.set(x, y, z);
     m.rotation.set(rx, ry, rz);
     if (cur) { m.position.sub(origin(cur)); cur.add(m); } else g.add(m);
@@ -90,6 +91,8 @@ function kit(g, mats) {
   const origin = (o) => { const v = new THREE.Vector3(); for (; o && o !== g; o = o.parent) v.add(o.position); return v; };
   return {
     parts,
+    // Meshes made between hideWhenAiming(true) and (false) are left out while aiming down the sight.
+    hideWhenAiming: (on) => { aimHide = on; },
     // part(name, pivot, parent): `parent` names a part to nest inside (a balisong blade inside the spinning knife).
     part: (name, pivot = [0, 0, 0], parent = null) => {
       if (!name) { cur = null; return; }
@@ -130,11 +133,24 @@ function kit(g, mats) {
   };
 }
 
-// Shared fittings
-function irons(k, zf, zr, y) {
+// Shared fittings. Sights you aim through record their opening in k.sight: z, the height of its centre (y) and
+// its radius (r). Aiming down sights puts the eye just behind it, close enough that the opening fills the screen
+// like a sniper scope's lens (render.js).
+// Iron sights on top of the gun at height y. With `rise` they stand on towers and the rear sight is a ring to look
+// through (rifles that aim); without, a notch (pistols, which don't). The gun's sightY includes the rise.
+function irons(k, zf, zr, y, rise = 0) {
+  if (rise) {
+    const cy = y + rise + 0.012, R = 0.016, t = 0.0028;
+    k.box(0.008, rise, 0.012, 'metal', 0, y + rise / 2, zf);
+    k.box(0.01, cy - R - y, 0.012, 'metal', 0, (cy - R + y) / 2, zr);
+    k.tor(R, t, 'metal', 0, cy, zr);
+    k.sight = { z: zr, y: cy, r: R - t };
+    y += rise;
+  } else {
+    k.box(0.007, 0.012, 0.008, 'metal', -0.008, y + 0.006, zr);
+    k.box(0.007, 0.012, 0.008, 'metal', 0.008, y + 0.006, zr);
+  }
   k.box(0.006, 0.014, 0.008, 'metal', 0, y + 0.007, zf);
-  k.box(0.007, 0.012, 0.008, 'metal', -0.008, y + 0.006, zr);
-  k.box(0.007, 0.012, 0.008, 'metal', 0.008, y + 0.006, zr);
   k.box(0.003, 0.004, 0.004, 'glow', 0, y + 0.012, zf);
 }
 // Charging handle on the left of the receiver; pulled back at the end of a reload.
@@ -162,29 +178,39 @@ function rail(k, z0, z1, y, w = 0.022) {
   k.box(w, 0.007, z1 - z0, 'metal', 0, y + 0.0035, (z0 + z1) / 2);
   k.teeth(Math.max(2, Math.round((z1 - z0) / 0.012)), z0 + 0.004, z1 - 0.004, w + 0.003, 0.004, 0.005, 'metal', 0, y + 0.008);
 }
-// Holographic window sight; returns the sight line height.
-function holo(k, z, y) {
+// Holographic window sight on a mount `rise` tall (so the gun sits below it when aiming); returns the sight
+// line height.
+function holo(k, z, y, rise = 0.016) {
+  k.box(0.02, rise, 0.036, 'metal', 0, y + rise / 2, z);
+  y += rise;
+  k.sight = { z: z - 0.012, y: y + 0.022, r: 0.013 };
   k.box(0.03, 0.008, 0.05, 'trim', 0, y + 0.004, z);
   k.box(0.005, 0.03, 0.012, 'trim', -0.0145, y + 0.022, z - 0.012);
   k.box(0.005, 0.03, 0.012, 'trim', 0.0145, y + 0.022, z - 0.012);
   k.box(0.034, 0.006, 0.014, 'trim', 0, y + 0.039, z - 0.012);
   k.box(0.024, 0.024, 0.002, 'glass', 0, y + 0.022, z - 0.012);
-  k.box(0.0016, 0.0016, 0.001, 'reticle', 0, y + 0.022, z - 0.0135);
-  k.box(0.006, 0.0005, 0.001, 'reticle', 0, y + 0.022 - 0.004, z - 0.0135);
+  // Reticle: a small dot and a short bar under it, sized for the eye right behind the window when aiming.
+  k.box(0.0006, 0.0006, 0.001, 'reticle', 0, y + 0.022, z - 0.0135);
+  k.box(0.0022, 0.00025, 0.001, 'reticle', 0, y + 0.022 - 0.0016, z - 0.0135);
   return y + 0.022;
 }
 // Tube scope; returns the sight line height. The tube is open and the lenses are clear glass, so aiming down
 // it shows the target through the scope with a reticle on the front lens.
 function scope(k, z, y, r, len) {
+  k.sight = { z: z + len * 0.3, y: y + 0.016 + r, r: r * 1.15 }; // the eyepiece ring's far edge
   k.box(0.014, 0.016, 0.03, 'metal', 0, y + 0.008, z - len * 0.28);
   k.box(0.014, 0.016, 0.03, 'metal', 0, y + 0.008, z + len * 0.28);
   const cy = y + 0.016 + r;
   const PI2 = PI / 2;
+  // Aiming down it (a DMR's ADS, not a sniper's scope view), only the eyepiece ring and the reticle stay, so the
+  // ring frames a clear view instead of a tunnel down the tube.
+  k.cyl(r * 1.15, len * 0.16, 'tubeBody', 0, cy, z + len * 0.38, 18, PI2, 0, 0, r * 1.15, true);
+  k.hideWhenAiming(true);
   k.cyl(r, len * 0.62, 'tube', 0, cy, z, 18, PI2, 0, 0, r, true);
   k.cyl(r * 1.3, len * 0.2, 'tubeBody', 0, cy, z - len * 0.4, 18, PI2, 0, 0, r, true);
-  k.cyl(r * 1.15, len * 0.16, 'tubeBody', 0, cy, z + len * 0.38, 18, PI2, 0, 0, r * 1.15, true);
   k.cyl(r * 1.25, 0.002, 'glass', 0, cy, z - len * 0.5, 18);
   k.cyl(r * 1.1, 0.002, 'glass', 0, cy, z + len * 0.46, 18);
+  k.hideWhenAiming(false);
   // Reticle on the objective: thin crosshair lines with a gap and a centre dot.
   const rz = z - len * 0.49, w = r * 1.2, t = 0.0007, gap = r * 0.18;
   for (const sgn of [-1, 1]) {
@@ -192,8 +218,10 @@ function scope(k, z, y, r, len) {
     k.box(t, (w - gap), t, 'reticle', 0, cy + sgn * (gap + (w - gap) / 2), rz);
   }
   k.box(t * 2.2, t * 2.2, t, 'reticle', 0, cy, rz);
-  k.cyl(r * 0.45, 0.022, 'trim', 0, cy + r, z, 10, 0);
-  k.box(0.004, 0.003, len * 0.4, 'glow', r + 0.001, cy, z);
+  k.hideWhenAiming(true);
+  k.cyl(r * 0.45, 0.022, 'trim', 0, cy + r + 0.01, z, 10, 0); // turret, sat on the tube (not poking in)
+  k.box(0.004, 0.003, len * 0.4, 'glow', r + 0.0022, cy, z); // outside the tube, so it doesn't show inside
+  k.hideWhenAiming(false);
   return cy;
 }
 
@@ -248,6 +276,7 @@ function orbSpire(k, z, yb, top, w, s = 1) {
 // Orbital sights, raised so the line of sight clears the spire's ring: a gold ring to look through on a post at the
 // back (zr, standing on yr) and a post with a lit tip at the front (zf, on yf), both at height sy.
 function orbSights(k, zf, yf, zr, yr, sy) {
+  k.sight = { z: zr, y: sy, r: 0.0061 };
   k.box(0.01, sy - 0.0105 - yr, 0.012, 'metal', 0, (sy - 0.0105 + yr) / 2, zr);
   k.box(0.026, 0.006, 0.016, 'trim', 0, yr + 0.003, zr);
   k.tor(0.0085, 0.0024, 'metal', 0, sy, zr);
@@ -721,8 +750,8 @@ const DESIGNS = {
     k.prof([[0.06, 0.04], [0.29, 0.03], [0.3, -0.075], [0.26, -0.08], [0.12, -0.022], [0.06, -0.022]], 0.04, 'trim');
     k.prof([[0.17, 0.012], [0.25, 0.008], [0.255, -0.035], [0.17, -0.004]], 0.041, 'body', 0, 0.001);
     k.box(0.046, 0.11, 0.02, 'grip', 0, -0.022, 0.3);
-    irons(k, -0.46, -0.12, 0.044);
-    return { muzzle: [0, 0.014, -0.615], sightY: 0.054 };
+    irons(k, -0.46, -0.12, 0.044, 0.024);
+    return { muzzle: [0, 0.014, -0.615], sightY: 0.078 };
   },
 
   // ---- Orbital collection (model skins, see skins.js): violet enamel, gunmetal, gold, a live orb ----
@@ -1030,8 +1059,8 @@ const DESIGNS = {
     k.ball(0.009, 'accent', -0.02, 0.0, 0.22);
     k.box(0.046, 0.11, 0.02, 'grip', 0, -0.022, 0.3);
     k.box(0.047, 0.012, 0.022, 'trim', 0, 0.03, 0.3);
-    irons(k, -0.25, -0.12, 0.05);
-    return { muzzle: [0, -0.006, -0.62], sightY: 0.06 };
+    irons(k, -0.25, -0.12, 0.05, 0.024);
+    return { muzzle: [0, -0.006, -0.62], sightY: 0.084 };
   },
 
   // Sheriff: lacquered frame, a short blade riding on top of the barrel (lit edge, part `edge`), a gold guard
@@ -1190,7 +1219,7 @@ const DESIGNS = {
     k.box(0.036, 0.1, 0.046, 'grip', 0, -0.065, 0.06, -0.26);
     k.box(0.026, 0.005, 0.05, 'metal', 0, -0.036, 0.02);
     k.prof([[0.1, 0.05], [0.3, 0.045], [0.31, -0.07], [0.27, -0.07], [0.14, -0.03], [0.1, -0.03]], 0.05, 'trim');
-    const sy = holo(k, 0.0, 0.06);
+    const sy = holo(k, 0.0, 0.06, 0.046); // high enough to see over the feed cover
     return { muzzle: [0, 0.018, -0.62], sightY: sy };
   },
 
@@ -1219,7 +1248,7 @@ const DESIGNS = {
     k.box(0.038, 0.1, 0.048, 'grip', 0, -0.07, 0.08, -0.26);
     k.box(0.028, 0.005, 0.05, 'metal', 0, -0.042, 0.04);
     k.prof([[0.12, 0.055], [0.32, 0.05], [0.33, -0.08], [0.28, -0.08], [0.16, -0.04], [0.12, -0.04]], 0.056, 'trim');
-    const sy = holo(k, 0.0, 0.065);
+    const sy = holo(k, 0.0, 0.065, 0.054); // high enough to see over the feed cover
     return { muzzle: [0, 0.016, -0.7], sightY: sy };
   },
 };
@@ -1415,7 +1444,7 @@ export function bombletModel() {
 }
 
 // Builds the first-person model for a weapon in a skin. userData: muzzle (Object3D), sightY (top of the sight
-// line in model units, before viewmodel scaling).
+// line in model units, before viewmodel scaling), sight (the opening you aim through: z, y and r, or null).
 export function gunModel(weaponId, skinId = 'standard', { noHands = false } = {}) {
   const g = new THREE.Group();
   const mats = OWN_LOOK[weaponId] ? goldMaterials(OWN_LOOK[weaponId]) : weaponId === 'finale' ? razeMaterials() : skinMaterials(skinId);
@@ -1438,6 +1467,7 @@ export function gunModel(weaponId, skinId = 'standard', { noHands = false } = {}
   g.add(muzzle);
   g.userData.muzzle = muzzle;
   g.userData.sightY = d.sightY;
+  g.userData.sight = k.sight || null;
   g.userData.parts = k.parts;
   g.userData.design = DESIGNS[design] ? design : weaponId; // reloads and inspects follow the model, not just the weapon
   g.userData.hands = offHands(g, k.parts, mats);
