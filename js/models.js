@@ -740,6 +740,7 @@ const DESIGNS = {
   // Marshal: copper receiver, long bone forend with copper bands, a teal-lit tube under the barrel, a copper
   // scope, and a star rowel for a bolt knob (part `rowel`, inside `bolt`).
   marshalSpur(k) {
+    k.part('w', [0, -0.02, 0.02]); // the whole rifle, so the pullout can spin it round the trigger guard
     k.prof([[0.06, -0.022], [0.06, 0.044], [-0.22, 0.044], [-0.24, 0.018], [-0.24, -0.022]], 0.046, 'trim');
     k.box(0.047, 0.004, 0.2, 'glow', 0, 0.014, -0.09);
     for (const x of [-0.0235, 0.0235]) star(k, x, 0.0, -0.17, 0.014, 'accent');
@@ -751,22 +752,22 @@ const DESIGNS = {
     k.cyl(0.016, 0.05, 'trim', 0, 0.02, -0.81, 8);
     for (const z of [-0.8, -0.815]) k.box(0.034, 0.005, 0.006, 'metal', 0, 0.02, z);
     k.tor(0.0115, 0.0025, 'glow', 0, 0.02, -0.836);
-    k.part('bolt', [0.012, 0.03, 0.03]);
+    k.part('bolt', [0.012, 0.03, 0.03], 'w');
     k.cyl(0.005, 0.04, 'metal', 0.03, 0.03, 0.03, 8, 0, 0, PI / 2);
     k.part('rowel', [0.052, 0.03, 0.03], 'bolt');
     star(k, 0.052, 0.03, 0.03, 0.013, 'trim', 'glow', 6);
-    k.part(null);
-    k.part('mag');
+    k.part('mag', [0, 0, 0], 'w');
     k.box(0.026, 0.05, 0.04, 'metal', 0, -0.045, -0.1);
     k.box(0.027, 0.006, 0.041, 'trim', 0, -0.07, -0.1);
-    k.part(null);
-    shell(k, 0.0065, 0.055);
+    k.part('w');
     k.prof([[0.06, 0.03], [0.32, 0.02], [0.33, -0.09], [0.29, -0.09], [0.14, -0.05], [0.09, -0.1], [0.05, -0.09], [0.07, -0.03], [0.06, -0.02]], 0.044, 'body');
     k.box(0.0455, 0.06, 0.032, 'grip', 0, -0.074, 0.114, 0.78);
     k.box(0.046, 0.112, 0.014, 'trim', 0, -0.035, 0.33);
     for (const x of [-0.0225, 0.0225]) star(k, x, -0.02, 0.235, 0.016, 'accent');
     k.box(0.024, 0.005, 0.05, 'trim', 0, -0.03, 0.02);
     const sy = scope(k, -0.08, 0.044, 0.02, 0.24);
+    k.part(null);
+    shell(k, 0.0065, 0.055);
     return { muzzle: [0, 0.02, -0.84], sightY: sy };
   },
 

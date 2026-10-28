@@ -120,6 +120,31 @@ export const MODEL_INSPECTS = {
   ],
 };
 
+// Pullout (equip) animations that come with a gun model, by design id: keyframes as in an inspect, played
+// across the weapon's equip time (`dur` is stretched to fit it). They replace the plain raise-from-below.
+export const EQUIP_ANIMS = {
+  // Starspur Sheriff: comes up spinning twice round the trigger finger and is caught level, chambers flashing.
+  sheriffSpur: {
+    dur: 1.0,
+    track: [[0, 0.02, -0.16, 0.04, -0.45, 0, 0.1], [0.45, 0, -0.02, 0, 0.12, 0, 0], S(0.82, 0, 0.005, 0, -0.04, 0, 0), [1.0, ...Z]],
+    parts: {
+      w: [[0, ...Z, 1], ...spin(0.04, 0.4, 0, -1), ...spin(0.4, 0.72, 0, -1, Z, -TAU), S(0.8, 0, 0, 0, -2 * TAU + 0.12, 0, 0, 1), [1.0, 0, 0, 0, -2 * TAU, 0, 0, 1]],
+      spur: [[0, ...Z, 1], ...spin(0.1, 0.8, 0, 2), [1.0, 0, 0, 0, 2 * TAU, 0, 0, 1]],
+    },
+    glow: [[0, 1], [0.72, 1.4], S(0.82, 3), [1.0, 1]],
+  },
+  // Starspur Marshal: swung up from the hip with one full spin round the trigger guard, caught at the shoulder.
+  marshalSpur: {
+    dur: 1.25,
+    track: [[0, 0.05, -0.2, 0.06, -0.4, 0, 0.35], [0.55, 0.03, -0.06, 0.03, 0.08, 0, 0.12], S(1.0, 0, 0.004, 0, -0.03, 0, 0), [1.25, ...Z]],
+    parts: {
+      w: [[0, ...Z, 1], [0.1, ...Z, 1], ...spin(0.1, 0.92, 0, -1), S(1.0, 0, 0, 0, -TAU + 0.1, 0, 0, 1), [1.25, 0, 0, 0, -TAU, 0, 0, 1]],
+      rowel: [[0, ...Z, 1], ...spin(0.2, 1.0, 0, 2), [1.25, 0, 0, 0, 2 * TAU, 0, 0, 1]],
+    },
+    glow: [[0, 1], [0.9, 1.4], S(1.02, 2.8), [1.25, 1]],
+  },
+};
+
 // A spin made of quarter turns at constant speed, so it doesn't slow down at every keyframe.
 function spin(t0, t1, axis, turns, base = [0, 0, 0, 0, 0, 0], from = 0) {
   const n = Math.max(1, Math.round(Math.abs(turns) * 4)), out = [];

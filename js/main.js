@@ -106,7 +106,8 @@ game.on('tag', () => sound.pulse(null, 'reveal'));
 game.on('abilityArm', ({ who }) => { if (isPlayer(who)) sound.click(0, 0.3); });
 game.on('shadowChannel', () => sound.pulse(null, 'near'));
 game.on('blade', ({ who }) => { if (isPlayer(who)) sound.swing(false); });
-game.on('end', () => showEnd());
+// A deathmatch won with a finisher skin plays the finisher before the scoreboard comes up.
+game.on('end', () => { const f = renderer.lastFinisher; if (f && game.time - f.at < 0.5) setTimeout(() => { if (game.state === 'ended') showEnd(); }, 2600); else showEnd(); });
 game.on('planted', () => sound.sting('planted'));
 game.on('orbTaken', ({ who }) => { if (who === game.player) sound.sting('orb'); });
 game.on('gifted', ({ to }) => { if (to === game.player) sound.sting('gift'); });

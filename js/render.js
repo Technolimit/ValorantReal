@@ -2,7 +2,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { HFOV, VIEW_RECOIL, HITBOX, GUN_HEIGHT } from './config.js';
 import { gunModel, handsModel, studioEnv, ownGlow, poseMeleeParts, rocketModel, paintShellModel, bombletModel } from './models.js';
-import { MELEE, GUN_INSPECT, MODEL_INSPECTS, meleeId, inspectPose } from './melee.js';
+import { MELEE, GUN_INSPECT, MODEL_INSPECTS, EQUIP_ANIMS, meleeId, inspectPose } from './melee.js';
 import { skinFor, skinFits, meleeSkin, SKINS } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
 import { BLADES, SMOKE, bloomTargets } from './abilities.js';
@@ -549,12 +549,10 @@ export class Renderer {
       if (victim === g.player) this.deathCam = { killer, yaw: g.player.yaw, pitch: g.player.pitch, t: performance.now() };
       this.queueFinisher(killer, victim, def);
     });
-    // In 5v5 a finisher plays on the kill that ends the round (the round is called a moment after that kill).
-    g.on('roundEnd', ({ reason }) => {
-      const f = this.pendingFinisher;
-      this.pendingFinisher = null;
-      if (f && reason === 'eliminated' && g.time - f.at < 2) this.playFinisher(f.kind, f.victim, f.skin);
-    });
+    // A finisher plays on the kill that ends the round (5v5) or the match (deathmatch), called just after it.
+    g.on('roundEnd', ({ reason }) => { if (reason === 'eliminated') this.endFinisher(); else this.pendingFinisher = null; });
+    g.on('end', () => { if (!g.mode) this.endFinisher(); });
+    g.on('start', () => { this.pendingFinisher = null; });
     g.on('respawn', ({ who }) => {
       const ch = this.characters.get(who);
       if (ch) { ch.deathT = 0; ch.vanish = null; ch.group.visible = true; ch.group.rotation.set(0, 0, 0); ch.group.scale.setScalar(1); }
@@ -797,14 +795,20 @@ export class Renderer {
   }
 
   // ---------- finishers ----------
-  // A kill with a finisher skin (`finisher` in skins.js): plays at once in deathmatch; in 5v5 it waits to see
-  // whether this kill ends the round. Any later kill replaces it.
+  // A kill with a finisher skin (`finisher` in skins.js) waits to see whether it ends the round (5v5) or the
+  // match (deathmatch); as in Valorant, only that final kill plays the finisher.
   queueFinisher(killer, victim, def) {
     if (!killer || !victim || killer === victim || !def) return;
     const skin = this.skinOf(killer, this.modelOf(killer, def.id)), kind = SKINS[skin]?.finisher;
-    const f = FINISHERS.includes(kind) ? { kind, skin, victim, at: this.game.time } : null;
-    if (this.game.mode) this.pendingFinisher = f;
-    else if (f) this.playFinisher(kind, victim, skin);
+    // Every kill replaces the pending one, so only a final kill made with the skin gets the finisher.
+    this.pendingFinisher = FINISHERS.includes(kind) ? { kind, skin, victim, at: this.game.time } : null;
+  }
+
+  // The round (or, in deathmatch, the match) just ended: play the finisher if the kill that ended it earned one.
+  endFinisher() {
+    const f = this.pendingFinisher;
+    this.pendingFinisher = null;
+    if (f && this.game.time - f.at < 2) this.playFinisher(f.kind, f.victim, f.skin);
   }
 
   // Finishers take their colours from the skin (variant) that got the kill: its glow and its accent.
@@ -824,7 +828,8 @@ export class Renderer {
   }
 
   // Orbital: "Collapse". An orb in the accent colour swells at the body's chest with two rings in the glow colour orbiting it, the body is
-  // drawn into it, the rings close in, and the orb implodes to a point and pops in a flat shockwave.
+  // drawn into it, the rings close in, and the orb implodes to a point and pops in a flat shockwave that fades
+  // out, leaving nothing behind.
   fxCollapse(pos, ch, col) {
     const c = [pos[0], pos[1] + 1.0, pos[2]], t0 = this.game.time, life = 2.4, implode = 1.6;
     const add = (col, o = 0.85) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
@@ -866,10 +871,10 @@ export class Renderer {
   }
 
   // Starspur: "Last Light". A star in the accent colour rises spinning out of the body while a dust ring in the glow colour rolls out
-  // along the ground and the body burns away; the star flares like a low sun and leaves a star brand on the
-  // floor that fades.
+  // along the ground and the body burns away; the star flares like a low sun and is gone. It leaves nothing
+  // behind: the body, the star and the dust all vanish when it ends.
   fxLastLight(pos, ch, col) {
-    const t0 = this.game.time, life = 3.2, flare = 1.7;
+    const t0 = this.game.time, life = 2.3, flare = 1.7;
     const add = (col, o) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
     const starGeo = (R, r = R * 0.45) => {
       const sh = new THREE.Shape();
@@ -889,10 +894,7 @@ export class Renderer {
     const dust = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 48), add(col.glow, 0.6));
     dust.rotation.x = -Math.PI / 2;
     dust.position.y = 0.04;
-    const brand = new THREE.Mesh(starGeo(0.75), add(col.accent, 0.0));
-    brand.rotation.x = -Math.PI / 2;
-    brand.position.y = 0.03;
-    g.add(dust, brand);
+    g.add(dust);
     this.vanishBody(ch, 0.3, 1.1);
     this.burst([pos[0], pos[1] + 0.9, pos[2]], null, new THREE.Color(col.accent).toArray(), 16, 2.5);
     let flared = false;
@@ -909,7 +911,6 @@ export class Renderer {
       dust.scale.setScalar(0.3 + 2.2 * roll);
       dust.material.opacity = 0.6 * (1 - roll);
       dust.rotation.z = t * 2;
-      brand.material.opacity = 0.7 * Math.min(1, Math.max(0, (t - 0.8) / 0.4)) * Math.max(0, 1 - (t - 2.0) / 1.2);
       if (!flared && t >= flare) {
         flared = true;
         const p = [pos[0], pos[1] + 1.8, pos[2]];
@@ -1967,7 +1968,15 @@ export class Renderer {
 
     // Equip / reload / knife swing
     const et = Math.min(1, (performance.now() - vm.equipStart) / Math.max(1, vm.equipDur));
-    if (et < 1) { const e = 1 - Math.pow(1 - et, 3); py -= (1 - e) * 0.25; rx -= (1 - e) * 0.6; }
+    // A gun model with its own pullout (EQUIP_ANIMS: the Starspur twirls) plays it across the equip time.
+    const draw = et < 1 && !def.hands ? EQUIP_ANIMS[vm.model.userData.design] : null;
+    let drawPose = null;
+    if (draw) {
+      drawPose = inspectPose(draw, et * draw.dur);
+      drawPose.t = et * draw.dur;
+      const v = drawPose.pose;
+      px += v[0]; py += v[1]; pz += v[2]; rx += v[3]; ry += v[4]; rz += v[5];
+    } else if (et < 1) { const e = 1 - Math.pow(1 - et, 3); py -= (1 - e) * 0.25; rx -= (1 - e) * 0.6; }
     if (!def.melee && !blades && !def.launcher) {
       // Per-gun reload and bolt/pump animations (reloadanim.js); the gun is lowered a touch while aiming.
       const rp = reloadPose(vm.model, def, gun, this.game.time, this.cycle);
@@ -2008,6 +2017,8 @@ export class Renderer {
       poseMeleeParts(vm.model, insPose && this.inspecting?.ins, insPose?.t, vm.glow);
     } else if (insPose && this.inspecting.ins.parts) {
       poseMeleeParts(vm.model, this.inspecting.ins, insPose.t, vm.glow); // a gun model's inspect (the Orbital orb)
+    } else if (drawPose) {
+      poseMeleeParts(vm.model, draw, drawPose.t, vm.glow); // the pullout's twirl
     } else if (vm.glow) vm.glow.mat.emissiveIntensity = vm.glow.base; // its parts are left to the reload pose
     vm.group.position.set(px, py, pz);
     vm.group.rotation.set(rx, ry, rz);

@@ -1,5 +1,5 @@
 // Headless checks for skins: the preset list, the single Melee entry (one theme per melee type), the Starspur
-// models with their inspects and reloads, and finishers (every kill in deathmatch, the round-ending kill in 5v5).
+// models with their inspects and reloads, and finishers (only the kill that ends the round in 5v5, or the match in deathmatch), and pullouts.
 //   node tools/check-skins.mjs [shots-dir]     (needs playwright; with a dir, saves the skin menu and finishers)
 // Exits with code 1 if any check fails.
 import { createServer } from 'node:http';
@@ -161,32 +161,48 @@ await check('Starspur models build with their moving parts, and their inspects a
   return { pass: ok, ...out };
 }));
 
-// Kill a bot with a weapon in a skin and report the finisher that played (if any).
+await check('Starspur Sheriff and Marshal pull out with a twirl', () => page.evaluate(async () => {
+  const { gunModel, poseMeleeParts } = await import('./js/models.js');
+  const { EQUIP_ANIMS } = await import('./js/melee.js');
+  const out = {};
+  for (const w of ['sheriff', 'marshal']) {
+    const m = gunModel(w, 'starspur'), a = EQUIP_ANIMS[m.userData.design];
+    let turn = 0;
+    for (let t = 0; a && t <= a.dur; t += 0.02) turn = Math.min(turn, poseMeleeParts(m, a, t, null).parts.w[3]);
+    out[w] = { design: m.userData.design, turns: +(-turn / (2 * Math.PI)).toFixed(2), wraps: !!m.userData.parts.w };
+  }
+  return { pass: out.sheriff.turns >= 2 && out.marshal.turns >= 1 && out.marshal.wraps, ...out };
+}));
+
+// Start a deathmatch that ends on your next kill, kill a bot with a weapon in a skin, and report the finisher that
+// played (if any). `before` is a kill made first, mid-match, as [weapon, skins].
 await page.evaluate(() => {
-  window.__finish = (g, i, weapon, skins, melee = 'knife') => {
-    const h = window.__game;
-    h.settings.skins = skins; h.settings.melee = melee;
+  window.__finish = async (weapon, skins, melee = 'knife', before = null) => {
+    const h = window.__game, g = await __start({});
+    h.settings.melee = melee;
     h.renderer.lastFinisher = null;
-    g.kill(g.bots[i], g.player, { def: __W[weapon], part: 'body' });
-    return h.renderer.lastFinisher?.kind || null;
+    if (before) { h.settings.skins = before[1]; g.kill(g.bots[1], g.player, { def: __W[before[0]], part: 'body' }); }
+    const mid = h.renderer.lastFinisher?.kind || null;
+    g.killLimit = g.player.stats.kills + 1;
+    h.settings.skins = skins;
+    g.kill(g.bots[0], g.player, { def: __W[weapon], part: 'body' });
+    return { mid, end: h.renderer.lastFinisher?.kind || null, over: g.state === 'ended' };
   };
 });
 
-await check('Deathmatch: Orbital and Starspur kills play their finishers; other skins don\'t', async () => {
-  const r = await page.evaluate(async () => {
-    const g = await __start({});
-    const bot = g.bots[0];
-    // Line the first victim up in front of you so the screenshot shows the finisher.
-    g.player.pos = [bot.pos[0], bot.pos[1], bot.pos[2] + 4]; g.player.prevPos = [...g.player.pos]; g.player.yaw = 0; g.player.pitch = 0.1;
-    return {
-      orbital: __finish(g, 0, 'vandal', { vandal: 'orbital' }),
-      starspur: __finish(g, 1, 'sheriff', { sheriff: 'starspur' }),
-      ember: __finish(g, 2, 'vandal', { vandal: 'ember' }),
-      bowie: __finish(g, 3, 'knife', {}, 'bowie'),
-      katana: __finish(g, 4, 'knife', {}, 'katana'),
-    };
-  });
-  return { pass: r.orbital === 'collapse' && r.starspur === 'lastLight' && r.ember === null && r.bowie === 'lastLight' && r.katana === null, ...r };
+await check('Deathmatch: only the match-winning kill plays a finisher, and only if that kill used the skin', async () => {
+  const r = await page.evaluate(async () => ({
+    orbital: await __finish('vandal', { vandal: 'orbital' }, 'knife', ['vandal', { vandal: 'orbital' }]),
+    starspur: await __finish('sheriff', { sheriff: 'starspur~2' }),
+    lastWithEmber: await __finish('vandal', { vandal: 'ember' }, 'knife', ['vandal', { vandal: 'orbital' }]),
+    bowie: await __finish('knife', {}, 'bowie'),
+    katana: await __finish('knife', {}, 'katana'),
+  }));
+  return {
+    pass: r.orbital.mid === null && r.orbital.end === 'collapse' && r.orbital.over && r.starspur.end === 'lastLight'
+      && r.lastWithEmber.mid === null && r.lastWithEmber.end === null && r.bowie.end === 'lastLight' && r.katana.end === null,
+    ...Object.fromEntries(Object.entries(r).map(([k, v]) => [k, `${v.mid}/${v.end}`])),
+  };
 });
 
 if (SHOTS) {
@@ -198,7 +214,11 @@ if (SHOTS) {
       p.pitch = -0.12;
       bot.pos = [p.pos[0] - Math.sin(p.yaw) * 3.5, p.pos[1], p.pos[2] - Math.cos(p.yaw) * 3.5]; bot.prevPos = [...bot.pos];
     });
-    await page.evaluate(([weapon, skins]) => __finish(window.__game.game, 0, weapon, skins), [weapon, skins]);
+    await page.evaluate(([weapon, skins]) => {
+      const h = window.__game, g = h.game;
+      g.killLimit = g.player.stats.kills + 1; h.settings.skins = skins;
+      g.kill(g.bots[0], g.player, { def: __W[weapon], part: 'body' });
+    }, [weapon, skins]);
     // Step the game to each moment by hand (headless, the game sits paused) and let a frame draw.
     let done = 0;
     for (const t of times) {
@@ -209,7 +229,7 @@ if (SHOTS) {
   }
 }
 
-await check('5v5: a finisher waits for the round-ending kill', () => page.evaluate(async () => {
+await check('5v5: a finisher waits for the round-ending kill, and needs that kill to be with the skin', () => page.evaluate(async () => {
   const h = window.__game, g = await __start({ mode: 'rounds', map: 'divide', botCount: 9 });
   h.settings.skins = { vandal: 'orbital' };
   __tick(g, Math.max(0, g.mode.phaseEnd - g.time) + 1); // through the buy phase
@@ -220,8 +240,39 @@ await check('5v5: a finisher waits for the round-ending kill', () => page.evalua
   const early = h.renderer.lastFinisher?.kind || null;
   g.kill(foes.at(-1), g.player, { def: __W.vandal, part: 'body' });
   __tick(g, 0.5);
-  return { pass: early === null && h.renderer.lastFinisher?.kind === 'collapse', early, last: h.renderer.lastFinisher?.kind || null, phase: g.mode.phase };
+  const last = h.renderer.lastFinisher?.kind || null;
+  // Next round: Orbital kills all round, but the last one is with the Ghost.
+  __tick(g, Math.max(0, g.mode.phaseEnd - g.time) + 1);
+  __tick(g, Math.max(0, g.mode.phaseEnd - g.time) + 1);
+  h.renderer.lastFinisher = null;
+  const foes2 = g.combatants.filter(c => g.isEnemy(g.player, c) && c.alive);
+  for (const f of foes2.slice(0, -1)) g.kill(f, g.player, { def: __W.vandal, part: 'body' });
+  g.kill(foes2.at(-1), g.player, { def: __W.ghost, part: 'body' });
+  __tick(g, 0.5);
+  const ghost = h.renderer.lastFinisher?.kind || null;
+  return { pass: early === null && last === 'collapse' && foes2.length === 5 && ghost === null, early, last, ghost, phase: g.mode.phase };
 }));
+
+await check('Finishers leave nothing behind once they end', async () => {
+  const out = {};
+  for (const [weapon, skins] of [['vandal', { vandal: 'orbital' }], ['sheriff', { sheriff: 'starspur' }]]) {
+    const r = await page.evaluate(async ([weapon, skins]) => {
+      const h = window.__game, g = await __start({});
+      __tick(g, 0.1); h.renderer.updateFx2();
+      const before = h.renderer.fx2?.length || 0;
+      g.killLimit = g.player.stats.kills + 1; h.settings.skins = skins;
+      g.kill(g.bots[0], g.player, { def: __W[weapon], part: 'body' });
+      return { before, during: h.renderer.fx2.length };
+    }, [weapon, skins]);
+    await page.waitForTimeout(1800); // the body's vanish runs on the clock
+    out[weapon] = { ...r, ...await page.evaluate(() => {
+      const h = window.__game, g = h.game;
+      __tick(g, 3); h.renderer.updateFx2();
+      return { after: h.renderer.fx2.length - g.drops.length, body: h.renderer.characters.get(g.bots[0]).group.visible };
+    }) };
+  }
+  return { pass: Object.values(out).every(o => o.during > o.before && o.after <= o.before && !o.body), ...out };
+});
 
 await check('No page errors', () => ({ pass: errors.length === 0, errors: errors.slice(0, 3) }));
 
