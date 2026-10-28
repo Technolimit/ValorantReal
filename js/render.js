@@ -1780,7 +1780,10 @@ export class Renderer {
         r.toneMapping = THREE.NeutralToneMapping; r.toneMappingExposure = 1.25;
         r.render(this.vmScene, this.vmCamera);
         r.toneMapping = THREE.NoToneMapping; r.toneMappingExposure = 1;
-      } else (this.vmPost ||= new ViewmodelPost()).render(this.renderer, this.vmScene, this.vmCamera);
+      } else {
+        // Clip the glow passes to the gun's corner of the screen; a knife trail can sweep across all of it.
+        (this.vmPost ||= new ViewmodelPost()).render(this.renderer, this.vmScene, this.vmCamera, this.trails.live.length ? null : this.vm.group);
+      }
     }
   }
 

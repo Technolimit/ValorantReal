@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png' };
 const NO_RENDER = process.argv.includes('--no-render');
+const GPU = process.argv.includes('--gpu'); // wait for the GPU after each frame, so render time includes drawing the pixels
 const SECONDS = Number(process.argv.find(a => /^\d+$/.test(a))) || 20;
 
 let chromium;
@@ -68,7 +69,7 @@ if (process.argv.includes('--spikes')) await page.evaluate(async () => {
   wrap(Object.getPrototypeOf(g.world), 'lineOfSight', 'world.lineOfSight');
 });
 
-const out = await page.evaluate(async ([SECONDS, NO_RENDER]) => {
+const out = await page.evaluate(async ([SECONDS, NO_RENDER, GPU]) => {
   const h = window.__game, g = h.game, r = h.renderer, gl = r.renderer;
   gl.info.autoReset = false; // count the world and the view model together
   const DT = 1 / 128;
@@ -78,6 +79,7 @@ const out = await page.evaluate(async ([SECONDS, NO_RENDER]) => {
   let programs0 = gl.info.programs.length, compiles = 0;
   const heap = () => performance.memory?.usedJSHeapSize || 0;
   let alloc = 0, prevHeap = heap();
+  const px = new Uint8Array(4);
   const frames = Math.round(SECONDS * 60);
   for (let f = 0; f < frames; f++) {
     if (g.mode.phase === 'end' || g.state !== 'playing') g.mode.startRound?.();
@@ -88,7 +90,7 @@ const out = await page.evaluate(async ([SECONDS, NO_RENDER]) => {
     for (let i = 0; i < want; i++) { h.playerInput(); g.tick(); h.net.tick(); }
     const t1 = performance.now();
     gl.info.reset();
-    if (!NO_RENDER) r.render(0.5, 1 / 60, { dx: 0, dy: 0 });
+    if (!NO_RENDER) { r.render(0.5, 1 / 60, { dx: 0, dy: 0 }); if (GPU) gl.getContext().readPixels(0, 0, 1, 1, 0x1908, 0x1401, px); }
     const t2 = performance.now();
     const hz = heap(); if (hz > prevHeap) alloc += hz - prevHeap; prevHeap = hz;
     tickMs.push((t1 - t0) / want); renderMs.push(t2 - t1);
@@ -108,7 +110,7 @@ const out = await page.evaluate(async ([SECONDS, NO_RENDER]) => {
     if (n) byGroup[name] = (byGroup[name] || 0) + n;
   }
   return { settings: { shadows: gl.shadowMap.enabled, pixelRatio: gl.getPixelRatio() }, byGroup, frames, simSeconds: +(g.time).toFixed(1), tickMs: stat(tickMs), renderCpuMs: stat(renderMs), drawCalls: stat(calls), triangles: stat(tris), midMatchShaderCompiles: compiles, hitches: hitches.slice(0, 12), allocMBPerSec: +(alloc / 1048576 / SECONDS).toFixed(2), programs: gl.info.programs.length, geometries: gl.info.memory.geometries, textures: gl.info.memory.textures, sceneObjects: (() => { let n = 0; r.scene.traverse(() => n++); return n; })() };
-}, [SECONDS, NO_RENDER]);
+}, [SECONDS, NO_RENDER, GPU]);
 console.log(JSON.stringify(out, null, 1));
 const slow = await page.evaluate(() => window.__slow);
 if (slow) {
