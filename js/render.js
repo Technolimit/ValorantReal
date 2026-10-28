@@ -10,7 +10,7 @@ import { BLADES, SMOKE, bloomTargets } from './abilities.js';
 // Blitz's Finale launcher, shown in the hands (and on her body) while the ultimate is out.
 const FINALE = { id: 'finale', name: 'Finale', cat: 'Ability', model: 'launcher', launcher: true };
 // Finisher effects a skin can name (`finisher` in skins.js), drawn by fxCollapse / fxLastLight below.
-const FINISHERS = ['collapse', 'lastLight'];
+const FINISHERS = ['collapse', 'lastLight', 'lastStroke'];
 import { ROUND } from './rounds.js';
 import { materialOf } from './map.js';
 import { dirFromAngles } from './entity.js';
@@ -820,6 +820,7 @@ export class Renderer {
     this.game.emit('finisher', { kind, pos });
     if (kind === 'collapse') this.fxCollapse(pos, ch, col);
     else if (kind === 'lastLight') this.fxLastLight(pos, ch, col);
+    else if (kind === 'lastStroke') this.fxLastStroke(pos, ch, col);
   }
 
   // The body shrinks away to nothing over `dur` seconds, starting `delay` seconds from now.
@@ -916,6 +917,70 @@ export class Renderer {
         const p = [pos[0], pos[1] + 1.8, pos[2]];
         this.fxBurst(p, col.accent, 3, 0.5);
         this.burst(p, null, new THREE.Color(col.glow).toArray(), 22, 3.5);
+      }
+    });
+  }
+
+  // Oathblade: "Last Stroke". A beat of stillness, then one diagonal stroke of light in the glow colour cuts
+  // across the body with a thin accent line trailing it; the body comes apart into petals in the accent colour
+  // that drift up and fade. When it ends nothing is left: no body, no mark, no glow.
+  fxLastStroke(pos, ch, col) {
+    const t0 = this.game.time, life = 2.2, cut = 0.3, part = 0.55;
+    const add = (c, o) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const g = new THREE.Group();
+    g.position.set(pos[0], pos[1] + 1.0, pos[2]);
+    // Turn the stroke to face the camera, so it reads as a cut across the body.
+    const cam = this.camera.position;
+    g.rotation.y = Math.atan2(cam.x - pos[0], cam.z - pos[2]);
+    const line = (w, h, c, o, y) => {
+      const geo = new THREE.BoxGeometry(1.6, 1, 1);
+      geo.translate(0.8, 0, 0); // grows from its left end
+      const m = new THREE.Mesh(geo, add(c, o));
+      m.position.set(-0.8 * Math.cos(0.38), y + 0.8 * Math.sin(0.38), 0.05);
+      m.rotation.z = -0.38;
+      m.scale.set(0.001, h, w);
+      g.add(m);
+      return m;
+    };
+    const stroke = line(0.03, 0.035, col.glow, 1, 0.05), trail = line(0.01, 0.012, col.accent, 0.9, -0.02);
+    const petals = [];
+    const petalGeo = new THREE.PlaneGeometry(0.07, 0.13);
+    for (let i = 0; i < 28; i++) {
+      const m = new THREE.Mesh(petalGeo, add(col.accent, 0));
+      const along = (Math.random() - 0.5) * 1.1;
+      m.position.set(along * Math.cos(0.38), -along * Math.sin(0.38) + (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.3);
+      m.userData.v = [(Math.random() - 0.5) * 0.9, 0.5 + Math.random() * 0.9, (Math.random() - 0.5) * 0.9];
+      m.userData.spin = [(Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9];
+      m.visible = false;
+      g.add(m);
+      petals.push(m);
+    }
+    this.vanishBody(ch, part, 0.45);
+    let split = false, last = 0;
+    this.fxAdd(g, t0 + life, (now) => {
+      const t = now - t0, dt = Math.max(0, t - last);
+      last = t;
+      const draw = Math.min(1, Math.max(0, (t - cut) / 0.1)), lag = Math.min(1, Math.max(0, (t - cut - 0.04) / 0.12));
+      const thin = Math.max(0, 1 - Math.max(0, t - part) / 0.4);
+      stroke.scale.x = Math.max(0.001, draw);
+      trail.scale.x = Math.max(0.001, lag);
+      stroke.scale.y = Math.max(0.001, 0.035 * thin);
+      trail.scale.y = Math.max(0.001, 0.012 * thin);
+      stroke.visible = trail.visible = t >= cut && thin > 0;
+      if (!split && t >= part) {
+        split = true;
+        for (const m of petals) m.visible = true;
+        this.fxBurst([pos[0], pos[1] + 1.0, pos[2]], col.glow, 1.4, 0.25, true);
+      }
+      if (split) {
+        const k = (t - part) / (life - part);
+        for (const m of petals) {
+          const v = m.userData.v;
+          m.position.x += v[0] * dt; m.position.y += v[1] * dt; m.position.z += v[2] * dt;
+          v[0] *= 1 - 1.2 * dt; v[2] *= 1 - 1.2 * dt;
+          m.rotation.x += m.userData.spin[0] * dt; m.rotation.y += m.userData.spin[1] * dt;
+          m.material.opacity = 0.85 * Math.min(1, k * 8) * (1 - k);
+        }
       }
     });
   }
@@ -1970,7 +2035,7 @@ export class Renderer {
     const et = Math.min(1, (performance.now() - vm.equipStart) / Math.max(1, vm.equipDur));
     // A gun model with its own pullout (EQUIP_ANIMS: the Starspur twirls) plays it across the equip time.
     const draw = et < 1 && !def.hands ? EQUIP_ANIMS[vm.model.userData.design] : null;
-    let drawPose = null;
+    let drawPose = null, reloadGlow = null;
     if (draw) {
       drawPose = inspectPose(draw, et * draw.dur);
       drawPose.t = et * draw.dur;
@@ -1980,6 +2045,7 @@ export class Renderer {
     if (!def.melee && !blades && !def.launcher) {
       // Per-gun reload and bolt/pump animations (reloadanim.js); the gun is lowered a touch while aiming.
       const rp = reloadPose(vm.model, def, gun, this.game.time, this.cycle);
+      reloadGlow = rp.glow;
       px += rp.px || 0; py += rp.py || 0; pz += rp.pz || 0;
       rx += rp.rx || 0; ry += rp.ry || 0; rz += rp.rz || 0;
     }
@@ -2014,12 +2080,13 @@ export class Renderer {
       const m = vm.melee;
       if (m.hip) { px += m.hip[0]; py += m.hip[1]; pz += m.hip[2]; }
       if (m.rot) { rx += m.rot[0] * (1 - (insPose ? 0.6 : 0)); ry += m.rot[1] * (insPose ? 0.4 : 1); rz += m.rot[2] * (insPose ? 0.4 : 1); }
-      poseMeleeParts(vm.model, insPose && this.inspecting?.ins, insPose?.t, vm.glow);
+      if (insPose) poseMeleeParts(vm.model, this.inspecting.ins, insPose.t, vm.glow);
+      else poseMeleeParts(vm.model, drawPose && draw, drawPose?.t, vm.glow); // the pullout (Oathblade Tanto), or at rest
     } else if (insPose && this.inspecting.ins.parts) {
       poseMeleeParts(vm.model, this.inspecting.ins, insPose.t, vm.glow); // a gun model's inspect (the Orbital orb)
     } else if (drawPose) {
       poseMeleeParts(vm.model, draw, drawPose.t, vm.glow); // the pullout's twirl
-    } else if (vm.glow) vm.glow.mat.emissiveIntensity = vm.glow.base; // its parts are left to the reload pose
+    } else if (vm.glow) vm.glow.mat.emissiveIntensity = vm.glow.base * (reloadGlow ?? 1); // its parts are left to the reload pose (and its flash, Oathblade's)
     vm.group.position.set(px, py, pz);
     vm.group.rotation.set(rx, ry, rz);
     this.vmCamera.fov = 60;
