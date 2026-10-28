@@ -127,11 +127,13 @@ procedural patterns with their own colours, and glow. Custom skins are saved in 
   original space-western set in bone enamel, copper and star-fire glow, every gun with a spur rowel that spins.
   Sheriff: long octagonal barrel, six lit chambers; inspects *Gunslinger* (twirled twice on the trigger finger)
   and *Cylinder roll* (drum swung out and spun up). Marshal: lit under-tube and a rowel bolt knob; *Long look*
-  and *Spur cock*. Judge: twin barrels and a five-chamber drum; *Drum roll* and *Barrels up*.
+  and *Spur cock*. Judge: twin barrels and a five-chamber drum; *Drum roll* and *Barrels up*. The Sheriff and
+  Marshal pull out with a twirl round the trigger guard (`EQUIP_ANIMS` in `js/melee.js`).
 
 **Finishers**: Orbital's *Collapse* (the body is drawn into an orb that implodes in a shockwave) and Starspur's
-*Last Light* (a star rises spinning out of the body, flares, and leaves a star brand on the floor). They play on
-every kill in deathmatch and, as in Valorant, on the kill that ends the round in 5v5, in the colours of the variant
+*Last Light* (a star rises spinning out of the body and flares out). Both leave nothing behind. As in Valorant, a
+finisher plays only on the kill that ends the round in 5v5 (in deathmatch, the kill that wins the match, with the
+scoreboard held back until it's done), and only if that kill was made with the skin, in the colours of the variant
 that got the kill. Everyone in the match sees them.
 
 **Melee types** (the Melee card): Tactical Knife, Hatchet, Katana, Karambit, Balisong, Kunai, Arc Blade and the
