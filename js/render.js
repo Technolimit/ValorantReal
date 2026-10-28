@@ -7,6 +7,7 @@ import { SwingTrails } from './swingfx.js';
 import { skinFor, skinFits, meleeSkin, SKINS } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
 import { BLADES, SMOKE, bloomTargets } from './abilities.js';
+import { VM_SHINE, shineMaterial, fitShine, updateShine, sweepAt, ViewmodelPost } from './shine.js';
 
 // Blitz's Finale launcher, shown in the hands (and on her body) while the ultimate is out.
 const FINALE = { id: 'finale', name: 'Finale', cat: 'Ability', model: 'launcher', launcher: true };
@@ -160,9 +161,21 @@ const AUTO_SCALES = [0.5, 0.6, 0.7, 0.85, 1];
 const vmMats = new WeakMap();
 function vmMaterial(m) {
   let c = vmMats.get(m);
-  if (!c) { c = m.clone(); vmMats.set(m, c); }
+  if (!c) { c = shineMaterial(m.clone(), VM_SHINE); vmMats.set(m, c); }
   return c;
 }
+// A critically-underdamped spring toward a target: it overshoots a little and settles, which gives the
+// viewmodel its follow-through. Stepped in small slices so a long frame doesn't blow it up.
+function spring(s, target, dt, k, zeta) {
+  const c = 2 * zeta * Math.sqrt(k);
+  for (let left = Math.min(dt, 0.1); left > 0; left -= 1 / 240) {
+    const h = Math.min(left, 1 / 240);
+    s.v += ((target - s.x) * k - s.v * c) * h;
+    s.x += s.v * h;
+  }
+  return s.x;
+}
+const easeOutBack = (t) => 1 + 2.2 * (t - 1) ** 3 + 1.2 * (t - 1) ** 2;
 
 // One geometry from several (position, normal and uv only), for static meshes that share a material.
 function mergeGeometries(list) {
@@ -534,6 +547,7 @@ export class Renderer {
         this.recoilKick(gun);
         if (CYCLE_STYLE[gun.def.id]) this.cycle = { start: g.time, dur: (1 / gun.rate()) * 0.85 };
         this.vm.flashUntil = performance.now() + (gun.def.suppressed ? 25 : 40);
+        this.vm.flare = Math.min(0.8, (this.vm.flare || 0) + 0.35); // the skin's glow kicks with each shot
         this.vmFlashScale = gun.def.suppressed ? 0.06 : 0.12;
       } else if (!gun.def.suppressed) {
         const f = this.flashPool.find(x => x.until < performance.now()) || this.flashPool[0];
@@ -1708,12 +1722,15 @@ export class Renderer {
     this.vm.glow = this.vm.melee || MODEL_INSPECTS[this.vm.model.userData.design] ? ownGlow(this.vm.model, skin) : null;
     // Its own copies of the skin's materials: the same material drawn in both scenes (here and on your body or
     // anyone else's gun) has its shader looked up again on every draw, since the two scenes are lit differently.
+    if (this.vm.glow) this.vm.glow.mat = shineMaterial(this.vm.glow.mat, VM_SHINE);
     this.vm.model.traverse(o => { if (o.material?.isMaterial && o.material !== this.vm.glow?.mat) o.material = vmMaterial(o.material); });
     if (def.hands) { this.vm.equipStart = performance.now(); this.vm.equipDur = 250; }
     if (def.launcher) { this.vm.equipStart = performance.now(); this.vm.equipDur = 1400; } // Finale takes 1.4 s to draw
     this.vm.model.scale.setScalar(VM_SCALE);
     this.vm.model.userData.muzzle.add(this.vmFlash);
     this.vm.group.add(this.vm.model);
+    this.vm.model.updateWorldMatrix(true, true);
+    fitShine(this.vm.model, VM_SHINE);
     this.vm.key = key;
     this.vm.kind = def.model;
   }
@@ -1757,7 +1774,13 @@ export class Renderer {
     this.renderer.render(this.scene, this.camera);
     if (p && (p.alive || this.specTarget) && this.vmVisible) {
       this.renderer.clearDepth();
-      this.renderer.render(this.vmScene, this.vmCamera);
+      if (this.settings.weaponFx === false) {
+        // No glow pass: still tone mapped, so the bright studio reflections roll off instead of clipping.
+        const r = this.renderer;
+        r.toneMapping = THREE.NeutralToneMapping; r.toneMappingExposure = 1.25;
+        r.render(this.vmScene, this.vmCamera);
+        r.toneMapping = THREE.NoToneMapping; r.toneMappingExposure = 1;
+      } else (this.vmPost ||= new ViewmodelPost()).render(this.renderer, this.vmScene, this.vmCamera);
     }
   }
 
@@ -2003,6 +2026,7 @@ export class Renderer {
     if (cur && cur.gun === p.gun && !cur.back && set.length === 1) { cur.held = true; cur.heldAt = now; return; }
     const idx = cur && cur.gun === p.gun && !cur.back ? (cur.idx + 1) % set.length : 0;
     this.inspecting = { start: now, gun: p.gun, idx, ins: set[idx], count: set.length, held: true, heldAt: now, ex: 0, exOn: false, yaw: 0, pitch: 0 };
+    this.vm.sweepStart = now + 250; // a sheen runs down the gun as it turns to the light
   }
 
   // Inspect key released: leave examine mode (the weapon eases back to rest).
@@ -2131,19 +2155,39 @@ export class Renderer {
     let px = lerp(pose.hip[0], pose.ads[0], a), py = lerp(pose.hip[1], adsY, a), pz = lerp(pose.hip[2], adsZ, a);
     let rx = 0, ry = 0, rz = 0;
 
-    // Movement bob
-    const sp = p.horizSpeed();
+    // Movement bob: a figure eight, with the wrist rolling into each step.
+    const sp = p.horizSpeed(), tNow = performance.now() / 1000, hipK = 1 - a * 0.8;
     if (p.grounded && sp > 0.3) vm.bob += dt * sp * 1.9;
     const bobAmt = Math.min(1, sp / 5.4) * (1 - a * 0.85);
     px += Math.cos(vm.bob) * 0.008 * bobAmt;
     py += Math.abs(Math.sin(vm.bob)) * 0.01 * bobAmt;
-    if (!p.grounded) py += 0.015;
+    rz += Math.cos(vm.bob) * 0.02 * bobAmt;
+    ry += Math.sin(vm.bob) * 0.008 * bobAmt;
+    // Standing still: a slow breath, so the gun never looks frozen in place.
+    const idle = (1 - Math.min(1, sp / 2)) * (1 - a * 0.9);
+    px += Math.sin(tNow * 1.1) * 0.0016 * idle;
+    py += Math.sin(tNow * 2.2) * 0.0011 * idle;
+    rz += Math.sin(tNow * 1.1 + 0.6) * 0.006 * idle;
+    rx += Math.sin(tNow * 2.2 + 1.3) * 0.004 * idle;
 
-    // Sway against mouse movement
-    vm.swayX = lerp(vm.swayX, -look.dx * 0.0006, Math.min(1, dt * 12));
-    vm.swayY = lerp(vm.swayY, look.dy * 0.0006, Math.min(1, dt * 12));
-    px += vm.swayX * (1 - a * 0.8);
-    py += vm.swayY * (1 - a * 0.8);
+    // Jumping lifts the gun; landing drops it on a spring that dips and recovers, harder the faster you fell.
+    vm.air ||= { x: 0, v: 0 };
+    if (p.grounded && vm.wasAir) vm.air.v -= Math.min(1, Math.max(0, -(vm.fallV || 0)) / 9) * 0.55;
+    vm.wasAir = !p.grounded;
+    if (!p.grounded) vm.fallV = p.vel[1];
+    const air = spring(vm.air, p.grounded ? 0 : 0.015, dt, 90, 0.45);
+    py += air * hipK; rx += air * 1.4 * hipK;
+
+    // Sway against mouse movement: the gun trails the view on a soft spring, overshoots a touch as you stop
+    // (follow-through) and rolls into the turn. Strafing tilts it the way you're moving.
+    vm.sx ||= { x: 0, v: 0 }; vm.sy ||= { x: 0, v: 0 }; vm.tilt ||= { x: 0, v: 0 };
+    const sx = spring(vm.sx, Math.max(-0.05, Math.min(0.05, -look.dx * 0.0006)), dt, 160, 0.55);
+    const sy = spring(vm.sy, Math.max(-0.05, Math.min(0.05, look.dy * 0.0006)), dt, 160, 0.55);
+    vm.swayX = sx; vm.swayY = sy;
+    px += sx * hipK; py += sy * hipK;
+    ry -= sx * 1.6 * hipK; rx -= sy * 1.2 * hipK; rz += sx * 2.4 * hipK;
+    const side = p.vel[0] * Math.cos(p.yaw) - p.vel[2] * Math.sin(p.yaw); // speed to your right
+    rz += spring(vm.tilt, p.grounded ? -side / 6.75 * 0.05 : 0, dt, 60, 0.7) * hipK;
 
     // Hands animations: pumping arms while sprinting, a reach forward when grabbing an orb, a gentle idle bob.
     if (def.hands) {
@@ -2185,6 +2229,10 @@ export class Renderer {
       drawPose.t = et * draw.dur;
       const v = drawPose.pose;
       px += v[0]; py += v[1]; pz += v[2]; rx += v[3]; ry += v[4]; rz += v[5];
+    } else if (et < 1 && !def.hands) {
+      // Draw: up from the lower right with a twist, overshooting a little before it settles (follow-through).
+      const e = easeOutBack(et), c = 1 - (1 - et) ** 3;
+      py -= (1 - e) * 0.25; rx -= (1 - e) * 0.6; px += (1 - c) * 0.05; rz += (1 - c) * 0.5;
     } else if (et < 1) { const e = 1 - Math.pow(1 - et, 3); py -= (1 - e) * 0.25; rx -= (1 - e) * 0.6; }
     if (!def.melee && !blades && !def.launcher) {
       // Per-gun reload and bolt/pump animations (reloadanim.js); the gun is lowered a touch while aiming.
@@ -2244,6 +2292,13 @@ export class Renderer {
     } else if (vm.glow) vm.glow.mat.emissiveIntensity = vm.glow.base * (reloadGlow ?? 1); // its parts are left to the reload pose (and its flash, Oathblade's)
     vm.group.position.set(px, py, pz);
     vm.group.rotation.set(rx, ry, rz);
+    // Shine: a sheen sweeps down the gun on the draw (and on inspect, see inspect()); the glow breathes and
+    // flares as it's drawn and with each shot. (sweepFixed: a frozen sweep, for testing.)
+    const nowMs = performance.now();
+    if (et < 1 && !def.hands && vm.sweepFor !== vm.equipStart) { vm.sweepFor = vm.equipStart; vm.sweepStart = vm.equipStart + vm.equipDur * 0.35; }
+    vm.flare = (vm.flare || 0) * Math.exp(-dt * 9);
+    const drawFlare = et < 1 && !def.hands ? Math.sin(et * Math.PI) * 0.6 : 0;
+    updateShine(vm.model, VM_SHINE, nowMs / 1000, def.hands ? null : vm.sweepFixed ?? sweepAt((nowMs - (vm.sweepStart ?? -1e9)) / 650), vm.flare + drawFlare);
     this.vmCamera.fov = 60;
     this.vmCamera.updateProjectionMatrix();
     this.trails.setVisible(this.vmVisible);

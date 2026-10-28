@@ -476,6 +476,7 @@ const SCHEMA = [
   ['Video & audio', [
     ['volume', 'Volume', 'range', { min: 0, max: 1, step: 0.05 }],
     ['shadows', 'Shadows', 'checkbox'],
+    ['weaponFx', 'Weapon glow (bloom)', 'checkbox'],
     ['renderScale', 'Render scale', 'select', { auto: 'Auto (drops when the frame rate does)', 0.5: '50%', 0.75: '75%', 1: '100%' }],
     ['showImpacts', 'Bullet holes', 'checkbox'],
     ['impactSeconds', 'Bullet holes last (s)', 'range', { min: 1, max: 30, step: 1 }],

@@ -4,6 +4,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { SKINS, TEXTURES, onSkinsChanged, designFor } from './skins.js';
 import { MELEE, MODEL_INSPECTS, inspectPose } from './melee.js';
+import { shineUniforms, shineMaterial, fitShine, updateShine, sweepAt } from './shine.js';
 
 const PI = Math.PI;
 
@@ -49,6 +50,7 @@ export function skinMaterials(skinId) {
   mats.accent ||= mats.glow;
   mats.tube = mats.trim.clone(); mats.tube.side = THREE.DoubleSide;
   mats.tubeBody = mats.body.clone(); mats.tubeBody.side = THREE.DoubleSide;
+  for (const [slot, m] of Object.entries(mats)) if (!m.userData.slot) m.userData = { slot, skin: skinId }; // for the viewmodel's shine (shine.js)
   matCache.set(skinId, mats);
   return mats;
 }
@@ -1326,7 +1328,9 @@ export function poseMeleeParts(model, ins, t, glow) {
   return p;
 }
 
-// Soft studio reflections so metallic and glossy skins read as metal rather than flat dark grey.
+// Studio reflections so metallic and glossy skins read as metal rather than flat dark grey: a dim room with
+// bright softboxes (brighter than white, so their reflections stay crisp highlights after tone mapping) that
+// slide across the gun as it moves, which is most of what makes a polished skin look polished.
 const envCache = new WeakMap();
 export function studioEnv(renderer) {
   if (envCache.has(renderer)) return envCache.get(renderer);
@@ -1335,19 +1339,21 @@ export function studioEnv(renderer) {
   const pos = room.geometry.attributes.position, cols = [];
   for (let i = 0; i < pos.count; i++) {
     const t = (pos.getY(i) / 5 + 1) / 2;
-    cols.push(0.18 + t * 0.75, 0.2 + t * 0.75, 0.22 + t * 0.8);
+    cols.push(0.04 + t * 0.22, 0.045 + t * 0.24, 0.06 + t * 0.3);
   }
   room.geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
   s.add(room);
-  const panel = (x, y, z, w, h, c) => {
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide }));
+  const panel = (x, y, z, w, h, r, g, b) => {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(r, g, b), side: THREE.DoubleSide }));
     p.position.set(x, y, z); p.lookAt(0, 0, 0); s.add(p);
   };
-  panel(2, 3, 2, 3, 1.2, 0xffffff);
-  panel(-3, 1, -1, 1.5, 3, 0xbfd8ff);
-  panel(0, -1, 3.5, 4, 0.6, 0xfff0d8);
+  panel(1.5, 3.6, 1.5, 2.4, 1, 2.8, 2.8, 2.8); // key softbox overhead
+  panel(-3.8, 1.2, -0.6, 0.6, 3.6, 2.2, 2.7, 3.6); // cool strip light on the left
+  panel(3.6, 0.6, -2, 0.5, 3, 3.4, 2.7, 2); // warm strip on the right
+  panel(0, 1.8, -4, 4.5, 0.35, 2.6, 2.6, 2.8); // a thin bar ahead: a long highlight down the top of the barrel
+  panel(0, -1.4, 3.6, 4, 0.7, 0.9, 0.8, 0.7); // floor bounce
   const pm = new THREE.PMREMGenerator(renderer);
-  const tex = pm.fromScene(s, 0.02).texture;
+  const tex = pm.fromScene(s, 0.015).texture;
   pm.dispose();
   envCache.set(renderer, tex);
   return tex;
@@ -1365,6 +1371,7 @@ export function gunThumb(weaponId, skinId) {
     const canvas = document.createElement('canvas');
     const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
     r.setSize(360, 120, false);
+    r.toneMapping = THREE.NeutralToneMapping; r.toneMappingExposure = 1.25; // as the viewmodel (shine.js)
     const scene = new THREE.Scene();
     scene.add(new THREE.HemisphereLight(0xe8f0ff, 0x30302c, 1.4));
     const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(1, 1.5, 1); scene.add(key);
@@ -1407,6 +1414,10 @@ export class GunPreview {
     const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(1, 1.5, 1); this.scene.add(key);
     const rim = new THREE.DirectionalLight(0x9fc8ff, 1.6); rim.position.set(-1.5, 0.6, -1); this.scene.add(rim);
     this.scene.environment = studioEnv(this.r);
+    // The showcase shines like the viewmodel (shine.js): its own copies of the materials, a sheen every few seconds.
+    this.r.toneMapping = THREE.NeutralToneMapping; this.r.toneMappingExposure = 1.25;
+    this.shine = shineUniforms();
+    this.shineMats = new WeakMap();
     this.pivot = new THREE.Group();
     this.scene.add(this.pivot);
     this.yaw = PI / 2; this.pitch = 0.12; this.t = 0; this.dragging = false; this.running = false;
@@ -1426,13 +1437,23 @@ export class GunPreview {
     const m = gunModel(weaponId, skinId);
     this.model = m;
     this.glow = MELEE[weaponId] || MODEL_INSPECTS[m.userData.design] ? ownGlow(m, skinId) : null;
+    if (this.glow) this.glow.mat = shineMaterial(this.glow.mat, this.shine);
+    m.traverse(o => {
+      if (!o.material?.isMaterial || o.material === this.glow?.mat) return;
+      let c = this.shineMats.get(o.material);
+      if (!c) { c = shineMaterial(o.material.clone(), this.shine); this.shineMats.set(o.material, c); }
+      o.userData.baseMat = o.material; o.material = c;
+    });
     // Drop the hands for the showcase.
-    m.children.filter(c => c.material && (c.material === skinMaterials(skinId).sleeve || c.material === skinMaterials(skinId).glove)).forEach(c => m.remove(c));
+    m.children.filter(c => c.userData.baseMat && (c.userData.baseMat === skinMaterials(skinId).sleeve || c.userData.baseMat === skinMaterials(skinId).glove)).forEach(c => m.remove(c));
     const box = new THREE.Box3().setFromObject(m);
     const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
     m.position.sub(c);
     this.pivot.add(m);
     this.size = size;
+    m.updateWorldMatrix(true, true);
+    fitShine(m, this.shine);
+    this.shownAt = performance.now();
   }
 
   // Play one of a melee type's inspects on the showcase model (parts, glow and a gentle turn).
@@ -1466,6 +1487,7 @@ export class GunPreview {
       const dist = Math.max((s.z / 2) / (th * 0.75), (s.y / 2) / (tv * 0.7)) + s.x / 2;
       this.cam.position.set(0, 0, dist);
       this.cam.lookAt(0, 0, 0);
+      if (this.model) updateShine(this.model, this.shine, t / 1000, sweepAt((((t - this.shownAt) / 1000 + 3) % 3.5) / 0.75));
       this.r.render(this.scene, this.cam);
     };
     requestAnimationFrame(loop);
