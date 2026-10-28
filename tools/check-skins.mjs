@@ -1,5 +1,5 @@
-// Headless checks for skins: the preset list, the single Melee entry (one theme per melee type), the Starspur and Oathblade
-// models with their inspects and reloads, and finishers (the final kill of the round in 5v5, played when the round ends, or the match-winning kill in deathmatch), and pullouts.
+// Headless checks for skins: the preset list, the single Melee entry (one theme per melee type), the Orbital, Starspur and
+// Oathblade models with their inspects and reloads, and finishers (the final kill of the round in 5v5, played when the round ends, or the match-winning kill in deathmatch), and pullouts.
 //   node tools/check-skins.mjs [shots-dir]     (needs playwright; with a dir, saves the skin menu and finishers)
 // Exits with code 1 if any check fails.
 import { createServer } from 'node:http';
@@ -58,9 +58,10 @@ const shot = async (name, el = null) => { if (SHOTS) await (el ? page.locator(el
 await check('Gun skins: Standard, Ember Circuit, Glacier, plus model skins only on their guns', () => page.evaluate(async () => {
   const { SKIN_ORDER, skinFits } = await import('./js/skins.js');
   const on = (w) => SKIN_ORDER.filter(id => skinFits(id, w));
-  const r = { list: SKIN_ORDER.join(), vandal: on('vandal').join(), sheriff: on('sheriff').join(), marshal: on('marshal').join(), judge: on('judge').join(), phantom: on('phantom').join() };
+  const r = { list: SKIN_ORDER.join(), vandal: on('vandal').join(), sheriff: on('sheriff').join(), marshal: on('marshal').join(), judge: on('judge').join(), phantom: on('phantom').join(), stinger: on('stinger').join(), bulldog: on('bulldog').join(), spectre: on('spectre').join() };
   return {
-    pass: r.list === 'standard,ember,glacier,orbital,starspur,oathblade' && r.vandal === 'standard,ember,glacier,orbital,oathblade' && r.phantom === 'standard,ember,glacier'
+    pass: r.list === 'standard,ember,glacier,orbital,starspur,oathblade' && r.vandal === 'standard,ember,glacier,orbital,oathblade' && r.spectre === 'standard,ember,glacier'
+      && ['phantom', 'stinger', 'bulldog'].every(w => r[w] === 'standard,ember,glacier,orbital')
       && r.sheriff === 'standard,ember,glacier,starspur,oathblade' && ['marshal', 'judge'].every(w => r[w] === 'standard,ember,glacier,starspur'),
     ...r,
   };
@@ -122,7 +123,7 @@ await check('Melee screen: the melee types, each in its own theme; Equip swaps y
 });
 
 if (SHOTS) {
-  for (const [w, name, v] of [['sheriff', 'Starspur', 0], ['marshal', 'Starspur', 1], ['judge', 'Starspur', 3], ['vandal', 'Orbital', 0], ['vandal', 'Orbital', 1], ['sheriff', 'Starspur', 2]]) {
+  for (const [w, name, v] of [['sheriff', 'Starspur', 0], ['marshal', 'Starspur', 1], ['judge', 'Starspur', 3], ['vandal', 'Orbital', 0], ['vandal', 'Orbital', 1], ['stinger', 'Orbital', 0], ['phantom', 'Orbital', 2], ['bulldog', 'Orbital', 3], ['sheriff', 'Starspur', 2]]) {
     await page.evaluate(([w, name, v]) => { __open(w); __pick(name); __variant(v); }, [w, name, v]);
     await page.waitForTimeout(400);
     await shot(`menu-${name.toLowerCase()}-${w}-${v}`, '.panel.skins');
@@ -143,6 +144,51 @@ if (SHOTS) {
   await shot('collection-after', '.panel.skins');
 }
 await page.evaluate(() => { document.getElementById('skin-detail-back').click(); document.getElementById('skins-back').click(); });
+
+await check('Orbital models: a spire with an open top on every gun, the orb inspected and reloaded, sights over the spire', () => page.evaluate(async () => {
+  const THREE = await import('./vendor/three.module.min.js');
+  const { gunModel, poseMeleeParts } = await import('./js/models.js');
+  const { MODEL_INSPECTS } = await import('./js/melee.js');
+  const { reloadPose, RELOAD_STYLE } = await import('./js/reloadanim.js');
+  const { Gun } = await import('./js/gun.js');
+  const out = {};
+  let ok = true;
+  for (const w of ['vandal', 'stinger', 'phantom', 'bulldog']) {
+    const m = gunModel(w, 'orbital'), d = m.userData.design, orb = m.userData.parts.orb;
+    if (!orb) { ok = false; out[w] = { d }; continue; }
+    m.updateMatrixWorld(true);
+    // Nothing on the gun covers the spire's mouth: no mesh outside the orb has a point above the orb's top
+    // within the mouth (the sights stand well clear of it).
+    const ball = orb.children[0]; // the orb itself (the part also holds the hidden off-hand)
+    const ob = new THREE.Box3().setFromObject(ball), oc = ob.getCenter(new THREE.Vector3()), v = new THREE.Vector3();
+    let covered = false;
+    m.traverse(o => {
+      if (!o.isMesh || o.parent === orb || !o.visible) return;
+      const pos = o.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+        if (Math.hypot(v.x - oc.x, v.z - oc.z) < 0.015 && v.y > ob.max.y + 0.002) covered = true;
+      }
+    });
+    // The inspect floats the orb out and back; the reload pops it and seats a fresh one.
+    const ins = MODEL_INSPECTS[d] || [];
+    let rise = 0;
+    for (const i of ins) for (let t = 0; t <= i.dur; t += 0.05) { const p = poseMeleeParts(m, i, t, null); if (p.pose.some(Number.isNaN)) ok = false; rise = Math.max(rise, p.parts.orb?.[1] || 0); }
+    poseMeleeParts(m, null, 0, null);
+    const rest = orb.position.y;
+    const gun = new Gun(__W[w]);
+    gun.reloading = true; gun.reloadStart = 0; gun.reloadDur = 2; gun.reloadEnd = 2;
+    reloadPose(m, gun.def, gun, 0.4, null);
+    const popped = orb.position.y - rest;
+    reloadPose(m, gun.def, gun, 1.98, null);
+    const seated = Math.abs(orb.position.y - rest) < 0.001 && orb.visible;
+    out[w] = { d, covered, sightOver: +(m.userData.sightY - ob.max.y).toFixed(3), rise: +rise.toFixed(3), popped: +popped.toFixed(3), seated, style: RELOAD_STYLE[d] };
+    if (d !== w + 'Orb' || covered || m.userData.sightY <= ob.max.y || ins.length !== 1 || rise < 0.03 || popped < 0.03 || !seated || RELOAD_STYLE[d] !== 'orb') ok = false;
+  }
+  const designs = Object.values(out).map(o => JSON.stringify(MODEL_INSPECTS[o.d]?.[0].parts));
+  if (new Set(designs).size !== designs.length) ok = false; // each gun moves its orb its own way
+  return { pass: ok, ...out };
+}));
 
 await check('Starspur models build with their moving parts, and their inspects and reloads run', () => page.evaluate(async () => {
   const { gunModel, poseMeleeParts } = await import('./js/models.js');

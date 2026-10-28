@@ -213,6 +213,44 @@ function wrap(k, n, y0, z0, y1, z1, w, d, slot, tilt = 0) {
   }
 }
 
+// Orbital's reactor spire: a hollow cone rising from the top of the gun at z (base y0) to a reactor ring,
+// open at the top so you see down into it, lit from the floor, with gold fins down its slope. The orb (part
+// `orb`) sits in the mouth: the inspect floats it out and the reload pops it and seats a fresh one.
+// `s` scales the whole spire. Returns the height of the top of the ring.
+function orbSpire(k, z, y0, s = 1) {
+  const h = 0.064 * s, rb = 0.054 * s, rt = 0.03 * s, top = y0 + h, slope = Math.atan((rb - rt) / h);
+  k.cyl(rt, h, 'tubeBody', 0, y0 + h / 2, z, 24, 0, 0, 0, rb, true);
+  k.cyl(rb * 0.9, 0.003, 'glow', 0, y0 + 0.003, z, 24, 0);
+  k.tor(rb, 0.0045 * s, 'metal', 0, y0 + 0.002, z, PI / 2);
+  k.tor((rb + rt) / 2 + 0.0012, 0.0018 * s, 'accent', 0, y0 + h / 2, z, PI / 2, 0, 0);
+  for (let i = 0; i < 4; i++) {
+    const a = PI / 4 + (i * PI) / 2, r = (rb + rt) / 2 + 0.0025 * s;
+    k.box(0.006 * s, h * 1.04, 0.011 * s, 'metal', Math.cos(a) * r, y0 + h / 2, Math.sin(a) * r + z, 0, -a, slope);
+    k.box(0.0065 * s, h * 0.5, 0.004 * s, 'glow', Math.cos(a) * (r + 0.001), y0 + h * 0.45, Math.sin(a) * (r + 0.001) + z, 0, -a, slope);
+  }
+  k.tor(rt + 0.002 * s, 0.0075 * s, 'trim', 0, top, z, PI / 2);
+  k.tor(rt - 0.004 * s, 0.0026 * s, 'glow', 0, top + 0.003 * s, z, PI / 2);
+  for (const x of [-1, 1]) k.box(0.01 * s, 0.018 * s, 0.02 * s, 'metal', x * (rt + 0.009 * s), top - 0.004 * s, z);
+  const oy = top - 0.02 * s;
+  k.part('orb', [0, oy, z]);
+  k.ball(0.019 * s, 'glow', 0, oy, z);
+  k.tor(0.024 * s, 0.0018 * s, 'accent', 0, oy, z, 0.6, 0.3);
+  k.tor(0.024 * s, 0.0018 * s, 'glow', 0, oy, z, -0.5, 1.2);
+  k.part(null);
+  return top + 0.0075 * s;
+}
+// Orbital sights, raised so the line of sight clears the spire: a gold ring to look through on a post at the
+// back (zr, standing on yr) and a post with a lit tip at the front (zf, on yf), both at height sy.
+function orbSights(k, zf, yf, zr, yr, sy) {
+  k.box(0.01, sy - 0.0105 - yr, 0.012, 'metal', 0, (sy - 0.0105 + yr) / 2, zr);
+  k.box(0.026, 0.006, 0.016, 'trim', 0, yr + 0.003, zr);
+  k.tor(0.0085, 0.0024, 'metal', 0, sy, zr);
+  k.tor(0.0062, 0.0008, 'glow', 0, sy, zr - 0.002);
+  k.prof([[zf + 0.012, yf], [zf + 0.004, sy - 0.002], [zf - 0.004, sy - 0.002], [zf - 0.012, yf]], 0.006, 'metal', 0, 0.001);
+  k.box(0.0035, 0.005, 0.005, 'glow', 0, sy, zf);
+  return sy;
+}
+
 // ---------- weapon designs ----------
 // Each returns { muzzle: [x, y, z], sightY } and adds its parts to the kit.
 const DESIGNS = {
@@ -678,33 +716,27 @@ const DESIGNS = {
     return { muzzle: [0, 0.014, -0.615], sightY: 0.054 };
   },
 
-  // Orbital skin's Vandal: a heavier receiver split around a reactor ring (open to the top) that holds a
-  // glowing orb, part `orb`: the inspect floats it out and the reload pops it and seats a fresh one.
+  // ---- Orbital collection (model skins, see skins.js): violet enamel, gunmetal, gold, a live orb ----
+  // Each gun carries the reactor spire (orbSpire) on top, so they all inspect and reload the same way
+  // (`orb` in reloadanim.js), and raised sights (orbSights) to aim over it.
+  // Vandal: a heavier receiver split around the spire, a chunky vented handguard and a glowing muzzle shroud.
   vandalOrb(k) {
-    // Receiver, rear and front halves with the reactor bay between them (z -0.115 to -0.185), a low cradle in it.
+    // Receiver, rear and front halves with the reactor bay between them (z -0.115 to -0.185), the spire on top.
     k.prof([[0.06, -0.026], [0.06, 0.048], [-0.02, 0.054], [-0.115, 0.054], [-0.115, -0.026]], 0.058, 'body');
     k.prof([[-0.185, -0.026], [-0.185, 0.054], [-0.3, 0.05], [-0.32, 0.028], [-0.32, -0.026]], 0.058, 'body');
-    k.box(0.058, 0.056, 0.07, 'trim', 0, 0.002, -0.15);
+    k.box(0.058, 0.08, 0.07, 'trim', 0, 0.014, -0.15);
     k.box(0.06, 0.004, 0.16, 'accent', 0, 0.002, -0.02);
     k.box(0.06, 0.004, 0.12, 'accent', 0, 0.002, -0.25);
     k.box(0.06, 0.004, 0.07, 'accent', 0, 0.002, -0.15);
-    // Top spine either side of the ring, gold clamps either side of the sight line.
+    for (const x of [-0.0295, 0.0295]) k.box(0.002, 0.03, 0.05, 'metal', x, 0.03, -0.15);
+    // Top spine either side of the spire, gold clamps on it.
     k.box(0.034, 0.012, 0.15, 'trim', 0, 0.06, -0.03);
     k.box(0.034, 0.012, 0.11, 'trim', 0, 0.06, -0.255);
-    for (const z of [-0.035, -0.265]) for (const x of [-0.016, 0.016]) {
+    for (const z of [-0.06, -0.265]) for (const x of [-0.016, 0.016]) {
       k.box(0.008, 0.03, 0.014, 'metal', x, 0.074, z);
       k.box(0.008, 0.008, 0.024, 'metal', x, 0.09, z - 0.005);
     }
-    // Reactor ring, open to the top of the cradle and tipped a little toward your side so you see into it:
-    // gunmetal housing, blue inner ring, gold latches either side.
-    k.tor(0.036, 0.009, 'trim', 0, 0.042, -0.15, PI / 2, 0.4);
-    k.tor(0.027, 0.0035, 'glow', -0.003, 0.05, -0.15, PI / 2, 0.4);
-    for (const x of [-0.044, 0.044]) k.box(0.01, 0.02, 0.022, 'metal', x, 0.04, -0.15);
-    k.part('orb', [0, 0.052, -0.15]);
-    k.ball(0.019, 'glow', 0, 0.052, -0.15);
-    k.tor(0.024, 0.0018, 'accent', 0, 0.052, -0.15, 0.6, 0.3);
-    k.tor(0.024, 0.0018, 'glow', 0, 0.052, -0.15, -0.5, 1.2);
-    k.part(null);
+    const top = orbSpire(k, -0.15, 0.054);
     // Handguard: chunky shroud with neon vents and a gold name plate on each side.
     k.prof([[-0.32, -0.026], [-0.32, 0.05], [-0.49, 0.04], [-0.5, 0.018], [-0.49, -0.014]], 0.054, 'trim');
     k.teeth(5, -0.34, -0.46, 0.056, 0.018, 0.008, 'accent', 0, 0.026);
@@ -730,8 +762,108 @@ const DESIGNS = {
     k.box(0.047, 0.003, 0.09, 'accent', 0, 0.0, 0.2);
     k.box(0.05, 0.115, 0.02, 'grip', 0, -0.022, 0.305);
     k.box(0.052, 0.012, 0.022, 'metal', 0, 0.03, 0.305);
-    irons(k, -0.47, 0.0, 0.066);
-    return { muzzle: [0, 0.014, -0.64], sightY: 0.076 };
+    const sy = orbSights(k, -0.47, 0.045, 0.02, 0.066, top + 0.009);
+    return { muzzle: [0, 0.014, -0.64], sightY: sy };
+  },
+
+  // Stinger: a short, sharp SMG: a slim receiver with the spire just ahead of the grip, a stubby shroud with a
+  // lit face and gold vents, and a skeleton stock of gold rails around a neon strip.
+  stingerOrb(k) {
+    k.prof([[0.08, -0.008], [0.08, 0.05], [-0.02, 0.054], [-0.2, 0.05], [-0.225, 0.03], [-0.225, -0.008], [-0.05, -0.02]], 0.05, 'body');
+    k.box(0.052, 0.004, 0.2, 'accent', 0, 0.018, -0.09);
+    k.box(0.052, 0.003, 0.06, 'glow', 0, 0.004, 0.03);
+    k.box(0.03, 0.01, 0.07, 'trim', 0, 0.058, 0.035);
+    k.box(0.03, 0.01, 0.06, 'trim', 0, 0.057, -0.17);
+    const top = orbSpire(k, -0.08, 0.054, 0.82);
+    // Shroud: lit face ring, gold vents down each side.
+    k.cyl(0.021, 0.07, 'trim', 0, 0.022, -0.255, 16);
+    k.cyl(0.023, 0.01, 'body', 0, 0.022, -0.235, 16);
+    k.tor(0.017, 0.004, 'glow', 0, 0.022, -0.29);
+    k.cyl(0.01, 0.004, 'glow', 0, 0.022, -0.289, 12);
+    for (const x of [-0.022, 0.022]) k.teeth(3, -0.24, -0.275, 0.004, 0.01, 0.006, 'metal', x, 0.022);
+    // Magazine (fixed: this gun reloads its orb), gold base plate.
+    k.box(0.03, 0.115, 0.042, 'trim', 0, -0.07, -0.075, 0.26);
+    k.box(0.034, 0.008, 0.048, 'metal', 0, -0.126, -0.06, 0.26);
+    k.box(0.031, 0.003, 0.06, 'accent', 0, -0.066, -0.075, 0.26 + PI / 2);
+    charger(k, -0.03, 0.035, -0.03);
+    k.box(0.034, 0.1, 0.044, 'grip', 0, -0.055, 0.035, -0.24);
+    k.box(0.024, 0.005, 0.05, 'metal', 0, -0.026, 0.0);
+    // Skeleton stock: gold rails top and bottom, a neon strip between, a padded butt with a gold cap.
+    k.box(0.008, 0.008, 0.17, 'metal', -0.016, 0.034, 0.16);
+    k.box(0.008, 0.008, 0.17, 'metal', 0.016, 0.034, 0.16);
+    k.box(0.008, 0.008, 0.17, 'metal', 0, -0.008, 0.16, -0.12);
+    k.box(0.004, 0.004, 0.14, 'accent', 0, 0.014, 0.16, -0.06);
+    k.box(0.042, 0.068, 0.018, 'grip', 0, 0.01, 0.25);
+    k.box(0.044, 0.01, 0.02, 'metal', 0, 0.048, 0.25);
+    const sy = orbSights(k, -0.2, 0.05, 0.06, 0.063, top + 0.008);
+    return { muzzle: [0, 0.022, -0.3], sightY: sy };
+  },
+
+  // Phantom: a long, smooth receiver with the spire in its middle, a twin accent line down each side and a long
+  // suppressor banded in gold with neon rings, lit at the face.
+  phantomOrb(k) {
+    k.prof([[0.05, -0.024], [0.05, 0.05], [-0.06, 0.058], [-0.33, 0.05], [-0.35, 0.012], [-0.35, -0.024]], 0.056, 'body');
+    k.box(0.058, 0.003, 0.3, 'accent', 0, 0.01, -0.16);
+    k.box(0.058, 0.003, 0.26, 'glow', 0, -0.004, -0.17);
+    k.box(0.036, 0.01, 0.07, 'trim', 0, 0.062, -0.07);
+    k.box(0.036, 0.01, 0.08, 'trim', 0, 0.058, -0.28);
+    const top = orbSpire(k, -0.17, 0.055);
+    // Suppressor: gold bands, neon rings between them, lit face.
+    k.cyl(0.022, 0.22, 'trim', 0, 0.018, -0.46, 18);
+    for (const z of [-0.37, -0.45, -0.53]) k.cyl(0.024, 0.012, 'metal', 0, 0.018, z, 18);
+    for (const z of [-0.41, -0.49]) k.tor(0.0225, 0.0022, 'accent', 0, 0.018, z);
+    k.cyl(0.0235, 0.006, 'body', 0, 0.018, -0.568, 18);
+    k.tor(0.016, 0.0035, 'glow', 0, 0.018, -0.572);
+    k.cyl(0.01, 0.004, 'glow', 0, 0.018, -0.571, 14);
+    // Magazine (fixed: this gun reloads its orb), gold base plate.
+    k.box(0.03, 0.12, 0.044, 'trim', 0, -0.076, -0.12, 0.18);
+    k.box(0.034, 0.008, 0.05, 'metal', 0, -0.137, -0.109, 0.18);
+    charger(k, -0.05, 0.032, -0.033);
+    k.box(0.034, 0.1, 0.044, 'grip', 0, -0.06, 0.02, -0.26);
+    k.box(0.024, 0.005, 0.05, 'metal', 0, -0.03, -0.02);
+    // Stock: two gunmetal struts, a violet cheek plate with a neon edge, a gold-capped butt.
+    k.box(0.012, 0.012, 0.22, 'trim', 0, 0.035, 0.15);
+    k.box(0.012, 0.012, 0.2, 'trim', 0, -0.03, 0.16, -0.12);
+    k.prof([[0.08, 0.03], [0.2, 0.028], [0.22, -0.01], [0.09, 0.0]], 0.03, 'body', 0, 0.001);
+    k.box(0.031, 0.003, 0.11, 'accent', 0, 0.012, 0.15);
+    k.box(0.046, 0.1, 0.02, 'grip', 0, 0.0, 0.265);
+    k.box(0.048, 0.012, 0.022, 'metal', 0, 0.05, 0.265);
+    const sy = orbSights(k, -0.32, 0.051, 0.03, 0.055, top + 0.009);
+    return { muzzle: [0, 0.018, -0.58], sightY: sy };
+  },
+
+  // Bulldog: a blocky, heavy receiver with a bigger spire, a vented handguard and a squared gold muzzle brake
+  // with neon slots.
+  bulldogOrb(k) {
+    k.prof([[0.04, -0.026], [0.04, 0.054], [-0.3, 0.054], [-0.32, 0.032], [-0.32, -0.026]], 0.06, 'body');
+    k.box(0.062, 0.004, 0.3, 'accent', 0, 0.02, -0.14);
+    k.box(0.062, 0.004, 0.1, 'glow', 0, -0.006, -0.07);
+    k.box(0.04, 0.012, 0.08, 'trim', 0, 0.06, 0.0);
+    k.box(0.04, 0.012, 0.08, 'trim', 0, 0.06, -0.265);
+    for (const x of [-0.031, 0.031]) k.box(0.002, 0.034, 0.06, 'metal', x, 0.026, -0.14);
+    const top = orbSpire(k, -0.14, 0.054, 1.08);
+    // Handguard: gunmetal with neon vent teeth; barrel and the squared muzzle brake.
+    k.prof([[-0.32, -0.022], [-0.32, 0.048], [-0.46, 0.042], [-0.46, -0.014]], 0.054, 'trim');
+    k.teeth(5, -0.34, -0.44, 0.056, 0.012, 0.01, 'accent', 0, 0.006);
+    k.box(0.058, 0.006, 0.12, 'body', 0, 0.046, -0.39);
+    k.cyl(0.012, 0.1, 'trim', 0, 0.014, -0.5);
+    k.box(0.034, 0.034, 0.05, 'metal', 0, 0.014, -0.57);
+    for (const x of [-0.0175, 0.0175]) k.teeth(3, -0.555, -0.585, 0.002, 0.02, 0.006, 'glow', x, 0.014);
+    k.tor(0.012, 0.003, 'glow', 0, 0.014, -0.596);
+    // Magazine (fixed: this gun reloads its orb), gold base plate.
+    k.box(0.03, 0.115, 0.044, 'trim', 0, -0.077, -0.13, 0.12);
+    k.box(0.034, 0.008, 0.05, 'metal', 0, -0.135, -0.123, 0.12);
+    charger(k, -0.06, 0.03, -0.033);
+    k.box(0.036, 0.1, 0.046, 'grip', 0, -0.06, 0.0, -0.26);
+    k.box(0.024, 0.005, 0.05, 'metal', 0, -0.03, -0.04);
+    // Stock: heavy gunmetal frame, violet inset with a neon line, gold butt plate.
+    k.prof([[0.04, 0.048], [0.26, 0.042], [0.28, 0.0], [0.28, -0.075], [0.24, -0.075], [0.08, -0.014], [0.04, -0.014]], 0.048, 'trim');
+    k.prof([[0.1, 0.03], [0.22, 0.027], [0.235, -0.03], [0.12, -0.004]], 0.05, 'body', 0, 0.001);
+    k.box(0.051, 0.003, 0.1, 'accent', 0, 0.006, 0.17);
+    k.box(0.052, 0.1, 0.018, 'grip', 0, -0.018, 0.288);
+    k.box(0.054, 0.012, 0.02, 'metal', 0, 0.036, 0.288);
+    const sy = orbSights(k, -0.44, 0.048, 0.03, 0.066, top + 0.009);
+    return { muzzle: [0, 0.014, -0.6], sightY: sy };
   },
 
   // ---- Starspur collection (model skins, see skins.js): bone enamel, copper, teal chambers, spur rowels ----
