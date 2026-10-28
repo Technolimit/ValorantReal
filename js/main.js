@@ -7,9 +7,9 @@ import { loadSettings, saveSettings, DEFAULTS } from './settings.js';
 import { ACTIONS, FIXED, DEFAULT_BINDS, actionFor, rebind, keyLabel } from './keybinds.js';
 import { DT, YAW_PER_COUNT } from './config.js';
 import { WEAPONS, BUY_GROUPS } from './weapons.js';
-import { SKINS, SKIN_ORDER, skinFor, swatch, isCustom, saveCustomSkin, deleteCustomSkin, skinCode, parseSkinCode, sanitizeSkin, registerSkin, PATTERNS } from './skins.js';
-import { GunPreview } from './models.js';
-import { MELEE, MELEE_ORDER, isMelee, meleeId } from './melee.js';
+import { SKINS, SKIN_ORDER, skinFor, skinFits, designFor, swatch, meleeSkin, baseSkin, variantsOf, isCustom, saveCustomSkin, deleteCustomSkin, skinCode, parseSkinCode, sanitizeSkin, registerSkin, PATTERNS } from './skins.js';
+import { GunPreview, gunThumb } from './models.js';
+import { MELEE, MELEE_ORDER, MODEL_INSPECTS, SWINGS, isMelee, meleeId } from './melee.js';
 import { RELOAD_STYLE, RELOAD_SOUNDS } from './reloadanim.js';
 import { loadGameSounds } from './customsounds.js';
 import { AGENTS, AGENT_ORDER, Kit } from './abilities.js';
@@ -40,7 +40,7 @@ const renderer = new Renderer(canvas, game, settings);
 const sound = new Sound();
 sound.setVolume(settings.volume);
 // The game's own sound files from sounds/index.json, which everyone hears.
-loadGameSounds(WEAPONS).then((clips) => { for (const [key, c] of clips) sound.setClip(`${key}@game`, c.data); });
+loadGameSounds({ ...WEAPONS, ...SKINS }).then((clips) => { for (const [key, c] of clips) sound.setClip(`${key}@game`, c.data); });
 const hud = new Hud(game, renderer, settings);
 const rhud = new RoundHud(game);
 const minimap = new Minimap(game);
@@ -76,7 +76,10 @@ const ears = () => renderer.specTarget || game.player;
 const isEars = (who) => who === ears();
 
 // ---- sound hooks ----
-game.on('shot', ({ who, gun }) => { if (isPlayer(who)) sound.stopAction(); sound.gunshot(gun.def, isEars(who) ? null : who.eye(), gun); });
+game.on('shot', ({ who, gun }) => {
+  if (isPlayer(who)) sound.stopAction();
+  sound.gunshot(gun.def, isEars(who) ? null : who.eye(), gun, SKINS[renderer.skinOf(who, gun.def.id)]?.sounds); // a skin's sound set colours the shot
+});
 game.on('footstep', ({ who }) => sound.footstep(isEars(who) ? null : who.pos, isEars(who)));
 game.on('land', ({ who }) => sound.land(isEars(who) ? null : who.pos, isEars(who)));
 game.on('hit', ({ attacker, target, part, killed, dot }) => {
@@ -85,11 +88,19 @@ game.on('hit', ({ attacker, target, part, killed, dot }) => {
 });
 // The HUD's kill listener runs first (it was hooked when the HUD was built), so hud.streak already counts this kill.
 game.on('kill', ({ killer, victim }) => { if (isPlayer(killer) && !isPlayer(victim) && game.isEnemy(killer, victim)) sound.killStreak(hud.streak); });
-game.on('reload', ({ who, gun }) => { if (isPlayer(who)) sound.reload(gun.reloadDur, RELOAD_SOUNDS[RELOAD_STYLE[gun.def.id]], gun.def.id); });
+game.on('finisher', ({ kind, pos }) => sound.finisher(kind, pos));
+game.on('reload', ({ who, gun }) => { if (isPlayer(who)) sound.reload(gun.reloadDur, RELOAD_SOUNDS[RELOAD_STYLE[designFor(skinFor(settings, gun.def.id), gun.def.id)] || RELOAD_STYLE[gun.def.id]], gun.def.id); });
 game.on('reloadRound', ({ who }) => { if (isPlayer(who)) { sound.click(0, 0.3); sound.thunk(0.03); } });
 game.on('dry', ({ who }) => { if (isPlayer(who)) sound.click(0, 0.3); });
-game.on('equip', ({ who, gun }) => { if (isPlayer(who)) sound.equip(gun?.def?.id); });
-game.on('swing', ({ who, heavy }) => { if (isPlayer(who)) sound.swing(heavy); });
+// Oathblade guns and the Tanto play the Oathblade pullout sound (sounds/oathblade-draw.mp3) as they're drawn.
+const BLADE_DRAW = new Set(['vandalOath', 'sheriffOath', 'tanto']);
+game.on('equip', ({ who, gun }) => {
+  if (!isPlayer(who)) return;
+  const id = gun?.def?.id, w = id === 'knife' ? meleeId(settings.melee) : id;
+  const skin = w && skinFor(settings, w);
+  sound.equip(id, skin && (SKINS[skin]?.sounds || baseSkin(skin)), !!w && BLADE_DRAW.has(designFor(skin, w)));
+});
+game.on('swing', ({ who, heavy }) => { if (isPlayer(who)) sound.swing(heavy, SWINGS[meleeId(settings.melee)]?.sound); });
 game.on('ability', ({ who, type }) => { if (isPlayer(who)) sound.ability(type); });
 game.on('smoke', ({ pos, kind }) => { if (kind !== 'fire') sound.smoke(pos); });
 game.on('flash', ({ pos }) => sound.flashbang(pos));
@@ -105,8 +116,11 @@ game.on('tag', () => sound.pulse(null, 'reveal'));
 game.on('abilityArm', ({ who }) => { if (isPlayer(who)) sound.click(0, 0.3); });
 game.on('shadowChannel', () => sound.pulse(null, 'near'));
 game.on('blade', ({ who }) => { if (isPlayer(who)) sound.swing(false); });
-game.on('end', () => showEnd());
+// A deathmatch won with a finisher skin plays the finisher before the scoreboard comes up.
+game.on('end', () => { const f = renderer.lastFinisher; if (f && game.time - f.at < 0.5) setTimeout(() => { if (game.state === 'ended') showEnd(); }, 2600); else showEnd(); });
 game.on('planted', () => sound.sting('planted'));
+game.on('orbTaken', ({ who }) => { if (who === game.player) sound.sting('orb'); });
+game.on('gifted', ({ to }) => { if (to === game.player) sound.sting('gift'); });
 game.on('live', () => sound.sting('start'));
 game.on('roundEnd', (r) => { if (r.reason === 'detonated') sound.sting('detonate'); else if (r.reason === 'defused') sound.sting('defused'); setTimeout(() => sound.sting(r.winTeam === game.player.team ? 'win' : 'loss'), r.reason === 'detonated' ? 900 : 300); });
 let lastBeep = 0;
@@ -117,6 +131,38 @@ function spikeBeeps() {
   const gap = left > 20 ? 1 : left > 10 ? 0.5 : left > 5 ? 0.25 : 0.12;
   if (game.time - lastBeep >= gap) { lastBeep = game.time; sound.beep(sp.pos, left < 10); }
 }
+
+// Plant and defuse cues, read off the spike every frame rather than from the host's events, so they sound the
+// same offline, on the host and on a client (whose spike comes from the host's snapshots), for bots and people.
+// Progress ticks run on a local clock from where the plant or defuse started, so 20 Hz snapshots don't make
+// them stutter.
+const SPIKE_TICK = { plant: 0.4, defuse: 0.35 };
+let spikeAct = null; // { kind: 'plant' | 'defuse', who, t0, p0, ticks }
+function spikeActionSounds() {
+  const m = game.mode, sp = m?.spike;
+  let kind = null, who = null, prog = 0;
+  if (sp?.state === 'carried' && m.phase === 'live' && sp.carrier && sp.plantProg > 0) { kind = 'plant'; who = sp.carrier; prog = sp.plantProg; }
+  else if (sp?.state === 'planted' && m.phase === 'planted' && sp.defuser) { kind = 'defuse'; who = sp.defuser; prog = sp.defuseProg; }
+  const where = (c) => (isEars(c) ? null : kind === 'defuse' || !c ? sp.pos : c.pos);
+  if (spikeAct && (spikeAct.kind !== kind || spikeAct.who !== who)) {
+    const a = spikeAct, pos = isEars(a.who) ? null : sp?.pos || a.who.pos;
+    spikeAct = null;
+    if (a.kind === 'plant' && sp?.state === 'planted') sound.spikeCue('plantDone', pos);
+    else if (a.kind === 'defuse' && sp?.state === 'defused') sound.spikeCue('defuseDone', pos);
+    else if (sp && sp.state !== 'exploded') sound.spikeCue('cancel', isEars(a.who) ? null : a.who.pos);
+  }
+  if (!kind) return;
+  const total = kind === 'plant' ? ROUND.plant : ROUND.defuse, step = SPIKE_TICK[kind];
+  if (!spikeAct) {
+    spikeAct = { kind, who, t0: game.time, p0: prog, ticks: Math.floor(prog / step) };
+    sound.spikeCue(kind === 'plant' ? 'plantStart' : 'defuseStart', where(who));
+    return;
+  }
+  const p = Math.min(total, spikeAct.p0 + game.time - spikeAct.t0), n = Math.floor(p / step);
+  if (n > spikeAct.ticks) { spikeAct.ticks = n; sound.spikeCue(kind === 'plant' ? 'plantTick' : 'defuseTick', where(who), p / total); }
+}
+game.on('defuseHalf', ({ mode }) => { const sp = mode.spike; if (sp?.pos) sound.spikeCue('defuseHalf', isEars(sp.defuser) ? null : sp.pos); });
+game.on('roundClear', () => { spikeAct = null; });
 
 // ---- pointer lock ----
 async function lock() {
@@ -430,6 +476,8 @@ const SCHEMA = [
   ['Video & audio', [
     ['volume', 'Volume', 'range', { min: 0, max: 1, step: 0.05 }],
     ['shadows', 'Shadows', 'checkbox'],
+    ['weaponFx', 'Weapon glow (bloom)', 'checkbox'],
+    ['showFps', 'FPS counter', 'checkbox'],
     ['renderScale', 'Render scale', 'select', { auto: 'Auto (drops when the frame rate does)', 0.5: '50%', 0.75: '75%', 1: '100%' }],
     ['showImpacts', 'Bullet holes', 'checkbox'],
     ['impactSeconds', 'Bullet holes last (s)', 'range', { min: 1, max: 30, step: 1 }],
@@ -552,14 +600,16 @@ let skinsReturn = 'menu';
 let skinWeapon = null;
 let preview = null;
 
+// Two screens, as in Valorant: the collection (every weapon drawn in the skin it wears, grouped by type) and a
+// weapon's own screen (big preview, its skins down the side, colour variants bottom-left, Equip bottom-right).
+// The weapon screen previews whatever you click; nothing changes until you press Equip.
+let shownSkin = null, shownWeapon = null, inspectIdx = 0;
+
 function openSkins(from) {
   skinsReturn = from;
-  skinWeapon = skinWeapon || (game.player?.gun?.def?.id && WEAPONS[game.player.gun.def.id]?.recoil ? game.player.gun.def.id : settings.loadout.primary || 'vandal');
   show('skins');
   if (!preview) preview = new GunPreview($('skin-preview'));
-  buildSkinWeapons();
-  selectSkinWeapon(skinWeapon);
-  preview.start();
+  showCollection();
 }
 
 function closeSkins() {
@@ -569,92 +619,158 @@ function closeSkins() {
   show(skinsReturn);
 }
 
+function showCollection() {
+  if (editing) closeEditor();
+  skinStatus('');
+  preview?.stop();
+  $('skin-detail').hidden = true;
+  $('skin-collection').hidden = false;
+  buildSkinWeapons();
+}
+
+// Collection columns: sidearms | SMGs, shotguns | rifles, melee | snipers, heavies.
+const COLL_COLUMNS = [['Sidearms'], ['SMGs', 'Shotguns'], ['Rifles', 'Melee'], ['Snipers', 'Heavies']];
+const GROUP_TITLES = { Snipers: 'Sniper rifles', Heavies: 'Machine guns' };
+
 function buildSkinWeapons() {
-  const nav = $('skin-weapons');
-  nav.innerHTML = '';
-  const groups = [...BUY_GROUPS, ['Melee', MELEE_ORDER]];
-  for (const [title, ids] of groups) {
-    const h = document.createElement('h3');
-    h.textContent = title;
-    nav.appendChild(h);
-    for (const id of ids) {
-      const b = document.createElement('button');
-      b.dataset.id = id;
-      const worn = isMelee(id) && meleeId(settings.melee) === id ? ' · <em>equipped</em>' : '';
-      b.innerHTML = `<span>${weaponName(id)}</span><small>${escHtml(SKINS[skinFor(settings, id)].name)}${worn}</small>`;
-      b.onclick = () => selectSkinWeapon(id);
-      nav.appendChild(b);
+  const grid = $('skin-weapons');
+  grid.innerHTML = '';
+  const groups = Object.fromEntries([...BUY_GROUPS, ['Melee', ['melee']]]);
+  for (const col of COLL_COLUMNS) {
+    const c = document.createElement('div');
+    c.className = 'coll-col';
+    for (const g of col) {
+      const h = document.createElement('h3');
+      h.textContent = GROUP_TITLES[g] || g;
+      c.appendChild(h);
+      for (const id of groups[g] || []) {
+        const w = id === 'melee' ? meleeId(settings.melee) : id, sid = skinFor(settings, w);
+        const b = document.createElement('button');
+        b.className = 'coll-card';
+        b.dataset.id = id;
+        b.innerHTML = `<img alt="" src="${gunThumb(w, sid)}"><b>${id === 'melee' ? 'Melee' : escHtml(weaponName(w))}</b><small>${escHtml(id === 'melee' ? weaponName(w) : SKINS[sid].name)}</small>`;
+        b.onclick = () => selectSkinWeapon(w);
+        c.appendChild(b);
+      }
     }
+    grid.appendChild(c);
   }
 }
 
 // Weapons and melee types share the skin menu (the knife is both).
 const weaponName = (id) => MELEE[id]?.name || WEAPONS[id]?.name || id;
+// Skin-editing buttons don't apply to melee types (their theme is fixed).
+const GUN_ONLY = ['skin-all', 'skin-new', 'skin-share', 'skin-paste', 'skin-export'];
 
+// Open a weapon's screen (a melee id opens the melee screen), previewing what it wears now.
 function selectSkinWeapon(id) {
-  // Picking a melee type in the menu equips it (it's what shows in your knife slot).
-  if (isMelee(id) && meleeId(settings.melee) !== id) { settings.melee = id; saveSettings(settings); skinWeapon = id; buildSkinWeapons(); }
   skinWeapon = id;
-  inspectIdx = 0;
-  $('skin-inspect').hidden = !isMelee(id);
-  $('skin-inspect').textContent = 'Play inspect';
-  for (const b of $('skin-weapons').querySelectorAll('button')) b.classList.toggle('sel', b.dataset.id === id);
-  const grid = $('skin-grid');
-  grid.innerHTML = '';
-  const cur = skinFor(settings, id);
-  for (const sid of SKIN_ORDER) {
-    const s = SKINS[sid];
-    const card = document.createElement('button');
-    card.className = 'skin-card' + (sid === cur ? ' sel' : '');
-    card.innerHTML = `<span class="sw">${swatch(sid).map(c => `<i style="background:${c}"></i>`).join('')}</span><b>${escHtml(s.name)}</b><small class="${isCustom(sid) ? 'custom' : ''}">${escHtml(s.tier)}</small>`;
-    card.onclick = () => applySkin(id, sid);
-    card.onmouseenter = () => showSkin(id, sid);
-    card.onmouseleave = () => showSkin(id, skinFor(settings, id));
-    grid.appendChild(card);
-  }
-  showSkin(id, cur);
-  $('skin-edit').hidden = $('skin-delete').hidden = !isCustom(cur);
+  $('skin-collection').hidden = true;
+  $('skin-detail').hidden = false;
+  const melee = isMelee(id);
+  $('skin-weapon-name').textContent = melee ? 'Melee' : weaponName(id);
+  $('skin-side-title').textContent = melee ? 'Melee types' : 'Skins';
+  for (const b of GUN_ONLY) $(b).hidden = melee;
+  $('skin-import').parentElement.hidden = melee;
+  preview.start();
+  showSkin(id, skinFor(settings, id));
 }
 
+// What a weapon wears now (for a melee screen: the equipped melee type).
+const worn = (id) => (isMelee(id) ? meleeSkin(meleeId(settings.melee)) : skinFor(settings, id));
+
+function buildSkinList() {
+  const grid = $('skin-grid');
+  grid.innerHTML = '';
+  const card = (sid, title, sub, sel, isWorn, onPick) => {
+    const c = document.createElement('button');
+    c.className = 'skin-card' + (sel ? ' sel' : '') + (isWorn ? ' worn' : '');
+    c.innerHTML = `<span class="sw">${swatch(sid).map(col => `<i style="background:${col}"></i>`).join('')}</span><b>${escHtml(title)}</b><small>${sub}</small>`;
+    c.onclick = onPick;
+    grid.appendChild(c);
+  };
+  if (isMelee(skinWeapon)) {
+    for (const m of MELEE_ORDER) card(meleeSkin(m), MELEE[m].name, escHtml(SKINS[meleeSkin(m)].name), m === shownWeapon, m === meleeId(settings.melee), () => showSkin(m, meleeSkin(m)));
+    return;
+  }
+  const wearing = baseSkin(skinFor(settings, skinWeapon));
+  for (const sid of SKIN_ORDER) {
+    if (!skinFits(sid, skinWeapon)) continue; // model skins only show on the weapons they have a model for
+    // Picking a skin shows the variant you wear, if it's the one you have on.
+    const pick = () => showSkin(skinWeapon, wearing === sid ? skinFor(settings, skinWeapon) : sid);
+    card(sid, SKINS[sid].name, `<span class="${isCustom(sid) ? 'custom' : ''}">${escHtml(SKINS[sid].tier)}</span>`, baseSkin(shownSkin) === sid, wearing === sid, pick);
+  }
+}
+
+// Preview skin sid on weapon id (a melee type's theme on a melee screen): the stage, the caption, the variant
+// swatches, the Equip button and the skin list.
 function showSkin(id, sid) {
   preview.show(id, sid);
-  $('skin-title').textContent = `${SKINS[sid].name} ${weaponName(id)}`;
-  $('skin-sub').textContent = isMelee(id) && sid === 'standard' ? MELEE[id].blurb : SKINS[sid].blurb;
+  if (shownSkin !== sid || shownWeapon !== id) { inspectIdx = 0; $('skin-inspect').textContent = 'Play inspect'; }
+  shownSkin = sid;
+  shownWeapon = id;
+  const s = SKINS[sid];
+  $('skin-inspect').hidden = !previewInspects();
+  $('skin-title').textContent = `${s.name} ${weaponName(id)}`;
+  $('skin-sub').textContent = isMelee(id) ? MELEE[id].blurb : s.blurb;
+  const vars = $('skin-variants');
+  vars.innerHTML = '';
+  for (const v of variantsOf(sid)) {
+    const b = document.createElement('button');
+    b.className = v === sid ? 'sel' : '';
+    b.title = SKINS[v].variant || SKINS[v].name;
+    b.innerHTML = swatch(v).map(c => `<i style="background:${c}"></i>`).join('');
+    b.onclick = () => showSkin(id, v);
+    vars.appendChild(b);
+  }
+  $('skin-variant-name').textContent = s.variant || '';
+  const on = isMelee(id) ? meleeId(settings.melee) === id : skinFor(settings, id) === sid;
+  $('skin-equip').textContent = on ? 'Equipped' : 'Equip skin';
+  $('skin-equip').disabled = on;
+  $('skin-equip').classList.toggle('on', !on);
+  $('skin-edit').hidden = $('skin-delete').hidden = isMelee(id) || !isCustom(sid);
+  buildSkinList();
 }
 
 function applySkin(id, sid) {
   if (sid === 'standard') delete settings.skins[id]; else settings.skins[id] = sid;
   saveSettings(settings);
-  buildSkinWeapons();
-  selectSkinWeapon(id);
+  showSkin(id, sid);
 }
 
+$('skin-equip').onclick = () => {
+  if (isMelee(shownWeapon)) { settings.melee = shownWeapon; saveSettings(settings); skinWeapon = shownWeapon; showSkin(shownWeapon, shownSkin); }
+  else applySkin(skinWeapon, shownSkin);
+};
+$('skin-detail-back').onclick = showCollection;
 $('menu-skins').onclick = () => openSkins('menu');
 $('pause-skins').onclick = () => openSkins('pause');
 $('pause-agent').onclick = () => openAgents(true);
 $('skins-back').onclick = closeSkins;
 $('skin-all').onclick = () => {
   const sid = skinFor(settings, skinWeapon);
-  for (const id of [...Object.keys(WEAPONS), ...MELEE_ORDER]) { if (sid === 'standard') delete settings.skins[id]; else settings.skins[id] = sid; }
+  for (const id of [...Object.keys(WEAPONS), ...MELEE_ORDER]) { if (!skinFits(sid, id)) continue; if (sid === 'standard') delete settings.skins[id]; else settings.skins[id] = sid; }
   saveSettings(settings);
-  buildSkinWeapons();
-  selectSkinWeapon(skinWeapon);
+  showSkin(skinWeapon, shownSkin);
+  skinStatus(`${SKINS[sid].name} is on every weapon it fits.`);
 };
 $('skin-reset').onclick = () => {
   settings.skins = {};
   saveSettings(settings);
   buildSkinWeapons();
-  selectSkinWeapon(skinWeapon);
 };
-addEventListener('keydown', (e) => { if (e.code === 'Escape' && !$('skins').hidden) closeSkins(); });
-// Melee types: play their inspects on the showcase, one after another.
-let inspectIdx = 0;
+addEventListener('keydown', (e) => {
+  if (e.code !== 'Escape' || $('skins').hidden) return;
+  if (!$('skin-detail').hidden) showCollection(); else closeSkins();
+});
+// Melee types and model skins: play their inspects on the showcase, one after another.
+const previewInspects = () => MELEE[shownWeapon]?.inspects || MODEL_INSPECTS[designFor(shownSkin, shownWeapon)];
 $('skin-inspect').onclick = () => {
-  const list = MELEE[skinWeapon]?.inspects;
+  const list = previewInspects();
   if (!list) return;
   const ins = list[inspectIdx++ % list.length];
   preview.inspect(ins);
-  $('skin-inspect').textContent = `Inspect: ${ins.name} (${(inspectIdx - 1) % list.length + 1}/${list.length})`;
+  $('skin-inspect').textContent = list.length > 1 ? `Inspect: ${ins.name} (${(inspectIdx - 1) % list.length + 1}/${list.length})` : 'Play inspect';
 };
 
 // ---- agent select ----
@@ -1309,9 +1425,9 @@ try {
 let inspectKey = '';
 function inspectHint() {
   const i = renderer.inspectInfo();
-  const key = i ? `${i.name}|${i.idx}|${i.examine}` : '';
-  if (key === inspectKey) return;
-  inspectKey = key;
+  const sig = i ? `${i.name}|${i.idx}|${i.examine}` : ''; // not `key`: that would hide key() used below
+  if (sig === inspectKey) return;
+  inspectKey = sig;
   const el = $('inspecthint');
   el.hidden = !i;
   if (!i) return;
@@ -1319,8 +1435,24 @@ function inspectHint() {
     : `<b>${escHtml(i.name)}</b>${i.count > 1 ? `${i.idx + 1}/${i.count}<kbd>${key('inspect')}</kbd>next` : ''}<kbd>hold ${key('inspect')}</kbd>examine`;
 }
 
+// FPS counter (top right): frames counted over half a second, so the number is steady enough to read.
+const fps = { el: null, frames: 0, since: 0 };
+function updateFps(t) {
+  const el = fps.el ||= Object.assign(document.body.appendChild(document.createElement('div')), { id: 'fps' });
+  const on = settings.showFps !== false;
+  el.hidden = !on;
+  document.body.classList.toggle('show-fps', on);
+  fps.frames++;
+  if (t - fps.since < 500) return;
+  const rate = (fps.frames * 1000) / (t - fps.since);
+  fps.frames = 0; fps.since = t;
+  el.textContent = `${Math.round(rate)} FPS`;
+  el.className = rate < 30 ? 'low' : rate < 55 ? 'mid' : '';
+}
+
 function frame(t) {
   requestAnimationFrame(frame);
+  updateFps(t);
   let dt = (t - last) / 1000;
   last = t;
   if (dt > 0.25) dt = 0.25;
@@ -1331,7 +1463,7 @@ function frame(t) {
     hud.specTarget = renderer.specTarget;
     hud.update(dt, look);
     inspectHint();
-    spikeBeeps(); rhud.update(dt);
+    spikeBeeps(); spikeActionSounds(); rhud.update(dt); if (hud.buyOpen) rhud.updateHover(hud.cursor);
     minimap.update();
     const ear = ears();
     sound.setListener(ear.eye(), ear.yaw);
@@ -1344,5 +1476,5 @@ function frame(t) {
 requestAnimationFrame(frame);
 
 // Exposed for automated checks in a headless browser; `frozen` stops the loop from ticking.
-const hooks = { game, renderer, sound, settings, startMatch, playerInput, openAgents, switchAgent, net, hostOnline, joinOnline, servers, peerOptions, frozen: false };
+const hooks = { game, renderer, rhud, sound, settings, startMatch, playerInput, openAgents, switchAgent, net, hostOnline, joinOnline, servers, peerOptions, frozen: false };
 window.__game = hooks;

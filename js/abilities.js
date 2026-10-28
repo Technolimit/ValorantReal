@@ -298,7 +298,7 @@ export const AGENTS = {
         name: 'Firebreak', desc: 'Send out a wall of flame that grows forward (8 m/s, up to 15 m). Hold C and turn to bend it. It blocks sight for 8 s, burns enemies (30/s) and heals you (12.5/s).', charges: 1, cooldown: 25, instant: true,
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
-          o.game.addDevice({ kind: 'blaze', owner: o, pos: [o.pos[0] + f[0] * 1.2, o.pos[1], o.pos[2] + f[1] * 1.2], yaw: o.yaw, life: 2.0, speed: 8, travelled: 0, nextSeg: 0, key: 'abCHeld' });
+          o.game.addDevice({ kind: 'blaze', owner: o, pos: [o.pos[0] + f[0] * 1.2, o.pos[1], o.pos[2] + f[1] * 1.2], yaw: o.yaw, life: 3.5, speed: 16, travelled: 0, nextSeg: 0, key: 'abCHeld' });
           o.game.emit('ability', { who: o, type: 'fire' });
         },
       },

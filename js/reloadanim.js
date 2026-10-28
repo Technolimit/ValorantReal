@@ -10,13 +10,20 @@
 //   boltRound Marshal (round by round): bolt up and back, round pressed in, bolt forward, can fire
 //   boltMag   Operator: bolt open, mag swapped, bolt closed
 //   box       Ares / Odin: feed cover opened, ammo box swapped, cover slammed, charging handle racked
+//   orb       Orbital guns: the spent orb pops out of the reactor ring, the off-hand seats a fresh one
+//   oathMag   Oathblade Vandal: the edge goes dark, the mag is flicked out and a fresh one snapped in, then the
+//             off-hand runs along the blade and the edge relights behind it
+//   oathCyl   Oathblade Sheriff: the edge goes dark, the drum is flicked out, loaded and flicked shut, then a
+//             thumb along the blade relights the edge
 //
+// Model skins reload as their model (`design` in models.js), so these tables can key on a design id too.
 // Between shots the bolt guns cycle their bolt and the Bucky works its pump (see `cycle`).
 
 export const RELOAD_STYLE = {
   classic: 'pistol', ghost: 'pistol', frenzy: 'pistol', sheriff: 'revolver', shorty: 'break',
   stinger: 'mag', spectre: 'mag', bulldog: 'mag', guardian: 'mag', phantom: 'mag', vandal: 'mag', warden: 'mag',
   bucky: 'tube', judge: 'feed', marshal: 'boltRound', outlaw: 'rear', operator: 'boltMag', ares: 'box', odin: 'box',
+  vandalOrb: 'orb', phantomOrb: 'orb', bulldogOrb: 'orb', stingerOrb: 'orb', vandalOath: 'oathMag', sheriffOath: 'oathCyl',
 };
 // What happens after each shot, and how much of the shot interval it takes.
 export const CYCLE_STYLE = { marshal: 'bolt', operator: 'bolt', bucky: 'pump' };
@@ -31,6 +38,9 @@ export const RELOAD_SOUNDS = {
   feed: [[0.28, 'click'], [0.43, 'click'], [0.58, 'click'], [0.73, 'click'], [0.82, 'click']],
   boltMag: [[0.12, 'click'], [0.32, 'click'], [0.7, 'thunk'], [0.86, 'click']],
   box: [[0.15, 'click'], [0.36, 'click'], [0.68, 'thunk'], [0.84, 'thunk'], [0.92, 'click']],
+  orb: [[0.14, 'click'], [0.2, 'click'], [0.66, 'thunk'], [0.76, 'click']],
+  oathMag: [[0.08, 'click'], [0.56, 'thunk'], [0.6, 'click'], [0.66, 'shing']],
+  oathCyl: [[0.07, 'click'], [0.18, 'click'], [0.54, 'click'], [0.64, 'thunk'], [0.72, 'shing']],
   tube: [[0, 'click']],
   boltRound: [[0, 'click']],
 };
@@ -47,6 +57,7 @@ function resetParts(parts) {
     const b = p.userData.base;
     p.position.copy(b.pos);
     p.rotation.copy(b.rot);
+    p.scale.set(1, 1, 1);
     p.visible = true;
   }
   if (parts.shell) parts.shell.visible = false;
@@ -183,7 +194,73 @@ const STYLES = {
     if (P.bolt) { rack = ss(t, 0.86, 0.91) * (1 - ss(t, 0.92, 0.95)); P.bolt.position.z += 0.07 * rack; }
     return { rz: -0.3 * tilt, rx: 0.16 * tilt + 0.1 * clunk, ry: 0.1 * tilt, py: -0.035 * tilt + 0.015 * clunk };
   },
+
+  // Orbital: thumb the latch and the spent orb pops up out of the spire, spinning, and is flicked away
+  // (shrinking out); the off-hand brings a fresh one down from above and presses it in until it seats.
+  orb(t, P) {
+    const o = P.orb;
+    if (o) {
+      if (t < 0.4) {
+        const pop = ss(t, 0.14, 0.24), fly = ss(t, 0.24, 0.38);
+        o.position.x -= 0.1 * fly;
+        o.position.y += 0.06 * pop + 0.1 * fly;
+        o.position.z += 0.06 * fly;
+        o.rotation.y += 9 * (pop + fly);
+        o.scale.setScalar(1 - 0.9 * fly);
+        o.visible = fly < 0.99;
+      } else {
+        const k = 1 - ss(t, 0.42, 0.66);
+        o.position.x -= 0.07 * k;
+        o.position.y += 0.08 * k;
+        o.position.z += 0.03 * k;
+        o.rotation.y -= 3 * k;
+        o.visible = t > 0.42;
+      }
+    }
+    const pop = pulse(t, 0.14, 0.22), seat = pulse(t, 0.64, 0.72);
+    return { rx: 0.08 * pop, py: 0.008 * pop - 0.01 * seat, rz: 0.06 * seat };
+  },
+  // Oathblade: the edge drains back into the guard as the reload starts; at the end the off-hand (part
+  // `swipe`) runs from the guard toward the tip and the edge relights right behind it, with a flash at the tip.
+  oathMag(t, P) {
+    if (P.mag) {
+      if (t < 0.3) { // flicked out: drops fast, kicked to the right, tumbling
+        const k = ss(t, 0.08, 0.2);
+        P.mag.position.y -= 0.3 * k; P.mag.position.x += 0.07 * k; P.mag.rotation.x += 1.3 * k;
+        P.mag.visible = k < 0.98;
+      } else { // a fresh one up from below, snapped home
+        const k = 1 - ss(t, 0.3, 0.54);
+        P.mag.position.y -= 0.24 * k; P.mag.position.z += 0.04 * k; P.mag.rotation.x -= 0.2 * k;
+      }
+    }
+    oathEdge(P, t, 0.06, 0.16, 0.64, 0.8, 0.36);
+    const seat = pulse(t, 0.54, 0.62), cut = pulse(t, 0.8, 0.9);
+    return { rx: 0.1 * seat, py: 0.012 * seat, rz: -0.1 * cut, glow: 1 + 2.2 * pulse(t, 0.78, 0.94) };
+  },
+
+  oathCyl(t, P) {
+    const open = ss(t, 0.05, 0.12) * (1 - ss(t, 0.6, 0.65));
+    if (P.cyl) {
+      P.cyl.position.x -= 0.05 * open;
+      P.cyl.rotation.z += 0.4 * open + 9 * ss(t, 0.3, 0.6) * open;
+    }
+    feedShell(P, t, 0.32, 0.54, [-0.05, 0.027, 0.03], [0.02, -0.12, 0.12]);
+    oathEdge(P, t, 0.05, 0.14, 0.72, 0.84, 0.19);
+    const shut = pulse(t, 0.6, 0.68);
+    return { rz: -0.15 * shut, rx: 0.05 * shut, glow: 1 + 2.4 * pulse(t, 0.82, 0.95) };
+  },
 };
+
+// The Oathblade edge (part `edge`, scaled along the blade from its guard end): dark from a0..a1, relit from
+// b0..b1 as the swipe hand travels `len` along the spine.
+function oathEdge(P, t, a0, a1, b0, b1, len) {
+  const lit = t < b0 ? 1 - ss(t, a0, a1) : ss(t, b0, b1);
+  if (P.edge) { P.edge.scale.z = Math.max(0.001, lit); P.edge.visible = lit > 0.01; }
+  if (P.swipe) {
+    P.swipe.position.z -= len * ss(t, b0, b1);
+    P.swipe.visible = t > b0 - 0.05 && t < b1 + 0.05;
+  }
+}
 
 const ZERO = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0 };
 
@@ -244,6 +321,22 @@ export const RELOAD_TRACK = {
   phantom: [[0, Z], [0.1, { rx: 1.35, rz: 0.5, py: 0.07 }], [0.5, { rx: 1.35, rz: 0.5, py: 0.07 }], [0.68, { rx: 1.2, rz: -0.15, py: 0.06 }], [0.85, { rx: 1.0, rz: -0.1, py: 0.05 }], [1, Z]],
   // Vandal: rolled left and tipped for the mag swap, then vertical for the rack.
   vandal: [[0, Z], [0.12, { rx: 0.8, rz: 0.8, ry: 0.15, py: 0.04 }], [0.45, { rx: 0.8, rz: 0.85, ry: 0.2, px: -0.02, py: 0.04 }], [0.62, { rx: 1.3, rz: 0.3, py: 0.07 }], [0.85, { rx: 1.3, rz: 0.25, py: 0.07 }], [1, Z]],
+  // Orbital Vandal: tipped up and rolled so the top of the gun, and the reactor ring on it, faces you through
+  // the swap; a little nod as the old orb pops and as the new one seats.
+  vandalOrb: [[0, Z], [0.12, { rx: 0.3, ry: 0.2, rz: 0.75, px: -0.03, py: 0.03 }], [0.4, { rx: 0.35, ry: 0.25, rz: 0.8, px: -0.04, py: 0.035 }], [0.7, { rx: 0.3, ry: 0.25, rz: 0.8, px: -0.04, py: 0.03 }], [0.84, { rx: 0.35, ry: 0.1, rz: 0.2, py: 0.02 }], [1, Z]],
+  // Orbital Phantom: rolled further and turned toward you so you look down into the spire, the suppressor
+  // swinging out left; a dip as the fresh orb seats.
+  phantomOrb: [[0, Z], [0.12, { rx: 0.4, ry: 0.3, rz: 0.7, px: -0.04, py: 0.035 }], [0.4, { rx: 0.45, ry: 0.32, rz: 0.75, px: -0.045, py: 0.04 }], [0.7, { rx: 0.4, ry: 0.3, rz: 0.75, px: -0.045, py: 0.032 }], [0.84, { rx: 0.3, ry: 0.1, rz: 0.15, py: 0.02 }], [1, Z]],
+  // Orbital Bulldog: heaved up and rolled hard so the big spire faces you, held steady, then dropped back level.
+  bulldogOrb: [[0, Z], [0.12, { rx: 0.5, ry: 0.1, rz: 0.9, px: -0.02, py: 0.045 }], [0.4, { rx: 0.55, ry: 0.12, rz: 0.95, px: -0.025, py: 0.05 }], [0.7, { rx: 0.5, ry: 0.12, rz: 0.92, px: -0.025, py: 0.045 }], [0.85, { rx: 0.4, rz: 0.25, py: 0.04 }], [1, Z]],
+  // Orbital Stinger: a quick wrist roll to show the top, a snappier swap, and a flick back.
+  stingerOrb: [[0, Z], [0.1, { rx: 0.35, ry: 0.15, rz: 0.9, px: -0.03, py: 0.03 }], [0.4, { rx: 0.38, ry: 0.18, rz: 0.95, px: -0.035, py: 0.035 }], [0.7, { rx: 0.35, ry: 0.15, rz: 0.92, px: -0.035, py: 0.03 }], [0.82, { rx: 0.2, rz: -0.15, py: 0.02 }], [1, Z]],
+  // Oathblade Vandal: the edge turned out to the right as the mag is flicked away, rolled back to take the fresh
+  // one, then swung side-on so you watch the hand relight the blade; a crisp snap back to the hip.
+  vandalOath: [[0, Z], [0.08, { rx: 0.35, rz: -0.55, ry: -0.1, py: 0.02 }], [0.2, { rx: 0.4, rz: -0.6, py: 0.025 }], [0.3, { rx: 0.55, rz: 0.5, ry: 0.15, px: -0.02, py: 0.03 }], [0.54, { rx: 0.6, rz: 0.55, ry: 0.18, px: -0.02, py: 0.035 }], [0.6, { rx: 0.5, rz: 0.5, ry: 0.15, py: 0.025 }], [0.67, { rx: 0.12, ry: 0.6, rz: 0.12, px: -0.05, py: 0.03, pz: -0.02 }], [0.8, { rx: 0.1, ry: 0.62, rz: 0.1, px: -0.05, py: 0.03, pz: -0.02 }], [0.88, { rx: -0.05, rz: -0.12 }], [1, Z]],
+  // Oathblade Sheriff: a wrist flick swings the drum out, muzzle up to dump, back to load, flicked shut, then
+  // turned side-on for the thumb along the blade, and snapped back.
+  sheriffOath: [[0, Z], [0.07, { rx: 0.25, rz: 1.0, ry: 0.3, px: -0.05, py: 0.03 }], [0.16, { rx: 1.3, rz: 0.4, py: 0.06 }], [0.25, { rx: 1.3, rz: 0.4, py: 0.06 }], [0.33, { rx: 0.35, rz: 1.05, ry: 0.3, px: -0.05, py: 0.03 }], [0.58, { rx: 0.4, rz: 1.1, ry: 0.32, px: -0.05, py: 0.03 }], [0.65, { rx: 0.2, rz: -0.35, py: 0.02 }], [0.72, { rx: 0.12, ry: 0.6, rz: 0.1, px: -0.04, py: 0.03 }], [0.86, { rx: 0.1, ry: 0.62, rz: 0.1, px: -0.04, py: 0.03 }], [0.93, { rx: -0.04, rz: -0.06 }], [1, Z]],
   warden: [[0, Z], [0.12, { rx: 0.9, rz: 0.6, py: 0.05 }], [0.6, { rx: 0.9, rz: 0.6, py: 0.05 }], [0.75, { rx: 1.2, rz: 0.2, py: 0.06 }], [1, Z]],
   // Operator: bolt up, tipped muzzle-up to pull the mag, dropped low-left to seat the new one, bolt home.
   operator: [[0, Z], [0.12, { rx: 0.05, rz: 0.1 }], [0.3, { rx: 0.9, rz: -0.6, ry: -0.1, py: 0.04 }], [0.5, { rx: 0.4, rz: 0.9, ry: 0.5, px: -0.12, py: -0.08 }], [0.7, { rx: 0.3, rz: 0.6, ry: 0.4, px: -0.08, py: -0.05 }], [0.85, { rx: 0.05, rz: 0.1 }], [1, Z]],
@@ -276,24 +369,33 @@ function envelope(t) { return ss(t, 0, 0.15) * (1 - ss(t, 0.82, 1)); }
 
 function addPose(a, b, k) {
   return {
+    glow: a.glow ?? b.glow, // a style's glow multiplier (Oathblade's edge flash) rides along unscaled
     px: (a.px || 0) + (b.px || 0) * k, py: (a.py || 0) + (b.py || 0) * k, pz: (a.pz || 0) + (b.pz || 0) * k,
     rx: (a.rx || 0) + (b.rx || 0) * k, ry: (a.ry || 0) + (b.ry || 0) * k, rz: (a.rz || 0) + (b.rz || 0) * k,
   };
 }
 const half = (p) => addPose(ZERO, p, 0.45);
 
-// The off-hand rides on the mag / round being loaded; only shown while a reload is under way.
+// The off-hand rides on the mag / round being loaded; only shown while a reload is under way. `on` may be a
+// function of the part a hand rides on, to show each hand on its own.
 function showHands(model, on) {
-  for (const h of model.userData.hands || []) h.visible = on;
+  for (const h of model.userData.hands || []) h.visible = typeof on === 'function' ? on(h.userData.part) : on;
 }
+// When each hand shows during a reload (share of the reload), by style; the default is the whole reload.
+const HANDS = {
+  orb: (t) => () => t > 0.42 && t < 0.7, // the orb's hand only carries the new orb
+  oathMag: (t) => (part) => (part === 'swipe' ? t > 0.6 && t < 0.86 : t > 0.26 && t < 0.6),
+  oathCyl: (t) => (part) => (part === 'swipe' ? t > 0.68 && t < 0.9 : t > 0.3 && t < 0.56),
+};
 
 // Pose for this frame. `now` is game time. `cycle` = { start, dur } for the post-shot bolt/pump.
 export function reloadPose(model, def, gun, now, cycle) {
   const P = model.userData.parts || {};
   resetParts(P);
-  const style = RELOAD_STYLE[def.id];
+  const id = model.userData.design || def.id;
+  const style = RELOAD_STYLE[id] || RELOAD_STYLE[def.id];
   let pose = ZERO;
-  const big = RELOAD_POSE[def.id] || ZERO;
+  const big = RELOAD_POSE[id] || RELOAD_POSE[def.id] || ZERO;
   showHands(model, false);
   if (style && STYLES[style]) {
     if (def.perRound) {
@@ -308,11 +410,11 @@ export function reloadPose(model, def, gun, now, cycle) {
       }
     } else if (gun.reloading) {
       const t = clamp01(1 - (gun.reloadEnd - now) / gun.reloadDur);
-      const track = RELOAD_TRACK[def.id];
+      const track = RELOAD_TRACK[id] || RELOAD_TRACK[def.id];
       pose = track
         ? addPose(addPose(ZERO, STYLES[style](t, P, def), 0.25), evalTrack(track, t), 1) // the traced motion, plus a little of the mechanism's jolt
         : addPose(addPose(half(STYLES[style](t, P, def)), big, envelope(t)), CENTER, envelope(t));
-      showHands(model, t > 0.04 && t < 0.92);
+      showHands(model, HANDS[style] ? HANDS[style](t) : t > 0.04 && t < 0.92);
     } else if (now - gun.reloadStopped < 0.25) {
       // A cancelled reload (you fired) eases back to the hip instead of snapping.
       const k = 1 - ss(now - gun.reloadStopped, 0, 0.25);

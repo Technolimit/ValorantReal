@@ -3,9 +3,9 @@
 export const SLOTS = [['fire', 'Fire'], ['reload', 'Reload'], ['equip', 'Equip'], ['inspect', 'Inspect']];
 
 // The game's own sound files, for every player: sounds/index.json maps a gun id to files in sounds/ per slot,
-// e.g. { "vandal": { "fire": "vandal-fire.mp3" } }. Gives a Map 'vandal:fire' -> { name, data }; anything
+// e.g. { "vandal": { "fire": "vandal-fire.mp3" } }. A skin id works too, for a skin's own pullout ("equip"). Gives a Map 'vandal:fire' -> { name, data }; anything
 // missing or broken is skipped (that slot keeps the built-in sound).
-export async function loadGameSounds(guns) {
+export async function loadGameSounds(guns) { // guns: the ids index.json may name (guns and skins)
   const out = new Map();
   let manifest;
   try {

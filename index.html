@@ -112,6 +112,8 @@ button { font: inherit; }
 .ab.ult.ready { border-color: #ffd54a; box-shadow: 0 0 12px rgba(255, 213, 74, 0.5); }
 .ab.ult.ready b { color: #ffd54a; }
 .ab.ult .pips i.on { background: #ffd54a; }
+.ab.ult.gain { animation: ultgain 1s ease-out; }
+@keyframes ultgain { 0% { box-shadow: 0 0 0 0 rgba(79, 209, 255, 0.9); border-color: #7fe3ff; } 100% { box-shadow: 0 0 0 14px rgba(79, 209, 255, 0); } }
 .ab.flash { border-color: var(--text); }
 @media (max-width: 1100px) { #abilities { bottom: 92px; } }
 #blind { position: absolute; inset: 0; background: #fff; opacity: 0; }
@@ -139,6 +141,10 @@ button { font: inherit; }
 #pickhint kbd { font: 700 12px system-ui, sans-serif; border: 1px solid var(--line); padding: 0 5px; margin-right: 6px; }
 #minimap { position: absolute; left: 16px; top: 14px; width: 210px; height: 210px; background: rgba(10, 16, 24, 0.55); border: 1px solid var(--line); border-radius: 4px; }
 #minimap.big { left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(8, 12, 18, 0.88); box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35); z-index: 5; }
+#fps { position: fixed; top: 6px; right: 10px; z-index: 50; font: 700 12px/1 ui-monospace, Menlo, Consolas, monospace; color: #7dffb0; background: rgba(0, 0, 0, 0.45); padding: 4px 7px; border-radius: 3px; pointer-events: none; text-shadow: 0 1px 1px #000; }
+#fps.mid { color: #ffd166; }
+#fps.low { color: #ff6b6b; }
+body.show-fps #killfeed { top: 34px; }
 #debug { position: absolute; left: 16px; top: 236px; margin: 0; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; background: rgba(0, 0, 0, 0.55); padding: 8px 10px; border-radius: 4px; white-space: pre; }
 
 #death { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 12px 14px; width: min(320px, 44vw); text-align: left; font-size: 13px; }
@@ -211,23 +217,93 @@ th { color: var(--muted); font-weight: 500; }
 #rchannel i { display: block; height: 6px; margin-top: 4px; background: rgba(255, 255, 255, 0.2); }
 #rchannel i b { display: block; height: 100%; background: #ffd54a; }
 #rcredits { position: absolute; right: 24px; bottom: 118px; font-size: 18px; font-weight: 700; color: #ffd54a; text-shadow: 0 1px 3px #000; }
+#rnotice { position: absolute; left: 20px; top: 38%; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+#rnotice div { padding: 5px 10px; background: rgba(15, 25, 35, 0.75); border-left: 2px solid #ffd54a; font-size: 12px; text-shadow: 0 1px 2px #000; animation: rnin .2s ease-out; }
+#rnotice b.rq { color: #ffd54a; }
+@keyframes rnin { from { opacity: 0; transform: translateX(-8px); } }
 #rhint { position: absolute; top: 66%; left: 50%; transform: translateX(-50%); font-size: 13px; letter-spacing: 1px; color: var(--text); text-shadow: 0 1px 3px #000; pointer-events: none; }
-#shop { position: absolute; inset: 5vh 3vw; background: rgba(12, 20, 28, 0.95); border: 1px solid var(--line); padding: 16px 20px; overflow: auto; pointer-events: auto; }
-.shop-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 12px; }
-.shop-head h2 { margin: 0; letter-spacing: 3px; text-transform: uppercase; }
-#shop-credits { font-size: 22px; font-weight: 700; color: #ffd54a; }
-.shop-head p { flex: 1; margin: 0; color: var(--muted); font-size: 12px; }
-#shop-close { background: none; border: 1px solid var(--line); color: var(--text); padding: 6px 12px; cursor: pointer; }
-#shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
-#shop-grid h3 { margin: 0 0 6px; font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
-.scard { display: grid; grid-template-columns: 1fr auto; width: 100%; margin-bottom: 5px; padding: 7px 9px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--text); text-align: left; cursor: pointer; font: inherit; }
-.scard .n { font-weight: 600; font-size: 13px; } .scard .c { color: #ffd54a; font-size: 12px; }
-.scard .s { grid-column: span 2; color: var(--muted); font-size: 10.5px; margin-top: 2px; }
-.scard:hover, .scard.hover { border-color: var(--text); }
-.scard.owned { border-color: #4fd1c5; background: rgba(79, 209, 197, 0.14); }
-.scard.poor { opacity: 0.45; }
-#shop-team { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; font-size: 12px; color: var(--muted); }
-#shop-team b { color: #ffd54a; font-weight: 600; } #shop-team .me { color: var(--text); }
+/* Buy menu: Valorant's layout in the game's own look. */
+#shop { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px; padding: 3.2vh 3vw 2vh; overflow: auto; pointer-events: auto;
+  background: radial-gradient(120% 90% at 50% 40%, rgba(15, 25, 35, 0.78), rgba(8, 13, 19, 0.94)); backdrop-filter: blur(6px); }
+#shop .cr { width: .82em; height: .82em; margin-right: .22em; vertical-align: -0.06em; }
+.shop-top { display: flex; align-items: flex-end; gap: 28px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.shop-title { display: flex; align-items: baseline; gap: 14px; flex: 1; }
+.shop-title h2 { margin: 0; font-size: 30px; letter-spacing: 6px; text-transform: uppercase; font-weight: 800; }
+#shop-phase { font-size: 11px; letter-spacing: 2.5px; color: var(--muted); }
+#shop-time { font-size: 18px; font-variant-numeric: tabular-nums; }
+.shop-econ { display: flex; gap: 26px; }
+.econ { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.econ small { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+.econ b { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+#shop-credits { font-size: 28px; color: #fff; }
+#shop-min { color: var(--muted); }
+#shop-loss { display: flex; gap: 3px; height: 26px; align-items: flex-end; }
+#shop-loss i { position: relative; width: 34px; height: 8px; background: rgba(255, 255, 255, 0.14); font-style: normal; }
+#shop-loss i.on { background: var(--accent); }
+#shop-loss i.next { outline: 1px solid rgba(255, 255, 255, 0.6); outline-offset: 1px; }
+#shop-loss i span { position: absolute; bottom: 11px; left: 0; right: 0; text-align: center; font-size: 9.5px; color: var(--muted); letter-spacing: .5px; }
+#shop-loss i.next span { color: var(--text); }
+#shop-close { background: none; border: 1px solid var(--line); color: var(--text); padding: 7px 14px; cursor: pointer; font: inherit; font-size: 12px; letter-spacing: 1px; }
+.shop-body { display: flex; gap: 18px; flex: 1; min-height: 0; }
+.shop-main { flex: 1; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+#shop-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.scol { display: flex; flex-direction: column; gap: 12px; }
+#shop h3 { margin: 0 0 6px; font-size: 10.5px; color: var(--muted); letter-spacing: 2.5px; text-transform: uppercase; font-weight: 600; }
+.scard { position: relative; display: block; width: 100%; margin-bottom: 6px; padding: 0; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.08); color: var(--text); text-align: left; cursor: pointer; font: inherit; transition: background .08s, border-color .08s; }
+.scard.gun { height: 74px; }
+.scard .pr { position: absolute; top: 6px; left: 8px; font-size: 12px; font-weight: 600; letter-spacing: .5px; color: var(--text); }
+.scard .n { position: absolute; bottom: 6px; left: 8px; font-size: 11px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; }
+.scard .tag { position: absolute; bottom: 6px; right: 8px; font-size: 9px; letter-spacing: 1.5px; color: var(--muted); }
+.scard.gun img { position: absolute; right: 8px; top: 50%; width: 62%; height: 64%; object-fit: contain; object-position: right center; transform: translateY(-50%); opacity: .88; pointer-events: none; }
+.scard:hover, .scard.hover { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 255, 255, 0.85); }
+.scard.owned { background: rgba(236, 232, 225, 0.2); border-color: rgba(236, 232, 225, 0.55); }
+.scard.owned .tag { color: var(--text); }
+.scard.poor .pr { color: var(--accent); }
+.scard.poor img, .scard.poor .n { opacity: .45; }
+.scard.req { border-color: #ffd54a; }
+.scard.req .tag { color: #ffd54a; }
+#shop-gear { display: grid; grid-template-columns: 3fr 4fr; gap: 12px; }
+.sgear > div { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.scard.gear { height: 78px; margin: 0; }
+.scard.gear .shi { position: absolute; right: 10px; top: 12px; width: 30px; height: 30px; color: #cfe9ff; opacity: .85; }
+.scard.ab .key { position: absolute; right: 10px; top: 8px; font-size: 22px; font-weight: 800; color: var(--agent, var(--text)); opacity: .9; }
+.scard.ab .pips { position: absolute; left: 8px; bottom: 24px; display: flex; gap: 3px; }
+.scard.ab .pips i { width: 10px; height: 4px; background: rgba(255, 255, 255, 0.2); }
+.scard.ab .pips i.on { background: var(--text); }
+.scard.ab .pips.ult i { width: 6px; height: 6px; border-radius: 50%; }
+.scard.ab .pips.ult i.on { background: #ffd54a; }
+.scard.ab em { position: absolute; left: 8px; bottom: 24px; font-style: normal; font-size: 11px; color: var(--muted); }
+.shop-side { width: clamp(260px, 24vw, 340px); display: flex; flex-direction: column; gap: 12px; }
+#shop-detail { min-height: 180px; padding: 12px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); font-size: 12px; }
+#shop-detail .dh { display: flex; align-items: baseline; gap: 8px; }
+#shop-detail .dh b { font-size: 18px; letter-spacing: 2px; text-transform: uppercase; }
+#shop-detail .dh small { flex: 1; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; font-size: 10px; }
+#shop-detail .dimg { display: block; width: 100%; height: 64px; object-fit: contain; margin: 8px 0; opacity: .9; }
+#shop-detail p { color: var(--muted); line-height: 1.45; margin: 8px 0 0; } #shop-detail p.dim { opacity: .7; }
+.dtab { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.dtab th, .dtab td { padding: 3px 4px; text-align: right; font-size: 11px; } .dtab th:first-child, .dtab td:first-child { text-align: left; color: var(--muted); }
+.dtab tr + tr td { border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.dstats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-top: 8px; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; }
+.dstats b { display: block; color: var(--text); font-size: 13px; letter-spacing: 0; text-transform: none; }
+#shop-team { padding: 12px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); }
+#shop-team h3 { display: flex; justify-content: space-between; } #shop-team h3 span { color: var(--text); letter-spacing: 0; font-size: 12px; }
+.tmate { display: grid; grid-template-columns: 34px 1fr auto auto; align-items: center; gap: 8px; padding: 6px 4px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.tmate.me .tinfo b { color: #ffd54a; }
+.tmate.asking { background: rgba(255, 213, 74, 0.06); }
+.tport { width: 34px; height: 34px; background: rgba(0, 0, 0, 0.35); border-bottom: 2px solid var(--ag); }
+.tport svg { width: 100%; height: 100%; }
+.tinfo { min-width: 0; } .tinfo b { display: block; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tinfo small { font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+.tload { display: flex; align-items: center; gap: 4px; } .tload img { height: 18px; width: 58px; object-fit: contain; object-position: right; opacity: .85; }
+.tload .none { font-size: 10px; color: var(--muted); } .tload .tsh svg { width: 15px; height: 15px; color: #cfe9ff; display: block; }
+.tcr { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
+.scard.treq { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 10px; padding: 5px 8px; margin: 2px 0 0; border-color: rgba(255, 213, 74, 0.6); background: rgba(255, 213, 74, 0.1); }
+.scard.treq .rl { font-size: 9px; letter-spacing: 1.8px; color: #ffd54a; }
+.scard.treq img { grid-row: span 2; height: 22px; width: 64px; object-fit: contain; order: -1; }
+.scard.treq .rp { font-size: 11px; font-weight: 600; }
+.scard.treq.poor { opacity: .55; } .scard.treq.mine { border-style: dashed; }
+#shop-note { margin: 0; color: var(--muted); font-size: 11px; letter-spacing: .5px; text-align: center; }
+@media (max-width: 1000px) { .shop-body { flex-direction: column; } .shop-side { width: auto; } #shop-gear { grid-template-columns: 1fr; } }
 .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 14px; }
 .mode { padding: 12px 14px; text-align: left; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--text); cursor: pointer; font: inherit; }
 .mode b { display: block; font-size: 15px; letter-spacing: 1px; text-transform: uppercase; }
@@ -306,38 +382,56 @@ th { color: var(--muted); font-weight: 500; }
 .skin-actions { gap: 6px !important; }
 .skin-actions button, .skin-actions .mini { padding: 6px 10px !important; font-size: 11px !important; }
 
-/* ---------- Skins ---------- */
-.panel.skins { width: min(980px, 100%); max-height: 94vh; display: flex; flex-direction: column; }
+/* ---------- Skins: a Valorant-style collection (gun grid) and a weapon screen (big preview, skin list, variants) ---------- */
+.panel.skins { width: min(1180px, 100%); max-height: 96vh; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(20, 44, 68, 0.96), rgba(12, 22, 34, 0.96)); }
 .skins-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 12px; }
 .skins-head h2 { margin: 0; }
 .skins-head p { margin: 0; flex: 1; color: var(--muted); font-size: 13px; }
-.skins-head button, .skin-actions button { padding: 8px 16px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: var(--text); cursor: pointer; letter-spacing: 1px; text-transform: uppercase; font-size: 12px; }
-.skins-head button:hover, .skin-actions button:hover { border-color: var(--text); }
-.skins-body { display: grid; grid-template-columns: 190px 1fr; gap: 18px; min-height: 0; flex: 1; }
-#skin-weapons { overflow: auto; padding-right: 4px; }
-#skin-weapons h3 { margin: 10px 0 4px; font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; font-weight: 500; }
-#skin-weapons button { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; margin-bottom: 3px; background: none; border: 1px solid transparent; color: var(--text); text-align: left; cursor: pointer; font-size: 13px; }
-#skin-weapons button small { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#skin-weapons button:hover { border-color: var(--line); }
-#skin-weapons button.sel { border-color: var(--accent); background: rgba(255, 70, 85, 0.12); }
-.skin-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.skin-stage { position: relative; background: radial-gradient(ellipse at 50% 55%, rgba(170, 190, 210, 0.32), rgba(255, 255, 255, 0.04) 70%), #16212c; border: 1px solid var(--line); }
-#skin-preview { display: block; width: 100%; height: clamp(180px, 34vh, 320px); cursor: grab; touch-action: none; }
+.skins-head button, .skin-actions button, .skin-detail-head button, #skin-equip { padding: 8px 16px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: var(--text); cursor: pointer; letter-spacing: 1px; text-transform: uppercase; font-size: 12px; }
+.skins-head button:hover, .skin-actions button:hover, .skin-detail-head button:hover, #skin-equip:hover { border-color: var(--text); }
+#skin-collection { display: flex; flex-direction: column; min-height: 0; }
+#skin-weapons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 14px; overflow: auto; padding-right: 4px; }
+.coll-col h3 { margin: 6px 0 8px; text-align: center; font-size: 16px; letter-spacing: 1px; text-transform: uppercase; font-weight: 800; }
+.coll-card { position: relative; display: block; width: 100%; height: 86px; margin-bottom: 10px; padding: 0; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.18); color: var(--text); cursor: pointer; overflow: hidden; }
+.coll-card:hover { border-color: var(--text); background: rgba(255, 255, 255, 0.1); }
+.coll-card img { position: absolute; inset: 4px 8px 18px; width: calc(100% - 16px); height: calc(100% - 22px); object-fit: contain; }
+.coll-card b { position: absolute; left: 8px; bottom: 5px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+.coll-card small { position: absolute; right: 8px; bottom: 5px; font-size: 10px; color: var(--muted); max-width: 55%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#skin-detail { display: flex; flex-direction: column; min-height: 0; }
+.skin-detail-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 8px; }
+.skin-detail-head h2 { margin: 0; font-size: 34px; letter-spacing: 2px; text-transform: uppercase; color: #ece9b0; }
+.skin-detail-head button { justify-self: start; }
+.skin-detail-body { display: grid; grid-template-columns: 1fr 220px; gap: 14px; min-height: 0; }
+.skin-stage { position: relative; background: radial-gradient(ellipse at 50% 45%, rgba(170, 190, 210, 0.22), rgba(255, 255, 255, 0.02) 70%), #141c26; border: 1px solid var(--line); }
+#skin-preview { display: block; width: 100%; height: clamp(220px, 46vh, 430px); cursor: grab; touch-action: none; }
 #skin-preview:active { cursor: grabbing; }
-.skin-caption { position: absolute; left: 14px; bottom: 10px; pointer-events: none; text-shadow: 0 1px 3px #000; }
-.skin-caption b { display: block; font-size: 20px; letter-spacing: 1px; }
-.skin-caption span { color: var(--muted); font-size: 12px; }
 .skin-hint { position: absolute; right: 12px; top: 8px; color: var(--muted); font-size: 11px; pointer-events: none; }
-#skin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; overflow: auto; }
+.skin-bottom { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 12px; padding: 0 14px 12px; margin-top: -64px; position: relative; }
+.skin-variants { display: flex; flex-direction: column; gap: 4px; }
+#skin-variants { display: flex; gap: 6px; }
+#skin-variants button { width: 34px; height: 34px; padding: 0; border: 2px solid rgba(255, 255, 255, 0.25); cursor: pointer; display: flex; transform: rotate(0); overflow: hidden; background: none; }
+#skin-variants button i { flex: 1; }
+#skin-variants button.sel { border-color: #fff; box-shadow: 0 0 0 1px #fff; }
+#skin-variant-name { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+.skin-caption { text-align: center; pointer-events: none; text-shadow: 0 1px 3px #000; }
+.skin-caption b { display: block; font-size: 26px; font-weight: 400; letter-spacing: 3px; text-transform: uppercase; }
+.skin-caption span { display: block; max-width: 460px; color: var(--muted); font-size: 12px; }
+#skin-equip { justify-self: end; padding: 10px 26px; }
+#skin-equip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+#skin-equip:disabled { opacity: 0.6; cursor: default; }
+.skin-side { display: flex; flex-direction: column; min-height: 0; }
+.skin-side h3 { margin: 0 0 6px; font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; font-weight: 500; }
+#skin-grid { display: flex; flex-direction: column; gap: 6px; overflow: auto; }
 .skin-card { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center; padding: 8px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--text); text-align: left; cursor: pointer; }
 .skin-card:hover { border-color: var(--text); }
-.skin-card.sel { border-color: var(--accent); background: rgba(255, 70, 85, 0.15); }
+.skin-card.sel { border-color: #fff; background: rgba(255, 255, 255, 0.12); }
+.skin-card.worn small::after { content: ' · equipped'; color: var(--good); }
 .skin-card .sw { grid-row: span 2; display: flex; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; transform: rotate(-30deg); border: 1px solid rgba(255, 255, 255, 0.25); }
 .skin-card .sw i { flex: 1; }
 .skin-card b { font-size: 13px; font-weight: 600; }
 .skin-card small { color: var(--muted); font-size: 11px; }
 .skin-actions { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-@media (max-width: 700px) { .skins-body { grid-template-columns: 1fr; } #skin-weapons { display: flex; flex-wrap: wrap; gap: 4px; } #skin-weapons h3 { width: 100%; } #skin-weapons button { width: auto; } #skin-weapons button small { display: none; } }
+@media (max-width: 800px) { #skin-weapons { grid-template-columns: repeat(2, 1fr); } .skin-detail-body { grid-template-columns: 1fr; } .skin-bottom { grid-template-columns: 1fr; margin-top: 0; padding-top: 8px; } #skin-equip { justify-self: stretch; } .skin-detail-head h2 { font-size: 24px; } }
 
 /* ---------- Agent select ---------- */
 #agents { background: radial-gradient(ellipse at 70% 40%, rgba(255, 70, 85, 0.08), transparent 60%), rgba(8, 12, 18, 0.88); }
@@ -467,6 +561,7 @@ th { color: var(--muted); font-weight: 500; }
   <div id="rbanner"></div>
   <div id="rchannel" hidden><span id="rchtext">PLANTING</span><i><b id="rchbar"></b></i></div>
   <div id="rcredits" hidden></div>
+  <div id="rnotice"></div>
   <div id="rhint"></div>
   <div id="killfeed"></div>
   <div id="center-msg"></div>
@@ -507,9 +602,20 @@ th { color: var(--muted); font-weight: 500; }
     <div id="buy-groups"></div>
   </div>
   <div id="shop" hidden>
-    <div class="shop-head"><h2>Buy</h2><span id="shop-credits"></span><p id="shop-note"></p><button id="shop-close">Close (B)</button></div>
-    <div id="shop-grid"></div>
-    <div id="shop-team"></div>
+    <div class="shop-top">
+      <div class="shop-title"><h2>Shop</h2><span id="shop-phase"></span><b id="shop-time"></b></div>
+      <div class="shop-econ">
+        <div class="econ"><small>Credits</small><b id="shop-credits"></b></div>
+        <div class="econ"><small>Min. next round</small><b id="shop-min"></b></div>
+        <div class="econ"><small>Loss bonus</small><span id="shop-loss"></span></div>
+      </div>
+      <button id="shop-close">Close (B)</button>
+    </div>
+    <div class="shop-body">
+      <div class="shop-main"><div id="shop-grid"></div><div id="shop-gear"></div></div>
+      <aside class="shop-side"><div id="shop-detail"></div><div id="shop-team"></div></aside>
+    </div>
+    <p id="shop-note"></p>
   </div>
   <div id="cursor" hidden></div>
   <div id="netbadge" hidden></div>
@@ -635,25 +741,32 @@ th { color: var(--muted); font-weight: 500; }
 
 <div id="skins" class="overlay" hidden>
   <div class="panel skins">
-    <div class="skins-head"><h2>Skins</h2><p>Pick a weapon, then a finish. Drag the preview to turn it.</p><button id="skins-back">Back</button></div>
-    <div class="skins-body">
-      <nav id="skin-weapons"></nav>
-      <div class="skin-main">
+    <div id="skin-collection">
+      <div class="skins-head"><h2>Collection</h2><p>Every weapon in the skin you have on it. Pick one to change it.</p><button id="skin-reset">Reset all to Standard Issue</button><button id="skins-back">Back</button></div>
+      <div id="skin-weapons"></div>
+    </div>
+    <div id="skin-detail" hidden>
+      <div class="skin-detail-head"><button id="skin-detail-back">‹ Back</button><h2 id="skin-weapon-name"></h2><span></span></div>
+      <div class="skin-detail-body">
         <div class="skin-stage">
           <canvas id="skin-preview"></canvas>
-          <div class="skin-caption"><b id="skin-title"></b><span id="skin-sub"></span></div>
           <div class="skin-hint">drag to rotate</div>
+          <div class="skin-bottom">
+            <div class="skin-variants"><div id="skin-variants"></div><small id="skin-variant-name"></small></div>
+            <div class="skin-caption"><b id="skin-title"></b><span id="skin-sub"></span></div>
+            <button id="skin-equip">Equip skin</button>
+          </div>
         </div>
-        <div id="skin-grid"></div>
-        <div id="skin-editor" hidden></div>
-        <div class="skin-actions" id="skin-actions">
-          <button id="skin-all">Use this skin on every weapon</button><button id="skin-reset">Reset all to Standard Issue</button>
-          <button id="skin-inspect" hidden>Play inspect</button><button id="skin-new">New custom skin</button><button id="skin-edit" hidden>Edit</button><button id="skin-delete" hidden>Delete</button>
-          <button id="skin-share">Copy share code</button><button id="skin-paste">Paste share code</button>
-          <button id="skin-export">Export file</button><label class="mini" for="skin-import" style="display:inline-flex;align-items:center">Import file<input id="skin-import" type="file" accept=".json,application/json" hidden></label>
-        </div>
-        <p id="skin-status" class="note"></p>
+        <div class="skin-side"><h3 id="skin-side-title">Skins</h3><div id="skin-grid"></div></div>
       </div>
+      <div id="skin-editor" hidden></div>
+      <div class="skin-actions" id="skin-actions">
+        <button id="skin-inspect" hidden>Play inspect</button><button id="skin-all">Use this skin on every weapon</button>
+        <button id="skin-new">New custom skin</button><button id="skin-edit" hidden>Edit</button><button id="skin-delete" hidden>Delete</button>
+        <button id="skin-share">Copy share code</button><button id="skin-paste">Paste share code</button>
+        <button id="skin-export">Export file</button><label class="mini" for="skin-import" style="display:inline-flex;align-items:center">Import file<input id="skin-import" type="file" accept=".json,application/json" hidden></label>
+      </div>
+      <p id="skin-status" class="note"></p>
     </div>
   </div>
 </div>

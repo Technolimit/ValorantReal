@@ -2,13 +2,17 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { HFOV, VIEW_RECOIL, HITBOX, GUN_HEIGHT } from './config.js';
 import { gunModel, handsModel, studioEnv, ownGlow, poseMeleeParts, rocketModel, paintShellModel, bombletModel } from './models.js';
-import { MELEE, GUN_INSPECT, meleeId, inspectPose } from './melee.js';
-import { skinFor, SKINS } from './skins.js';
+import { MELEE, GUN_INSPECT, MODEL_INSPECTS, EQUIP_ANIMS, SWINGS, meleeId, inspectPose } from './melee.js';
+import { SwingTrails } from './swingfx.js';
+import { skinFor, skinFits, meleeSkin, SKINS } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
 import { BLADES, SMOKE, bloomTargets } from './abilities.js';
+import { VM_SHINE, shineMaterial, fitShine, updateShine, sweepAt, ViewmodelPost } from './shine.js';
 
 // Blitz's Finale launcher, shown in the hands (and on her body) while the ultimate is out.
 const FINALE = { id: 'finale', name: 'Finale', cat: 'Ability', model: 'launcher', launcher: true };
+// Finisher effects a skin can name (`finisher` in skins.js), drawn by fxCollapse / fxLastLight below.
+const FINISHERS = ['collapse', 'lastLight', 'lastStroke'];
 import { ROUND } from './rounds.js';
 import { materialOf } from './map.js';
 import { dirFromAngles } from './entity.js';
@@ -157,9 +161,21 @@ const AUTO_SCALES = [0.5, 0.6, 0.7, 0.85, 1];
 const vmMats = new WeakMap();
 function vmMaterial(m) {
   let c = vmMats.get(m);
-  if (!c) { c = m.clone(); vmMats.set(m, c); }
+  if (!c) { c = shineMaterial(m.clone(), VM_SHINE); vmMats.set(m, c); }
   return c;
 }
+// A critically-underdamped spring toward a target: it overshoots a little and settles, which gives the
+// viewmodel its follow-through. Stepped in small slices so a long frame doesn't blow it up.
+function spring(s, target, dt, k, zeta) {
+  const c = 2 * zeta * Math.sqrt(k);
+  for (let left = Math.min(dt, 0.1); left > 0; left -= 1 / 240) {
+    const h = Math.min(left, 1 / 240);
+    s.v += ((target - s.x) * k - s.v * c) * h;
+    s.x += s.v * h;
+  }
+  return s.x;
+}
+const easeOutBack = (t) => 1 + 2.2 * (t - 1) ** 3 + 1.2 * (t - 1) ** 2;
 
 // One geometry from several (position, normal and uv only), for static meshes that share a material.
 function mergeGeometries(list) {
@@ -288,6 +304,8 @@ export class Renderer {
 
     this.vm = { group: new THREE.Group(), model: null, kind: null, swayX: 0, swayY: 0, bob: 0, equipStart: -10, equipDur: 1, flashUntil: 0, swingStart: -10, swingHeavy: false };
     this.vmScene.add(this.vm.group);
+    this.trails = new SwingTrails(this.vmScene);
+    this.swings = 0;
     this.recoil = { feel: null };
     this.shake = 0;
     this.shakeP = 0;
@@ -471,6 +489,9 @@ export class Renderer {
     this.flashTex = ftex;
     this.flashMat = new THREE.SpriteMaterial({ map: ftex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
     this.flashPool = Array.from({ length: 16 }, () => { const s = new THREE.Sprite(this.flashMat); s.visible = false; this.scene.add(s); return { s, until: 0 }; });
+    // One light for finishers, always in the scene at zero (adding a light mid-game would recompile every material).
+    this.finLight = new THREE.PointLight(0xffffff, 0, 16, 1.6);
+    this.scene.add(this.finLight);
     this.vmFlash = new THREE.Sprite(new THREE.SpriteMaterial({ map: ftex, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true }));
     this.vmFlash.visible = false;
 
@@ -526,6 +547,7 @@ export class Renderer {
         this.recoilKick(gun);
         if (CYCLE_STYLE[gun.def.id]) this.cycle = { start: g.time, dur: (1 / gun.rate()) * 0.85 };
         this.vm.flashUntil = performance.now() + (gun.def.suppressed ? 25 : 40);
+        this.vm.flare = Math.min(0.8, (this.vm.flare || 0) + 0.35); // the skin's glow kicks with each shot
         this.vmFlashScale = gun.def.suppressed ? 0.06 : 0.12;
       } else if (!gun.def.suppressed) {
         const f = this.flashPool.find(x => x.until < performance.now()) || this.flashPool[0];
@@ -536,19 +558,32 @@ export class Renderer {
       }
     });
     g.on('swing', ({ who, heavy }) => {
-      if (who === g.player) { this.vm.swingStart = performance.now(); this.vm.swingHeavy = heavy; }
+      if (who !== g.player) return;
+      const vm = this.vm;
+      vm.swingStart = performance.now(); vm.swingHeavy = heavy;
+      // A melee type cuts its own way and leaves its own trail, in its theme's colours; light cuts alternate sides.
+      const sw = SWINGS[vm.meleeId];
+      vm.swingAnim = sw ? (heavy ? sw.heavy : sw.light[this.swings++ % sw.light.length]) : null;
+      if (vm.swingAnim) { const sk = SKINS[vm.skin]; this.trails.play(vm.swingAnim.trail, { glow: sk?.glow?.color, accent: sk?.accent?.color }); }
     });
     g.on('equip', ({ who, gun }) => {
       if (who === g.player) { this.vm.equipStart = performance.now(); this.vm.equipDur = gun.def.equip * 1000; this.resetRecoil(); this.cycle = null; }
     });
-    g.on('kill', ({ victim, killer }) => {
+    g.on('kill', ({ victim, killer, def }) => {
       const ch = this.characters.get(victim);
       if (ch) ch.deathT = performance.now();
       if (victim === g.player) this.deathCam = { killer, yaw: g.player.yaw, pitch: g.player.pitch, t: performance.now() };
+      this.queueFinisher(killer, victim, def);
     });
+    // A finisher plays when the round ends (5v5), however it ends, for that round's final kill; in deathmatch, on
+    // the kill that ends the match.
+    g.on('roundEnd', () => this.endFinisher());
+    g.on('end', () => { if (!g.mode) this.endFinisher(); });
+    g.on('start', () => { this.pendingFinisher = null; });
+    g.on('round', () => { this.pendingFinisher = null; }); // kills after a round ends don't carry into the next
     g.on('respawn', ({ who }) => {
       const ch = this.characters.get(who);
-      if (ch) { ch.deathT = 0; ch.group.visible = true; ch.group.rotation.set(0, 0, 0); }
+      if (ch) { ch.deathT = 0; ch.vanish = null; ch.group.visible = true; ch.group.rotation.set(0, 0, 0); ch.group.scale.setScalar(1); }
       if (who === g.player) { this.deathCam = null; this.resetRecoil(); }
     });
     g.on('start', () => { this.syncCharacters(); this.clearSmokes(); this.clearDecals(); });
@@ -576,7 +611,7 @@ export class Renderer {
       if (type === 'rekindled') this.fxBurst(who.eye(), 0xff7a3d, 2.5, 0.5);
     });
     g.on('teleport', ({ from, to }) => { this.fxBurst([from[0], from[1] + 1, from[2]], 0xa67bff, 1.2, 0.4); this.fxBurst([to[0], to[1] + 1, to[2]], 0xa67bff, 1.2, 0.4); });
-    g.on('blade', ({ who }) => { if (who === g.player) { this.vm.swingStart = performance.now(); this.vm.swingHeavy = false; } });
+    g.on('blade', ({ who }) => { if (who === g.player) { this.vm.swingStart = performance.now(); this.vm.swingHeavy = false; this.vm.swingAnim = null; } });
     g.on('ability', ({ who, type }) => {
       if (who !== g.player) return;
       if (type === 'ult') { this.vm.equipStart = performance.now(); this.vm.equipDur = 350; }
@@ -697,24 +732,29 @@ export class Renderer {
     });
   }
 
-  fxAdd(obj, until, update) {
-    (this.fx2 ||= []).push({ obj, until, update });
+  // done: called once when the effect ends or is cleared (to reset anything it borrowed, like the finisher light).
+  fxAdd(obj, until, update, done = null) {
+    (this.fx2 ||= []).push({ obj, until, update, done });
     this.scene.add(obj);
   }
 
   updateFx2() {
     if (!this.fx2?.length) return;
-    const now = this.game.time;
-    this.fx2 = this.fx2.filter(f => {
+    const now = this.game.time, list = this.fx2;
+    // An update can start new effects (a finisher's bursts and rings at its climax): they go on a fresh list,
+    // so they are kept, faded and removed like the rest instead of being left in the scene.
+    this.fx2 = [];
+    const kept = list.filter(f => {
       const until = typeof f.until === 'function' ? f.until() : f.until;
-      if (now >= until) { this.scene.remove(f.obj); return false; }
+      if (now >= until) { this.scene.remove(f.obj); f.done?.(); return false; }
       if (f.update) f.update(now);
       return true;
     });
+    this.fx2 = kept.concat(this.fx2);
   }
 
   clearFx2() {
-    for (const f of this.fx2 || []) this.scene.remove(f.obj);
+    for (const f of this.fx2 || []) { this.scene.remove(f.obj); f.done?.(); }
     this.fx2 = [];
   }
 
@@ -784,6 +824,329 @@ export class Renderer {
       const k = (now - t0) / life;
       m.scale.setScalar(Math.max(0.01, r * (0.2 + 0.8 * Math.sqrt(k))));
       m.material.opacity = 0.35 * (1 - k);
+    });
+  }
+
+  // ---------- finishers ----------
+  // A kill with a finisher skin (`finisher` in skins.js) waits to see whether it is the round's final kill (5v5) or
+  // ends the match (deathmatch); as in Valorant, only that final kill plays the finisher, when the round ends.
+  queueFinisher(killer, victim, def) {
+    if (!killer || !victim || killer === victim || !def) return;
+    const skin = this.skinOf(killer, this.modelOf(killer, def.id)), kind = SKINS[skin]?.finisher;
+    // Every kill replaces the pending one, so only a final kill made with the skin gets the finisher.
+    this.pendingFinisher = FINISHERS.includes(kind) ? { kind, skin, victim, at: this.game.time } : null;
+  }
+
+  // The round (or, in deathmatch, the match) just ended: play the finisher if its final kill earned one. In 5v5
+  // the round may end long after that kill (a spike, a defuse, the clock), so the kill can be from any time.
+  endFinisher() {
+    const f = this.pendingFinisher;
+    this.pendingFinisher = null;
+    if (f && (this.game.mode || this.game.time - f.at < 2)) this.playFinisher(f.kind, f.victim, f.skin);
+  }
+
+  // Finishers take their colours from the skin (variant) that got the kill: its glow and its accent.
+  playFinisher(kind, victim, skin) {
+    const ch = this.characters.get(victim);
+    const pos = ch?.group.visible ? [ch.group.position.x, ch.group.position.y, ch.group.position.z] : [...victim.pos];
+    const s = SKINS[skin] || {}, col = { glow: s.glow?.color ?? 0x3fb4ff, accent: s.accent?.color ?? s.glow?.color ?? 0xb44dff };
+    this.lastFinisher = { kind, skin, at: this.game.time };
+    this.game.emit('finisher', { kind, pos });
+    if (kind === 'collapse') this.fxCollapse(pos, ch, col);
+    else if (kind === 'lastLight') this.fxLastLight(pos, ch, col);
+    else if (kind === 'lastStroke') this.fxLastStroke(pos, ch, col);
+  }
+
+  // The body shrinks away to nothing over `dur` seconds, starting `delay` seconds from now, rising `lift` metres.
+  vanishBody(ch, delay, dur, lift = 0) {
+    if (ch) ch.vanish = { start: performance.now() + delay * 1000, dur: dur * 1000, lift, y: ch.group.position.y };
+  }
+
+  // The finisher light: placed at `pos` in `color`, its brightness following env(t) for `life` seconds, then
+  // back to zero.
+  fxFinLight(pos, color, life, env) {
+    const L = this.finLight, t0 = this.game.time, o = new THREE.Object3D();
+    L.color.set(color);
+    L.position.set(...pos);
+    this.fxAdd(o, t0 + life, (now) => { L.position.set(...pos); L.intensity = Math.max(0, env(now - t0)); }, () => { L.intensity = 0; });
+  }
+
+  // A jolt of the camera that dies away over `dur` seconds, weaker the further you are from `pos`.
+  shakeCamera(pos, amp, dur) {
+    const c = this.camera.position, d = Math.hypot(c.x - pos[0], c.y - pos[1], c.z - pos[2]);
+    const a = amp / (1 + d / 12);
+    if (!this.finShake || a > this.finShake.amp * (1 - (this.game.time - this.finShake.t0) / this.finShake.dur)) this.finShake = { t0: this.game.time, amp: a, dur };
+  }
+
+  applyShake() {
+    const sh = this.finShake;
+    if (!sh) return;
+    const k = 1 - (this.game.time - sh.t0) / sh.dur;
+    if (k <= 0) { this.finShake = null; return; }
+    const t = performance.now() / 1000, a = sh.amp * k * k;
+    this.camera.rotation.x += Math.sin(t * 61) * a;
+    this.camera.rotation.y += Math.sin(t * 47 + 1.3) * a;
+    this.camera.rotation.z += Math.sin(t * 37 + 2.1) * a * 0.6;
+  }
+
+  // Orbital: "Collapse". The body is lifted off the floor into a swelling orb in the accent colour while three
+  // rings in the glow colour circle it and a column of light climbs out of it; sparks and debris are sucked in
+  // from all round, the light in the area builds and the rings close in, then it implodes to a point and
+  // detonates: a blinding flash, a ground shockwave and an upright one, and a hard shake. It leaves nothing
+  // behind.
+  fxCollapse(pos, ch, col) {
+    const c = [pos[0], pos[1] + 1.2, pos[2]], t0 = this.game.time, life = 3.1, implode = 2.1;
+    const add = (col, o = 0.85) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const g = new THREE.Group();
+    g.position.set(...c);
+    const shell = new THREE.Color(col.accent).multiplyScalar(0.75), hot = new THREE.Color(col.accent).lerp(new THREE.Color(0xffffff), 0.7);
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), new THREE.MeshBasicMaterial({ color: shell, transparent: true, opacity: 0.85, depthWrite: false }));
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12), add(hot, 0.9));
+    core.material.depthTest = false; // the hot core shows through the shell
+    orb.add(core);
+    const aura = new THREE.Mesh(new THREE.SphereGeometry(1.5, 24, 16), add(col.accent, 0.18));
+    const rings = [0, 1, 2].map(i => {
+      const r = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 8, 64), add(col.glow, 0.9));
+      r.rotation.set(Math.PI / 2 + [-0.5, 0.7, 0.1][i], [-0.3, 0.4, 1.2][i], 0);
+      g.add(r);
+      return r;
+    });
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.6, 1, 20, 1, true), add(col.glow, 0.35));
+    column.geometry.translate(0, 0.5, 0);
+    g.add(orb, aura, column);
+    // Debris drawn in from a wide sphere.
+    const bits = [], bitGeo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
+    for (let i = 0; i < 48; i++) {
+      const m = new THREE.Mesh(bitGeo, add(i % 3 ? col.accent : col.glow, 0.9));
+      const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 3, s = Math.sqrt(1 - u * u);
+      m.userData = { from: [Math.cos(a) * s * r, u * r * 0.6, Math.sin(a) * s * r], at: Math.random() * 1.2 };
+      g.add(m);
+      bits.push(m);
+    }
+    this.vanishBody(ch, 0.3, 1.6, 0.7);
+    this.fxFinLight(c, col.accent, life, (t) => (t < implode ? 2 + 6 * (t / implode) ** 2 : 40 * Math.max(0, 1 - (t - implode) / 0.8) ** 2));
+    let popped = false;
+    this.fxAdd(g, t0 + life, (now) => {
+      const t = now - t0;
+      const grow = Math.min(1, t / 0.9), shut = Math.max(0, Math.min(1, (t - implode + 0.3) / 0.3));
+      const throb = 0.06 * Math.sin(t * (20 + 30 * grow));
+      orb.scale.setScalar(Math.max(0.001, (0.25 + 0.65 * grow + throb) * (1 - shut)));
+      aura.scale.setScalar(Math.max(0.001, (0.4 + 0.8 * grow) * (1 - shut)));
+      aura.material.opacity = 0.18 + 0.12 * Math.sin(t * 9);
+      rings.forEach((r, i) => {
+        r.scale.setScalar(Math.max(0.001, (2.2 - 1.0 * grow) * (1 - shut)));
+        r.rotation.z += [-0.15, 0.12, 0.2][i] * (1 + grow);
+        r.material.opacity = 0.9 * (1 - shut);
+      });
+      column.scale.set(1 - shut, Math.max(0.001, 6 * grow), 1 - shut);
+      column.material.opacity = 0.35 * grow * (1 - shut);
+      for (const b of bits) {
+        const k = Math.min(1, Math.max(0, (t - b.userData.at) / 0.8)), f = b.userData.from;
+        b.position.set(f[0] * (1 - k * k), f[1] * (1 - k * k), f[2] * (1 - k * k));
+        b.rotation.x += 0.3; b.rotation.y += 0.2;
+        b.visible = k > 0 && k < 1 && !popped;
+      }
+      if (!popped && t >= implode) {
+        popped = true;
+        this.fxBurst(c, col.accent, 9, 0.6);
+        this.fxBurst(c, 0xffffff, 4, 0.25, true);
+        this.fxBurst(c, col.glow, 5, 0.45, true);
+        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], col.glow, 10, 0.9);
+        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], col.accent, 6, 0.7);
+        this.fxRingUp(c, col.accent, 5, 0.6);
+        this.burst(c, null, new THREE.Color(col.accent).toArray(), 60, 9);
+        this.burst(c, null, new THREE.Color(col.glow).toArray(), 40, 6);
+        this.shakeCamera(c, 0.035, 0.7);
+      }
+      g.visible = !popped;
+    });
+  }
+
+  // Starspur: "Last Light". The body is raised and burns away while a big star in the accent colour climbs
+  // spinning out of it, a sunburst of rays turning behind it, and a dust ring in the glow colour rolls out wide
+  // across the ground; at the top the star flares like a low sun: a blinding flash, the area lit up, a shower of
+  // sparks and a shockwave, and it's gone. It leaves nothing behind.
+  fxLastLight(pos, ch, col) {
+    const t0 = this.game.time, life = 3.1, flare = 2.1, top = 3.4;
+    const add = (col, o) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const starGeo = (R, r = R * 0.45) => {
+      const sh = new THREE.Shape();
+      for (let i = 0; i < 10; i++) {
+        const a = Math.PI / 2 + (i / 10) * Math.PI * 2, d = i % 2 ? r : R;
+        i ? sh.lineTo(Math.cos(a) * d, Math.sin(a) * d) : sh.moveTo(Math.cos(a) * d, Math.sin(a) * d);
+      }
+      return new THREE.ShapeGeometry(sh);
+    };
+    const g = new THREE.Group();
+    g.position.set(pos[0], pos[1], pos[2]);
+    const star = new THREE.Mesh(starGeo(0.9), new THREE.MeshBasicMaterial({ color: col.accent, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }));
+    const halo = new THREE.Mesh(starGeo(1.35, 0.4), add(col.glow, 0.55));
+    halo.position.z = -0.01;
+    star.add(halo);
+    // Sunburst: long thin rays fanned round the star, facing the same way it does.
+    const rays = new THREE.Group();
+    for (let i = 0; i < 12; i++) {
+      const r = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 3.2), add(i % 2 ? col.accent : col.glow, 0.4));
+      r.geometry.translate(0, 1.9, 0);
+      r.rotation.z = (i / 12) * Math.PI * 2;
+      rays.add(r);
+    }
+    rays.position.z = -0.02;
+    star.add(rays);
+    g.add(star);
+    const dust = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 64), add(col.glow, 0.7));
+    dust.rotation.x = -Math.PI / 2;
+    dust.position.y = 0.04;
+    const dust2 = new THREE.Mesh(new THREE.RingGeometry(0.7, 1, 64), add(col.accent, 0.35));
+    dust2.rotation.x = -Math.PI / 2;
+    dust2.position.y = 0.05;
+    g.add(dust, dust2);
+    this.vanishBody(ch, 0.3, 1.6, 0.6);
+    this.burst([pos[0], pos[1] + 0.9, pos[2]], null, new THREE.Color(col.accent).toArray(), 30, 4);
+    this.fxFinLight([pos[0], pos[1] + 2, pos[2]], col.accent, life, (t) => (t < flare ? 1.5 + 4 * (t / flare) : 45 * Math.max(0, 1 - (t - flare) / 0.9) ** 2));
+    let flared = false;
+    this.fxAdd(g, t0 + life, (now) => {
+      const t = now - t0;
+      const rise = Math.min(1, t / flare);
+      star.position.y = 0.6 + (top - 0.6) * (1 - (1 - rise) * (1 - rise));
+      star.lookAt(this.camera.position.x, g.position.y + star.position.y, this.camera.position.z); // faces you
+      star.rotateZ(t * (2 + 5 * rise));
+      const pop = Math.max(0, t - flare);
+      star.scale.setScalar(Math.max(0.001, Math.min(1, t / 0.4) + pop * 5));
+      star.material.opacity = 0.95 * Math.max(0, 1 - pop / 0.3);
+      halo.material.opacity = 0.55 * Math.max(0, 1 - pop / 0.3);
+      rays.scale.setScalar(Math.max(0.001, 0.3 + 0.9 * rise));
+      rays.rotation.z = -t * 1.5;
+      for (const r of rays.children) r.material.opacity = 0.4 * rise * Math.max(0, 1 - pop / 0.3);
+      const roll = Math.min(1, t / 1.8), roll2 = Math.min(1, Math.max(0, (t - 0.4) / 1.8));
+      dust.scale.setScalar(0.3 + 5.5 * roll);
+      dust.material.opacity = 0.7 * (1 - roll);
+      dust.rotation.z = t * 2;
+      dust2.scale.setScalar(0.3 + 4 * roll2);
+      dust2.material.opacity = 0.35 * (1 - roll2);
+      if (!flared && t >= flare) {
+        flared = true;
+        const p = [pos[0], pos[1] + top, pos[2]];
+        this.fxBurst(p, col.accent, 10, 0.7);
+        this.fxBurst(p, 0xffffff, 4.5, 0.3, true);
+        this.fxBurst(p, col.glow, 6, 0.5, true);
+        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], col.accent, 9, 0.9);
+        this.burst(p, null, new THREE.Color(col.glow).toArray(), 60, 8);
+        this.burst(p, null, new THREE.Color(col.accent).toArray(), 40, 5);
+        this.shakeCamera(p, 0.03, 0.6);
+      }
+    });
+  }
+
+  // Oathblade: "Last Stroke". A beat of stillness while the light drains out of the area, then a huge diagonal
+  // stroke of light in the glow colour cuts clean across the body and far past it, a second cut in the accent
+  // colour crosses it, the world flashes and shakes, and the body comes apart into a storm of petals that whirl
+  // up and fade. When it ends nothing is left: no body, no mark, no glow.
+  fxLastStroke(pos, ch, col) {
+    const t0 = this.game.time, life = 2.9, cut = 0.45, cross = 0.68, part = 0.8;
+    const add = (c, o) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const g = new THREE.Group();
+    g.position.set(pos[0], pos[1] + 1.0, pos[2]);
+    // Turn the strokes to face the camera, so they read as cuts across the body.
+    const cam = this.camera.position;
+    g.rotation.y = Math.atan2(cam.x - pos[0], cam.z - pos[2]);
+    const line = (len, w, h, c, o, ang) => {
+      const geo = new THREE.BoxGeometry(len, 1, 1);
+      geo.translate(len / 2, 0, 0); // grows from its start
+      const m = new THREE.Mesh(geo, add(c, o));
+      m.position.set(-(len / 2) * Math.cos(ang), (len / 2) * Math.sin(ang), 0.05);
+      m.rotation.z = -ang;
+      m.scale.set(0.001, h, w);
+      m.userData.h = h;
+      g.add(m);
+      return m;
+    };
+    // The cut runs well past the body on both sides; a soft wide glow under the hard core line.
+    const stroke = line(7, 0.05, 0.06, col.glow, 1, 0.38), glow = line(7, 0.05, 0.3, col.glow, 0.25, 0.38);
+    const trail = line(7, 0.02, 0.02, col.accent, 0.9, 0.4);
+    const second = line(3.4, 0.04, 0.045, col.accent, 1, -0.9);
+    const petals = [];
+    const petalGeo = new THREE.PlaneGeometry(0.1, 0.18);
+    for (let i = 0; i < 80; i++) {
+      const m = new THREE.Mesh(petalGeo, add(i % 4 ? col.accent : col.glow, 0));
+      const along = (Math.random() - 0.5) * 1.6;
+      m.position.set(along * Math.cos(0.38), -along * Math.sin(0.38) + (Math.random() - 0.5) * 0.9, (Math.random() - 0.5) * 0.5);
+      const out = 0.6 + Math.random() * 2.2, a = Math.random() * Math.PI * 2;
+      m.userData.v = [Math.cos(a) * out, 0.6 + Math.random() * 2.2, Math.sin(a) * out];
+      m.userData.spin = [(Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12];
+      m.visible = false;
+      g.add(m);
+      petals.push(m);
+    }
+    this.vanishBody(ch, part, 0.35);
+    // The light dims on the held breath, then the cut lights the whole area.
+    this.fxFinLight([pos[0], pos[1] + 1, pos[2]], col.glow, life, (t) => (t < cut ? 0 : 38 * Math.max(0, 1 - (t - cut) / 1.0) ** 2));
+    let cutDone = false, crossed = false, split = false, last = 0;
+    this.fxAdd(g, t0 + life, (now) => {
+      const t = now - t0, dt = Math.max(0, t - last);
+      last = t;
+      const draw = Math.min(1, Math.max(0, (t - cut) / 0.08)), lag = Math.min(1, Math.max(0, (t - cut - 0.04) / 0.12));
+      const draw2 = Math.min(1, Math.max(0, (t - cross) / 0.07));
+      const thin = Math.max(0, 1 - Math.max(0, t - part) / 0.5);
+      stroke.scale.x = glow.scale.x = Math.max(0.001, draw);
+      trail.scale.x = Math.max(0.001, lag);
+      second.scale.x = Math.max(0.001, draw2);
+      for (const m of [stroke, glow, trail, second]) m.scale.y = Math.max(0.001, m.userData.h * thin);
+      stroke.visible = glow.visible = trail.visible = t >= cut && thin > 0;
+      second.visible = t >= cross && thin > 0;
+      if (!cutDone && t >= cut) {
+        cutDone = true;
+        this.fxBurst([pos[0], pos[1] + 1.0, pos[2]], 0xffffff, 3.5, 0.18, true);
+        this.shakeCamera(pos, 0.025, 0.4);
+      }
+      if (!crossed && t >= cross) {
+        crossed = true;
+        this.fxBurst([pos[0], pos[1] + 1.0, pos[2]], col.accent, 3, 0.2, true);
+        this.shakeCamera(pos, 0.02, 0.35);
+      }
+      if (!split && t >= part) {
+        split = true;
+        for (const m of petals) m.visible = true;
+        this.fxBurst([pos[0], pos[1] + 1.0, pos[2]], col.glow, 6, 0.4, true);
+        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], col.accent, 6, 0.6);
+        this.burst([pos[0], pos[1] + 1.0, pos[2]], null, new THREE.Color(col.glow).toArray(), 40, 6);
+      }
+      if (split) {
+        const k = (t - part) / (life - part);
+        for (const m of petals) {
+          const v = m.userData.v;
+          m.position.x += v[0] * dt; m.position.y += v[1] * dt; m.position.z += v[2] * dt;
+          v[0] *= 1 - 1.5 * dt; v[2] *= 1 - 1.5 * dt; v[1] -= 0.3 * dt;
+          m.rotation.x += m.userData.spin[0] * dt; m.rotation.y += m.userData.spin[1] * dt;
+          m.material.opacity = 0.9 * Math.min(1, k * 10) * (1 - k);
+        }
+      }
+    });
+  }
+
+  // An upright ring bursting outward (finisher detonations), turned to face you.
+  fxRingUp(pos, color, r, life) {
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 64), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    m.position.set(...pos);
+    m.lookAt(this.camera.position);
+    const t0 = this.game.time;
+    this.fxAdd(m, t0 + life, (now) => {
+      const k = (now - t0) / life;
+      m.scale.setScalar(Math.max(0.01, r * Math.sqrt(k)));
+      m.material.opacity = 0.8 * (1 - k);
+    });
+  }
+
+  // A flat ring rolling out along the ground.
+  fxShock(pos, color, r, life) {
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(...pos);
+    const t0 = this.game.time;
+    this.fxAdd(m, t0 + life, (now) => {
+      const k = (now - t0) / life;
+      m.scale.setScalar(Math.max(0.01, r * Math.sqrt(k)));
+      m.material.opacity = 0.7 * (1 - k);
     });
   }
 
@@ -1133,7 +1496,7 @@ export class Renderer {
   clearSmokes() {
     for (const sm of this.smokes || []) this.scene.remove(sm.group);
     if (this.smokes) this.smokes.length = 0;
-    this.clearFx2();
+    this.clearFx2(); this.finShake = null;
   }
 
   updateSmokes() {
@@ -1202,10 +1565,11 @@ export class Renderer {
 
   // The skin a combatant shows on a weapon: yours from settings, bots' and other players' from their skinMap.
   skinOf(c, weaponId) {
+    if (meleeSkin(weaponId)) return meleeSkin(weaponId); // a melee type always wears its own theme
     if (!c) return 'standard';
     if (c === this.game.player) return skinFor(this.settings, weaponId);
     const id = c.skinMap?.[weaponId] || c.skinMap?.all;
-    return id && SKINS[id] ? id : 'standard';
+    return skinFits(id, weaponId) ? id : 'standard';
   }
 
   syncCharacters() {
@@ -1351,15 +1715,22 @@ export class Renderer {
     if (this.vm.model) this.vm.group.remove(this.vm.model);
     this.vm.model = def.hands ? handsModel(def.color, def.item) : gunModel(id, skin);
     this.vm.melee = MELEE[id] || null;
-    this.vm.glow = this.vm.melee ? ownGlow(this.vm.model, skin) : null;
+    this.vm.meleeId = MELEE[id] ? id : null;
+    this.vm.skin = skin;
+    this.vm.swingAnim = null;
+    // Melee types and gun models with their own inspects pulse their glow, so they get their own copy of it.
+    this.vm.glow = this.vm.melee || MODEL_INSPECTS[this.vm.model.userData.design] ? ownGlow(this.vm.model, skin) : null;
     // Its own copies of the skin's materials: the same material drawn in both scenes (here and on your body or
     // anyone else's gun) has its shader looked up again on every draw, since the two scenes are lit differently.
+    if (this.vm.glow) this.vm.glow.mat = shineMaterial(this.vm.glow.mat, VM_SHINE);
     this.vm.model.traverse(o => { if (o.material?.isMaterial && o.material !== this.vm.glow?.mat) o.material = vmMaterial(o.material); });
     if (def.hands) { this.vm.equipStart = performance.now(); this.vm.equipDur = 250; }
     if (def.launcher) { this.vm.equipStart = performance.now(); this.vm.equipDur = 1400; } // Finale takes 1.4 s to draw
     this.vm.model.scale.setScalar(VM_SCALE);
     this.vm.model.userData.muzzle.add(this.vmFlash);
     this.vm.group.add(this.vm.model);
+    this.vm.model.updateWorldMatrix(true, true);
+    fitShine(this.vm.model, VM_SHINE);
     this.vm.key = key;
     this.vm.kind = def.model;
   }
@@ -1389,6 +1760,7 @@ export class Renderer {
     const now = performance.now();
     this.autoScale(dt, now);
     if (p) this.updateCamera(p, alpha, dt, look);
+    this.applyShake();
     this.updateCharacters(alpha, now);
     this.updateFx(dt, now);
     this.updateLasers();
@@ -1402,7 +1774,16 @@ export class Renderer {
     this.renderer.render(this.scene, this.camera);
     if (p && (p.alive || this.specTarget) && this.vmVisible) {
       this.renderer.clearDepth();
-      this.renderer.render(this.vmScene, this.vmCamera);
+      if (this.settings.weaponFx === false) {
+        // No glow pass: still tone mapped, so the bright studio reflections roll off instead of clipping.
+        const r = this.renderer;
+        r.toneMapping = THREE.NeutralToneMapping; r.toneMappingExposure = 1.25;
+        r.render(this.vmScene, this.vmCamera);
+        r.toneMapping = THREE.NoToneMapping; r.toneMappingExposure = 1;
+      } else {
+        // Clip the glow passes to the gun's corner of the screen; a knife trail can sweep across all of it.
+        (this.vmPost ||= new ViewmodelPost()).render(this.renderer, this.vmScene, this.vmCamera, this.trails.live.length ? null : this.vm.group);
+      }
     }
   }
 
@@ -1551,21 +1932,37 @@ export class Renderer {
     }
   }
 
-  // Ultimate orbs: a floating, spinning crystal on a small base until someone takes it.
+  // Ultimate orbs: a glowing core in a faceted shell with two orbiting rings, floating over a lit floor
+  // plate. While someone takes it the rings spin up and a ring on the floor fills; once taken it bursts.
   updateOrbs() {
     const orbs = this.game.mode?.orbs || [];
     if (this.orbList !== orbs) { // new round or new map: rebuild
       for (const o of this.orbObjs || []) this.scene.remove(o);
       this.orbList = orbs;
+      const C = 0x4fd1ff;
       this.orbObjs = orbs.map(o => {
         const g = new THREE.Group();
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 0.08, 16), new THREE.MeshStandardMaterial({ color: 0x2b2f36, metalness: 0.5, roughness: 0.5 }));
-        base.position.y = 0.04;
-        const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.2), new THREE.MeshStandardMaterial({ color: 0x9be8ff, emissive: 0x4fd1ff, emissiveIntensity: 1.4, transparent: true, opacity: 0.9 }));
-        const glow = new THREE.PointLight(0x4fd1ff, 1.5, 5);
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.44, 0.07, 6), new THREE.MeshStandardMaterial({ color: 0x232830, metalness: 0.6, roughness: 0.45 }));
+        base.position.y = 0.035;
+        const plate = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.58, 48), new THREE.MeshBasicMaterial({ color: C, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false }));
+        plate.rotation.x = -Math.PI / 2; plate.position.y = 0.02;
+        // Capture progress: a brighter ring that fills around the plate (drawn up to the share taken).
+        const progGeo = new THREE.RingGeometry(0.62, 0.72, 64, 1);
+        const prog = new THREE.Mesh(progGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
+        prog.rotation.x = -Math.PI / 2; prog.position.y = 0.025;
+        const core = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), new THREE.MeshBasicMaterial({ color: 0xe6fbff }));
+        const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(0.21, 0), new THREE.MeshStandardMaterial({ color: 0x9be8ff, emissive: C, emissiveIntensity: 1.2, transparent: true, opacity: 0.55, flatShading: true, depthWrite: false }));
+        const ringMat = new THREE.MeshBasicMaterial({ color: C, transparent: true, opacity: 0.9 });
+        const ring1 = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.012, 6, 48), ringMat);
+        const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.01, 6, 48), ringMat);
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.16, 0.85, 12, 1, true), new THREE.MeshBasicMaterial({ color: C, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
+        beam.position.y = 0.45;
+        const glow = new THREE.PointLight(C, 1.6, 5);
         glow.position.y = 0.9;
-        g.add(base, gem, glow);
-        g.userData = { gem };
+        const orb = new THREE.Group();
+        orb.add(core, shell, ring1, ring2);
+        g.add(base, plate, prog, beam, orb, glow);
+        g.userData = { orb, shell, ring1, ring2, prog, progGeo, beam, plate, glow, taken: o.taken, burst: 0 };
         g.position.set(...o.pos);
         this.scene.add(g);
         return g;
@@ -1573,11 +1970,32 @@ export class Renderer {
     }
     const t = this.game.time;
     orbs.forEach((o, i) => {
-      const g = this.orbObjs[i];
-      g.visible = !o.taken;
-      const gem = g.userData.gem;
-      gem.position.y = 0.9 + Math.sin(t * 2 + i) * 0.06;
-      gem.rotation.y = t * (o.prog > 0 ? 6 : 1.5); // spins up while someone takes it
+      const g = this.orbObjs[i], u = g.userData;
+      if (o.taken && !u.taken) u.burst = t; // just taken: burst
+      u.taken = o.taken;
+      const b = u.burst ? (t - u.burst) / 0.45 : 1;
+      g.visible = !o.taken || b < 1;
+      if (!g.visible) return;
+      const frac = Math.min(1, (o.prog || 0) / ROUND.orb);
+      const spin = 1 + frac * 7;
+      u.orb.position.y = 0.95 + Math.sin(t * 2 + i) * 0.05;
+      u.shell.rotation.y = t * 0.8 * spin; u.shell.rotation.x = t * 0.4;
+      u.ring1.rotation.set(Math.PI / 2 + Math.sin(t * 0.9 + i) * 0.5, t * 1.3 * spin, 0);
+      u.ring2.rotation.set(Math.cos(t * 1.1 + i) * 0.6, 0, t * 1.7 * spin);
+      u.progGeo.setDrawRange(0, Math.round(64 * frac) * 6);
+      u.prog.visible = frac > 0 && !o.taken;
+      u.glow.intensity = 1.6 + frac * 2;
+      if (o.taken) { // burst: swell and fade
+        const k = 1 + b * 1.6;
+        u.orb.scale.setScalar(k);
+        u.shell.material.opacity = 0.55 * (1 - b);
+        u.beam.visible = u.plate.visible = false;
+        u.glow.intensity = 4 * (1 - b);
+      } else {
+        u.orb.scale.setScalar(1 + frac * 0.15);
+        u.shell.material.opacity = 0.55;
+        u.beam.visible = u.plate.visible = true;
+      }
     });
   }
 
@@ -1595,9 +2013,10 @@ export class Renderer {
     this.renderer.render(this.scene, cam);
   }
 
-  // The inspects for what's in hand: a melee type's set, or the one gun inspect.
+  // The inspects for what's in hand: a melee type's set, the gun model's own (model skins), or the one gun inspect.
   inspectSet(gun) {
-    return gun.def.id === 'knife' ? MELEE[this.meleeOf(this.game.player)].inspects : [GUN_INSPECT];
+    if (gun.def.id === 'knife') return MELEE[this.meleeOf(this.game.player)].inspects;
+    return MODEL_INSPECTS[this.vm.model?.userData.design] || [GUN_INSPECT];
   }
 
   // Inspect key pressed: start inspecting, or (mid-inspect) chain into the next one. Held down, it turns into
@@ -1606,8 +2025,11 @@ export class Renderer {
     const p = this.game.player;
     if (!p?.alive || p.gun.reloading) return;
     const now = performance.now(), set = this.inspectSet(p.gun), cur = this.inspecting;
+    // Each weapon has one inspect (see chainInspects): pressed again mid-inspect, it carries on (held, it examines).
+    if (cur && cur.gun === p.gun && !cur.back && set.length === 1) { cur.held = true; cur.heldAt = now; return; }
     const idx = cur && cur.gun === p.gun && !cur.back ? (cur.idx + 1) % set.length : 0;
     this.inspecting = { start: now, gun: p.gun, idx, ins: set[idx], count: set.length, held: true, heldAt: now, ex: 0, exOn: false, yaw: 0, pitch: 0 };
+    this.vm.sweepStart = now + 250; // a sheen runs down the gun as it turns to the light
   }
 
   // Inspect key released: leave examine mode (the weapon eases back to rest).
@@ -1736,19 +2158,39 @@ export class Renderer {
     let px = lerp(pose.hip[0], pose.ads[0], a), py = lerp(pose.hip[1], adsY, a), pz = lerp(pose.hip[2], adsZ, a);
     let rx = 0, ry = 0, rz = 0;
 
-    // Movement bob
-    const sp = p.horizSpeed();
+    // Movement bob: a figure eight, with the wrist rolling into each step.
+    const sp = p.horizSpeed(), tNow = performance.now() / 1000, hipK = 1 - a * 0.8;
     if (p.grounded && sp > 0.3) vm.bob += dt * sp * 1.9;
     const bobAmt = Math.min(1, sp / 5.4) * (1 - a * 0.85);
     px += Math.cos(vm.bob) * 0.008 * bobAmt;
     py += Math.abs(Math.sin(vm.bob)) * 0.01 * bobAmt;
-    if (!p.grounded) py += 0.015;
+    rz += Math.cos(vm.bob) * 0.02 * bobAmt;
+    ry += Math.sin(vm.bob) * 0.008 * bobAmt;
+    // Standing still: a slow breath, so the gun never looks frozen in place.
+    const idle = (1 - Math.min(1, sp / 2)) * (1 - a * 0.9);
+    px += Math.sin(tNow * 1.1) * 0.0016 * idle;
+    py += Math.sin(tNow * 2.2) * 0.0011 * idle;
+    rz += Math.sin(tNow * 1.1 + 0.6) * 0.006 * idle;
+    rx += Math.sin(tNow * 2.2 + 1.3) * 0.004 * idle;
 
-    // Sway against mouse movement
-    vm.swayX = lerp(vm.swayX, -look.dx * 0.0006, Math.min(1, dt * 12));
-    vm.swayY = lerp(vm.swayY, look.dy * 0.0006, Math.min(1, dt * 12));
-    px += vm.swayX * (1 - a * 0.8);
-    py += vm.swayY * (1 - a * 0.8);
+    // Jumping lifts the gun; landing drops it on a spring that dips and recovers, harder the faster you fell.
+    vm.air ||= { x: 0, v: 0 };
+    if (p.grounded && vm.wasAir) vm.air.v -= Math.min(1, Math.max(0, -(vm.fallV || 0)) / 9) * 0.55;
+    vm.wasAir = !p.grounded;
+    if (!p.grounded) vm.fallV = p.vel[1];
+    const air = spring(vm.air, p.grounded ? 0 : 0.015, dt, 90, 0.45);
+    py += air * hipK; rx += air * 1.4 * hipK;
+
+    // Sway against mouse movement: the gun trails the view on a soft spring, overshoots a touch as you stop
+    // (follow-through) and rolls into the turn. Strafing tilts it the way you're moving.
+    vm.sx ||= { x: 0, v: 0 }; vm.sy ||= { x: 0, v: 0 }; vm.tilt ||= { x: 0, v: 0 };
+    const sx = spring(vm.sx, Math.max(-0.05, Math.min(0.05, -look.dx * 0.0006)), dt, 160, 0.55);
+    const sy = spring(vm.sy, Math.max(-0.05, Math.min(0.05, look.dy * 0.0006)), dt, 160, 0.55);
+    vm.swayX = sx; vm.swayY = sy;
+    px += sx * hipK; py += sy * hipK;
+    ry -= sx * 1.6 * hipK; rx -= sy * 1.2 * hipK; rz += sx * 2.4 * hipK;
+    const side = p.vel[0] * Math.cos(p.yaw) - p.vel[2] * Math.sin(p.yaw); // speed to your right
+    rz += spring(vm.tilt, p.grounded ? -side / 6.75 * 0.05 : 0, dt, 60, 0.7) * hipK;
 
     // Hands animations: pumping arms while sprinting, a reach forward when grabbing an orb, a gentle idle bob.
     if (def.hands) {
@@ -1782,15 +2224,38 @@ export class Renderer {
 
     // Equip / reload / knife swing
     const et = Math.min(1, (performance.now() - vm.equipStart) / Math.max(1, vm.equipDur));
-    if (et < 1) { const e = 1 - Math.pow(1 - et, 3); py -= (1 - e) * 0.25; rx -= (1 - e) * 0.6; }
+    // A gun model with its own pullout (EQUIP_ANIMS: the Starspur twirls) plays it across the equip time.
+    const draw = et < 1 && !def.hands ? EQUIP_ANIMS[vm.model.userData.design] : null;
+    let drawPose = null, reloadGlow = null;
+    if (draw) {
+      drawPose = inspectPose(draw, et * draw.dur);
+      drawPose.t = et * draw.dur;
+      const v = drawPose.pose;
+      px += v[0]; py += v[1]; pz += v[2]; rx += v[3]; ry += v[4]; rz += v[5];
+    } else if (et < 1 && !def.hands) {
+      // Draw: up from the lower right with a twist, overshooting a little before it settles (follow-through).
+      const e = easeOutBack(et), c = 1 - (1 - et) ** 3;
+      py -= (1 - e) * 0.25; rx -= (1 - e) * 0.6; px += (1 - c) * 0.05; rz += (1 - c) * 0.5;
+    } else if (et < 1) { const e = 1 - Math.pow(1 - et, 3); py -= (1 - e) * 0.25; rx -= (1 - e) * 0.6; }
     if (!def.melee && !blades && !def.launcher) {
       // Per-gun reload and bolt/pump animations (reloadanim.js); the gun is lowered a touch while aiming.
       const rp = reloadPose(vm.model, def, gun, this.game.time, this.cycle);
+      reloadGlow = rp.glow;
       px += rp.px || 0; py += rp.py || 0; pz += rp.pz || 0;
       rx += rp.rx || 0; ry += rp.ry || 0; rz += rp.rz || 0;
     }
-    const st = (performance.now() - vm.swingStart) / (vm.swingHeavy ? 500 : 280);
-    if (st >= 0 && st < 1) {
+    // Knife swing: a melee type's own (SWINGS), else a plain slash or lunge.
+    const sa = vm.melee && vm.swingAnim, swT = (performance.now() - vm.swingStart) / 1000;
+    let swingPose = null;
+    if (sa) {
+      if (swT >= 0 && swT < sa.dur) {
+        swingPose = inspectPose(sa, swT);
+        swingPose.t = swT;
+        const v = swingPose.pose;
+        px += v[0]; py += v[1]; pz += v[2]; rx += v[3]; ry += v[4]; rz += v[5];
+      }
+    } else if (swT >= 0 && swT * 1000 < (vm.swingHeavy ? 500 : 280)) {
+      const st = (swT * 1000) / (vm.swingHeavy ? 500 : 280);
       const k = Math.sin(st * Math.PI);
       if (vm.swingHeavy) { px -= k * 0.14; rx += k * 0.4; ry += k * 0.9; }
       else { px -= k * 0.12; rz += k * 0.6; ry += k * 0.6; }
@@ -1820,12 +2285,27 @@ export class Renderer {
       const m = vm.melee;
       if (m.hip) { px += m.hip[0]; py += m.hip[1]; pz += m.hip[2]; }
       if (m.rot) { rx += m.rot[0] * (1 - (insPose ? 0.6 : 0)); ry += m.rot[1] * (insPose ? 0.4 : 1); rz += m.rot[2] * (insPose ? 0.4 : 1); }
-      poseMeleeParts(vm.model, insPose && this.inspecting?.ins, insPose?.t, vm.glow);
-    }
+      if (insPose) poseMeleeParts(vm.model, this.inspecting.ins, insPose.t, vm.glow);
+      else if (swingPose) poseMeleeParts(vm.model, sa, swingPose.t, vm.glow);
+      else poseMeleeParts(vm.model, drawPose && draw, drawPose?.t, vm.glow); // the pullout (Oathblade Tanto), or at rest
+    } else if (insPose && this.inspecting.ins.parts) {
+      poseMeleeParts(vm.model, this.inspecting.ins, insPose.t, vm.glow); // a gun model's inspect (the Orbital orb)
+    } else if (drawPose) {
+      poseMeleeParts(vm.model, draw, drawPose.t, vm.glow); // the pullout's twirl
+    } else if (vm.glow) vm.glow.mat.emissiveIntensity = vm.glow.base * (reloadGlow ?? 1); // its parts are left to the reload pose (and its flash, Oathblade's)
     vm.group.position.set(px, py, pz);
     vm.group.rotation.set(rx, ry, rz);
+    // Shine: a sheen sweeps down the gun on the draw (and on inspect, see inspect()); the glow breathes and
+    // flares as it's drawn and with each shot. (sweepFixed: a frozen sweep, for testing.)
+    const nowMs = performance.now();
+    if (et < 1 && !def.hands && vm.sweepFor !== vm.equipStart) { vm.sweepFor = vm.equipStart; vm.sweepStart = vm.equipStart + vm.equipDur * 0.35; }
+    vm.flare = (vm.flare || 0) * Math.exp(-dt * 9);
+    const drawFlare = et < 1 && !def.hands ? Math.sin(et * Math.PI) * 0.6 : 0;
+    updateShine(vm.model, VM_SHINE, nowMs / 1000, def.hands ? null : vm.sweepFixed ?? sweepAt((nowMs - (vm.sweepStart ?? -1e9)) / 650), vm.flare + drawFlare);
     this.vmCamera.fov = 60;
     this.vmCamera.updateProjectionMatrix();
+    this.trails.setVisible(this.vmVisible);
+    this.trails.update(this.renderer.domElement.height);
 
     const flashOn = performance.now() < vm.flashUntil;
     this.vmFlash.visible = flashOn;
@@ -1845,6 +2325,12 @@ export class Renderer {
           const t = (now - ch.deathT) / 450;
           ch.group.rotation.x = -Math.min(1, t) * Math.PI / 2 * 0.9;
           if (t > 2.5 && !this.game.mode) ch.group.visible = false; // in 5v5 bodies stay for the round
+          if (ch.vanish) { // a finisher takes the body
+            const k = Math.min(1, Math.max(0, (now - ch.vanish.start) / ch.vanish.dur));
+            ch.group.scale.setScalar(Math.max(0.001, 1 - k * k));
+            if (ch.vanish.lift) ch.group.position.y = ch.vanish.y + ch.vanish.lift * Math.sin(k * Math.PI / 2);
+            if (k >= 1) ch.group.visible = false;
+          }
         } else ch.group.visible = false;
         continue;
       }

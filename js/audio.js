@@ -179,10 +179,20 @@ const FALLOFF = {
   suppressed: { model: 'inverse', ref: 3, roll: 1.8, max: 80 },
   step: { model: 'linear', ref: 2, max: 35 },
   other: { model: 'inverse', ref: 4, roll: 1.1, max: 120 },
+  spike: { model: 'inverse', ref: 3, roll: 1.4, max: 60 },
 };
 GUN_SOUNDS.headhunter = GUN_SOUNDS.sheriff;
 GUN_SOUNDS.tourdeforce = GUN_SOUNDS.operator;
 // Anything not listed sounds like the stock gun of its model.
+// Skins with their own sound set (`sounds` in skins.js) colour the gun's own shot, file or synth: Oathblade is
+// crisper and higher (sped up, brighter, a thin steel ping), Starspur thunkier and lower (slowed, warmer, a low thump).
+//   rate: playback speed / pitch   low, high: shelf gains in dB at 220 Hz / 3.5 kHz
+//   ping: [Hz, gain, decay] a ring on top   thunk: [from Hz, to Hz, decay, gain] a low knock under it
+const FIRE_TONE = {
+  oathblade: { rate: 1.12, low: -5, high: 6, ping: [5600, 0.04, 0.09] },
+  starspur: { rate: 0.88, low: 5, high: -5, thunk: [140, 60, 0.12, 0.16] },
+};
+
 const MODEL_SOUND = { pistol: 'classic', revolver: 'sheriff', smg: 'stinger', rifle: 'vandal', dmr: 'guardian', sniper: 'marshal', shotgun: 'judge', heavy: 'ares' };
 
 export class Sound {
@@ -365,8 +375,9 @@ export class Sound {
     return f.ref / (f.ref + f.roll * (d - f.ref));
   }
 
-  // gun (optional): the Gun firing, which keys the Ares / Odin spin-up whir per gun.
-  gunshot(def, pos, gun) {
+  // gun (optional): the Gun firing, which keys the Ares / Odin spin-up whir per gun. tone: the shooter's skin
+  // sound set, if it has one in FIRE_TONE.
+  gunshot(def, pos, gun, tone = null) {
     if (!this.ctx) return;
     const s = GUN_SOUNDS[def.id] || GUN_SOUNDS[MODEL_SOUND[def.model]];
     const clip = this.clip(`${def.id}:fire`);
@@ -390,14 +401,28 @@ export class Sound {
     send.gain.value = wet;
     send.connect(verb);
     const mix = c.createGain();
-    mix.connect(dest);
-    mix.connect(send);
+    const T = FIRE_TONE[tone];
+    let out = mix;
+    if (T) {
+      for (const [type, freq, gain] of [['lowshelf', 220, T.low], ['highshelf', 3500, T.high]]) {
+        const f = c.createBiquadFilter();
+        f.type = type; f.frequency.value = freq; f.gain.value = gain;
+        out.connect(f);
+        out = f;
+      }
+      const k = pos ? 1.6 : 0.55;
+      if (T.ping) this.tone({ dest: out, at: 0.002, freq: T.ping[0], decay: T.ping[2], gain: T.ping[1] * k, type: 'triangle' });
+      if (T.thunk) this.tone({ dest: out, freq: T.thunk[0], end: T.thunk[1], decay: T.thunk[2], gain: T.thunk[3] * k });
+    }
+    out.connect(dest);
+    out.connect(send);
     if (clip) {
       mix.gain.value = pos ? 1.2 : 0.6;
-      this.playClip(clip, mix);
+      const src = this.playClip(clip, mix);
+      if (T) src.playbackRate.value = T.rate;
       return;
     }
-    const v = 1 + (Math.random() - 0.5) * 0.06; // a little variation per shot so sprays don't sound looped
+    const v = (1 + (Math.random() - 0.5) * 0.06) * (T?.rate || 1); // a little variation per shot so sprays don't sound looped
     const g = s.gain * (pos ? 1.6 : 0.55);
     const L = (o) => this.noiseHit({ dest: mix, ...o, gain: o.gain * g });
     if (s.crack) L({ ...s.crack, hp: s.crack.hp * v, lp: s.crack.lp });
@@ -496,6 +521,7 @@ export class Sound {
     for (const [f, kind] of steps) {
       const at = duration * f;
       if (kind === 'thunk') this.thunk(at);
+      else if (kind === 'shing') this.shing(at, 0.6);
       else this.click(at, 0.28);
     }
   }
@@ -547,11 +573,38 @@ export class Sound {
     this.tone({ dest: this.master, at, freq: 140, end: 70, decay: 0.08, gain: 0.25 });
   }
 
-  equip(id) {
+  // A blade leaving its sheath, or a hand run along an edge: a bright steel ring over a hiss.
+  shing(at = 0, gain = 1) {
+    if (!this.ctx) return;
+    this.noiseHit({ dest: this.master, at, hp: 3500, lp: 12000, decay: 0.32, gain: 0.16 * gain, attack: 0.03 });
+    this.tone({ dest: this.master, at: at + 0.04, freq: 3400, end: 2900, decay: 0.55, gain: 0.05 * gain, type: 'triangle' });
+    this.tone({ dest: this.master, at: at + 0.04, freq: 5150, end: 4800, decay: 0.35, gain: 0.025 * gain });
+  }
+
+  // Oathblade pullout when its sound file (sounds/oathblade-draw.mp3) isn't loaded (~0.55 s): a low rush of air as it comes up, two quick bright rings of steel, the second
+  // higher and crisper as it locks into place, and a soft thump.
+  bladeDraw() {
+    const d = this.master;
+    this.noiseHit({ dest: d, lp: 2400, hp: 250, attack: 0.18, decay: 0.24, gain: 0.12 });
+    this.noiseHit({ dest: d, at: 0.2, hp: 3500, lp: 9000, attack: 0.004, decay: 0.07, gain: 0.3 });
+    this.tone({ dest: d, at: 0.2, freq: 5300, end: 4900, decay: 0.16, gain: 0.035, type: 'triangle' });
+    this.noiseHit({ dest: d, at: 0.42, hp: 4200, lp: 11000, attack: 0.004, decay: 0.08, gain: 0.34 });
+    this.tone({ dest: d, at: 0.42, freq: 7100, end: 6700, decay: 0.24, gain: 0.03, type: 'triangle' });
+    this.tone({ dest: d, at: 0.42, freq: 3550, end: 3400, decay: 0.2, gain: 0.025 });
+    this.tone({ dest: d, at: 0.47, freq: 95, end: 55, decay: 0.13, gain: 0.1 });
+    this.noiseHit({ dest: d, at: 0.47, lp: 600, decay: 0.1, gain: 0.08 });
+  }
+
+  // `skin`: the skin on the weapon. A skin can ship its own pullout sound (sounds/index.json, e.g. Oathblade's), which
+  // plays instead of the gun's; your own upload for the gun still wins. `blade`: it draws like a blade (Oathblade),
+  // so with no file it gets the synthesized blade draw.
+  equip(id, skin = null, blade = false) {
     if (!this.ctx) return;
     this.stopAction(); // swapping weapons cancels the reload or inspect
-    const clip = this.clip(`${id}:equip`);
+    const skinClip = skin && this.clips.get(`${skin}:equip@game`);
+    const clip = this.clips.get(`${id}:equip`) || skinClip || (!blade && this.clip(`${id}:equip`));
     if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
+    if (blade) { this.bladeDraw(); return; }
     this.noiseHit({ dest: this.master, lp: 1500, hp: 400, decay: 0.08, gain: 0.12 });
     this.click(0.1, 0.18);
   }
@@ -602,12 +655,85 @@ export class Sound {
     if (!this.ctx) return;
     this.tone({ dest: pos ? this.out(pos) : this.master, freq: urgent ? 1900 : 1500, decay: 0.09, gain: 0.16, type: 'square' });
   }
+  // Planting and defusing, heard from where it happens (pos null: you, or whoever you're spectating, are doing it).
+  // All synthesized: the plant is the spike unfolding with a clunk, then keypad taps that climb in pitch as it arms,
+  // then a clamp and a rising arming whine. The defuse is a tool clink and a crackle, then a ratchet over a buzz
+  // that climbs as it goes, a double chirp at the halfway mark, and a power-down sweep when it's done. Letting go
+  // early gives a short falling blip.
+  //   kind: 'plantStart' | 'plantTick' | 'plantDone' | 'defuseStart' | 'defuseTick' | 'defuseHalf' | 'defuseDone' | 'cancel'
+  //   frac: how far along the plant or defuse is (0..1), for the ticks
+  spikeCue(kind, pos, frac = 0) {
+    if (!this.ctx) return;
+    const d = this.out(pos, 'spike'), k = pos ? 1 : 0.5;
+    const N = (o) => this.noiseHit({ dest: d, ...o, gain: o.gain * k });
+    const T = (o) => this.tone({ dest: d, ...o, gain: o.gain * k });
+    if (kind === 'plantStart') {
+      N({ bp: 900, q: 1.5, attack: 0.09, decay: 0.16, gain: 0.35 });
+      N({ at: 0.14, lp: 800, hp: 60, decay: 0.1, gain: 0.5 });
+      T({ at: 0.14, freq: 130, end: 60, decay: 0.12, gain: 0.35 });
+      T({ at: 0.2, freq: 1200, decay: 0.06, gain: 0.06, type: 'square' });
+      T({ at: 0.27, freq: 1600, decay: 0.06, gain: 0.06, type: 'square' });
+    } else if (kind === 'plantTick') {
+      N({ bp: 2600, q: 3, decay: 0.03, gain: 0.3 });
+      T({ freq: 880 + 700 * frac, decay: 0.07, gain: 0.07, type: 'square' });
+    } else if (kind === 'plantDone') {
+      N({ lp: 700, hp: 50, decay: 0.3, gain: 0.7, attack: 0.004 });
+      T({ freq: 170, end: 45, decay: 0.25, gain: 0.45 });
+      T({ at: 0.1, freq: 420, end: 1900, decay: 0.55, gain: 0.09, type: 'triangle' });
+      T({ at: 0.62, freq: 2100, decay: 0.25, gain: 0.08, type: 'triangle' });
+    } else if (kind === 'defuseStart') {
+      T({ freq: 3300, end: 3150, decay: 0.18, gain: 0.07, type: 'triangle' });
+      N({ hp: 3500, lp: 9000, decay: 0.05, gain: 0.3 });
+      N({ at: 0.06, bp: 1800, q: 6, decay: 0.2, gain: 0.25, attack: 0.01 });
+      T({ at: 0.06, freq: 110, end: 140, decay: 0.2, gain: 0.08, type: 'sawtooth' });
+    } else if (kind === 'defuseTick') {
+      N({ hp: 3000, lp: 8000, decay: 0.02, gain: 0.25 });
+      N({ at: 0.05, hp: 3000, lp: 8000, decay: 0.02, gain: 0.2 });
+      T({ freq: 150 + 250 * frac, end: (150 + 250 * frac) * 1.03, decay: 0.16, gain: 0.07, type: 'sawtooth' });
+    } else if (kind === 'defuseHalf') {
+      T({ freq: 1100, decay: 0.09, gain: 0.12, type: 'triangle' });
+      T({ at: 0.1, freq: 1650, decay: 0.14, gain: 0.12, type: 'triangle' });
+    } else if (kind === 'defuseDone') {
+      T({ freq: 1500, end: 110, decay: 0.7, gain: 0.14, type: 'sawtooth' });
+      N({ hp: 2000, lp: 7000, decay: 0.45, gain: 0.25, attack: 0.01 });
+      N({ at: 0.72, lp: 900, hp: 80, decay: 0.09, gain: 0.45 });
+      T({ at: 0.72, freq: 140, end: 70, decay: 0.08, gain: 0.3 });
+    } else if (kind === 'cancel') {
+      T({ freq: 700, end: 380, decay: 0.12, gain: 0.08 });
+      N({ hp: 2500, lp: 8000, decay: 0.025, gain: 0.2 });
+    }
+  }
+
   sting(kind) {
     if (!this.ctx) return;
     const d = this.master;
-    const seq = { planted: [[660, 0], [520, 0.18], [660, 0.36]], defused: [[520, 0], [780, 0.15]], win: [[523, 0], [659, 0.12], [784, 0.24]], loss: [[392, 0], [330, 0.16], [262, 0.32]], start: [[880, 0]] }[kind] || [];
+    const seq = { planted: [[660, 0], [520, 0.18], [660, 0.36]], defused: [[520, 0], [780, 0.15]], win: [[523, 0], [659, 0.12], [784, 0.24]], orb: [[784, 0], [1175, 0.07], [1568, 0.14]], gift: [[660, 0], [990, 0.09]], loss: [[392, 0], [330, 0.16], [262, 0.32]], start: [[880, 0]] }[kind] || [];
     for (const [f, at] of seq) this.tone({ dest: d, at, freq: f, decay: 0.28, gain: 0.2, type: 'triangle' });
     if (kind === 'detonate') { this.noiseHit({ dest: d, lp: 600, decay: 1.6, gain: 0.9, attack: 0.01 }); this.tone({ dest: d, freq: 90, end: 30, decay: 1.4, gain: 0.5, type: 'sawtooth' }); }
+  }
+
+  // Finishers (render.js): Collapse hums up and implodes with a thump; Last Light is a ricochet whine, a
+  // jingle of spur rowels, then a bright chord as the star flares; Last Stroke is one ringing cut, then petals.
+  finisher(kind, pos) {
+    if (!this.ctx) return;
+    const d = this.out(pos, 'other');
+    if (kind === 'collapse') {
+      this.tone({ dest: d, freq: 140, end: 620, decay: 1.55, gain: 0.16, type: 'sawtooth' });
+      this.tone({ dest: d, freq: 280, end: 1240, decay: 1.55, gain: 0.08 });
+      this.noiseHit({ dest: d, at: 1.6, lp: 900, decay: 0.6, gain: 0.7, attack: 0.005 });
+      this.tone({ dest: d, at: 1.6, freq: 1400, end: 120, decay: 0.5, gain: 0.25 });
+    } else if (kind === 'lastLight') {
+      this.tone({ dest: d, freq: 2600, end: 900, decay: 0.55, gain: 0.12, type: 'triangle' });
+      for (const [f, at] of [[2093, 0.35], [2637, 0.5], [3136, 0.65], [2637, 0.8]]) this.tone({ dest: d, at, freq: f, decay: 0.22, gain: 0.08, type: 'triangle' });
+      this.noiseHit({ dest: d, at: 1.55, hp: 1500, lp: 9000, decay: 0.5, gain: 0.25, attack: 0.15 });
+      for (const f of [440, 554, 659]) this.tone({ dest: d, at: 1.7, freq: f, decay: 1.0, gain: 0.1, type: 'triangle' });    } else if (kind === 'lastStroke') {
+      // Last Stroke: a held breath, one ringing cut, then a soft rush of petals over a low drum and a bell.
+      this.noiseHit({ dest: d, at: 0.28, hp: 3000, lp: 12000, decay: 0.25, gain: 0.35, attack: 0.02 });
+      this.tone({ dest: d, at: 0.3, freq: 3600, end: 2700, decay: 0.7, gain: 0.08, type: 'triangle' });
+      this.noiseHit({ dest: d, at: 0.55, lp: 1400, hp: 200, decay: 0.9, gain: 0.3, attack: 0.12 });
+      this.tone({ dest: d, at: 0.55, freq: 95, end: 48, decay: 0.6, gain: 0.35 });
+      for (const [f, at] of [[1318, 0.62], [1976, 0.7]]) this.tone({ dest: d, at, freq: f, decay: 1.2, gain: 0.05, type: 'triangle' });
+    }
   }
 
   smoke(pos) {
@@ -615,8 +741,13 @@ export class Sound {
     this.noiseHit({ dest: this.out(pos), lp: 1200, hp: 150, decay: 0.7, gain: 0.5, attack: 0.08 });
   }
 
-  swing(heavy) {
+  // A knife swing's whoosh; `snd` (a melee type's, from SWINGS in melee.js) reshapes it and adds a ring or click.
+  swing(heavy, snd) {
     if (!this.ctx) return;
-    this.noiseHit({ dest: this.master, lp: heavy ? 1200 : 1800, hp: 500, decay: heavy ? 0.22 : 0.14, gain: 0.2, attack: 0.03 });
+    const w = { dest: this.master, lp: heavy ? 1200 : 1800, hp: 500, decay: heavy ? 0.22 : 0.14, gain: 0.2, attack: 0.03, ...snd?.whoosh };
+    if (heavy) Object.assign(w, snd?.whoosh && { lp: w.lp * 0.7, decay: w.decay * 1.5 }, snd?.heavyWhoosh, { at: 0.16 });
+    this.noiseHit(w);
+    if (snd?.again) this.noiseHit({ ...w, at: (w.at || 0) + snd.again });
+    for (const t of snd?.tones || []) this.tone({ dest: this.master, ...t, at: (t.at || 0) + (w.at || 0) });
   }
 }

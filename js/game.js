@@ -9,7 +9,7 @@ import { Bot, BOT_NAMES } from './bot.js';
 import { Kit, AGENT_ORDER, smokeBlocks, SMOKE, SLAB, insideSlab } from './abilities.js';
 import { dirFromAngles as dirOf } from './entity.js';
 import { netStep } from './net.js';
-import { SKIN_ORDER } from './skins.js';
+import { SKINS, SKIN_ORDER, variantsOf } from './skins.js';
 
 const TURRET = { id: 'sentry', name: 'Sentry', cat: 'Ability', dmg: [[50, 0, 0, 0]] };
 const BOOMER = { id: 'boomer', name: 'Boomer', cat: 'Ability', dmg: [[50, 0, 0, 0]] };
@@ -113,7 +113,8 @@ export class Game {
       return;
     }
     const primaries = BUY_GROUPS.filter(([g]) => g !== 'Sidearms').flatMap(([, ids]) => ids);
-    const botSkins = SKIN_ORDER.filter(id => id !== 'standard' && !id.startsWith('custom-'));
+    const botSkins = SKIN_ORDER.filter(id => id !== 'standard' && !id.startsWith('custom-') && !SKINS[id].models);
+    const modelSkins = SKIN_ORDER.filter(id => SKINS[id].models);
     // Bots picked theirs on the agent select screen (online), or get unused ones at random.
     const dmAgents = opts.lineup?.some(s => s.bot) ? opts.lineup.filter(s => s.bot).map(s => s.a) : AGENT_ORDER.filter(a => a !== opts.agent).sort(() => Math.random() - 0.5);
     for (let i = 0; i < opts.botCount; i++) {
@@ -127,6 +128,12 @@ export class Game {
       c.kit = opts.noAbilities ? null : new Kit(c, dmAgents[i % dmAgents.length]); // bots get agents (and use their abilities) too
       // Most bots run a skin: one preset across their guns (cosmetic only).
       if (Math.random() < 0.7) c.skinMap = { all: botSkins[Math.floor(Math.random() * botSkins.length)] };
+      // Some also run a model skin on the gun it's made for (an Orbital Vandal).
+      for (const sid of modelSkins) {
+        if (Math.random() >= 0.2) continue;
+        const pick = variantsOf(sid)[Math.floor(Math.random() * variantsOf(sid).length)]; // in any of its colours
+        for (const w of Object.keys(SKINS[sid].models)) (c.skinMap ||= {})[w] = pick;
+      }
       this.combatants.push(c);
       this.bots.push(c);
     }
@@ -1110,6 +1117,7 @@ export class Game {
       // Walk over a gun with that slot empty: it's picked up automatically (not your own fresh drop).
       for (const d of [...this.drops]) {
         if (now - d.at < (d.by === c ? 1.5 : 0.3)) continue;
+        if (d.for && d.for !== c && d.for.alive && now - d.at < 10) continue; // bought for a teammate: theirs for a moment
         if (Math.hypot(d.pos[0] - c.pos[0], d.pos[2] - c.pos[2]) > 1.0 || Math.abs(d.pos[1] - c.pos[1]) > 1.2) continue;
         const slot = d.gun.def.slot, mine = c.inv[slot];
         const better = c.isBot && slot === 'primary' && (!mine || (d.gun.def.cost || 0) > (mine.def.cost || 0) + 400);

@@ -5,6 +5,10 @@
 //   glow   emissive accent lines (intensity 0 = no glow)
 // A slot may name a procedural texture (`tex`) drawn at load time, see TEXTURES below, tinted with
 // `texColor` (the pattern) and `texBase` (the background) where the texture supports it.
+// Model skins also replace the gun itself: `models` maps a weapon id to a design in models.js (which brings
+// its own inspect and reload), and the skin is only offered on those weapons. They may add an `accent` glow.
+// A skin with a `finisher` (an effect id in render.js, FINISHERS) plays it on the body of whoever it kills:
+// on every kill in deathmatch, and on the kill that ends the round in 5v5 (as in Valorant).
 // Players can also design their own skins in the skin menu; those live in localStorage (CUSTOM_KEY) and are
 // merged into SKINS at load, so everything below treats preset and custom skins the same way.
 
@@ -33,23 +37,91 @@ export const SKINS = {
     grip: { color: 0x51687a, rough: 0.9, metal: 0 },
     glow: { color: 0x8fe9ff, intensity: 1.6 },
   },
-  tidewater: {
-    name: 'Tidewater', tier: 'Premium', blurb: 'Deep teal lacquer with rolling waves and brass fittings.',
-    body: { color: 0x0f5c63, rough: 0.3, metal: 0.3, tex: 'waves', texColor: '#4fd6c6' },
-    trim: { color: 0xc9a24a, rough: 0.3, metal: 0.9 },
-    metal: { color: 0x8a6e32, rough: 0.3, metal: 0.95 },
-    grip: { color: 0x0b2e33, rough: 0.9, metal: 0 },
-    glow: { color: 0x4fffd9, intensity: 1.8 },
+  orbital: {
+    name: 'Orbital', tier: 'Ultra', blurb: 'A reactor spire at its heart holds a live orb. Inspect it; reload pops it out for a fresh one.',
+    models: { vandal: 'vandalOrb', phantom: 'phantomOrb', bulldog: 'bulldogOrb', stinger: 'stingerOrb' },
+    // Glossy: lacquered enamel, polished gunmetal and mirror gold.
+    body: { color: 0x3a2152, rough: 0.16, metal: 0.8 },
+    trim: { color: 0x2a2b33, rough: 0.2, metal: 0.9 },
+    metal: { color: 0xe0b04a, rough: 0.12, metal: 1 },
+    grip: { color: 0x17161d, rough: 0.7, metal: 0.1 },
+    glow: { color: 0x3fb4ff, intensity: 2.6 },
+    accent: { color: 0xb44dff, intensity: 2.2 },
+    finisher: 'collapse',
+    variant: 'Violet',
+    variants: [
+      { variant: 'Solar', body: { color: 0x5a2410, rough: 0.16, metal: 0.8 }, glow: { color: 0xffb347, intensity: 2.6 }, accent: { color: 0xff4d2e, intensity: 2.2 } },
+      { variant: 'Glacial', body: { color: 0x1d4466, rough: 0.14, metal: 0.78 }, metal: { color: 0xd5dee8, rough: 0.1, metal: 1 }, glow: { color: 0x7fffe0, intensity: 2.6 }, accent: { color: 0x3fb4ff, intensity: 2.2 } },
+      { variant: 'Eclipse', body: { color: 0x121218, rough: 0.1, metal: 0.92 }, metal: { color: 0x9a9eaa, rough: 0.1, metal: 1 }, glow: { color: 0xff3355, intensity: 2.8 }, accent: { color: 0xffe2e6, intensity: 1.8 } },
+    ],
   },
-  verdant: {
-    name: 'Verdant Camo', tier: 'Select', blurb: 'Field-issue woodland camouflage, no lights.',
-    body: { color: 0xffffff, rough: 0.85, metal: 0, tex: 'camo' },
-    trim: { color: 0x3c4a2e, rough: 0.85, metal: 0 },
-    metal: { color: 0x2a2c26, rough: 0.5, metal: 0.6 },
-    grip: { color: 0x2b2a22, rough: 0.95, metal: 0 },
-    glow: { color: 0x000000, intensity: 0 },
+  starspur: {
+    name: 'Starspur', tier: 'Ultra', blurb: 'Frontier iron for the outer rim: bone enamel, burnished copper and a teal star-fire core. Every gun carries a spinning spur rowel.',
+    models: { sheriff: 'sheriffSpur', marshal: 'marshalSpur', judge: 'judgeSpur' },
+    body: { color: 0xe4d8c3, rough: 0.42, metal: 0.05 },
+    trim: { color: 0xb86a34, rough: 0.28, metal: 0.95 },
+    metal: { color: 0x2b2e35, rough: 0.3, metal: 0.9 },
+    grip: { color: 0x4a1f17, rough: 0.8, metal: 0 },
+    glow: { color: 0x3cf0d2, intensity: 2.2 },
+    accent: { color: 0xffae42, intensity: 2.0 },
+    finisher: 'lastLight',
+    sounds: 'starspur', // its sound set: a thunkier shot (FIRE_TONE in audio.js)
+    variant: 'Frontier',
+    variants: [
+      { variant: 'Dusk Rider', body: { color: 0x2b2445, rough: 0.4, metal: 0.15 }, glow: { color: 0xff7ad9, intensity: 2.2 }, accent: { color: 0xffae42, intensity: 2.0 } },
+      { variant: 'Silver Dollar', body: { color: 0xdfe3e8, rough: 0.3, metal: 0.3 }, trim: { color: 0xc3c9cf, rough: 0.2, metal: 1 }, glow: { color: 0x5aa8ff, intensity: 2.2 }, accent: { color: 0xdff0ff, intensity: 1.8 } },
+      { variant: 'Red Mesa', body: { color: 0x7a2a1c, rough: 0.5, metal: 0.05 }, trim: { color: 0xd9a441, rough: 0.28, metal: 0.95 }, grip: { color: 0x2a1a12, rough: 0.8, metal: 0 }, glow: { color: 0xffd166, intensity: 2.2 }, accent: { color: 0xff6a3d, intensity: 2.0 } },
+    ],
   },
-  nightglass: {
+  oathblade: {
+    name: 'Oathblade', tier: 'Ultra', blurb: 'Black lacquer and gold leaf over folded steel. Every gun carries a blade, and its edge lights as you draw.',
+    models: { vandal: 'vandalOath', sheriff: 'sheriffOath' },
+    body: { color: 0x0d0d11, rough: 0.14, metal: 0.35 },
+    trim: { color: 0xc9a24a, rough: 0.25, metal: 1 },
+    metal: { color: 0xffffff, rough: 0.18, metal: 0.95, tex: 'damascus', texColor: '#c9ced6', texBase: '#4a5058' },
+    grip: { color: 0x6e0f18, rough: 0.85, metal: 0 },
+    glow: { color: 0xbfe4ff, intensity: 2.4 },
+    accent: { color: 0xff3b4a, intensity: 2.0 },
+    finisher: 'lastStroke',
+    sounds: 'oathblade', // its sound set: a crisper shot (FIRE_TONE in audio.js) and the pullout file in sounds/index.json
+    variant: 'Ink',
+    variants: [
+      { variant: 'Crimson Oath', body: { color: 0x5a0b12, rough: 0.14, metal: 0.35 }, grip: { color: 0x15100e, rough: 0.85, metal: 0 }, glow: { color: 0xffd27a, intensity: 2.4 }, accent: { color: 0xff7a2e, intensity: 2.0 } },
+      { variant: 'Jade Court', body: { color: 0x0f3b2e, rough: 0.16, metal: 0.3 }, grip: { color: 0x1c1712, rough: 0.85, metal: 0 }, glow: { color: 0xd9fff2, intensity: 2.4 }, accent: { color: 0x5cffc0, intensity: 2.0 } },
+      { variant: 'First Snow', body: { color: 0xece6da, rough: 0.2, metal: 0.1 }, trim: { color: 0xb8bec6, rough: 0.2, metal: 1 }, grip: { color: 0x1d2a44, rough: 0.85, metal: 0 }, glow: { color: 0x8fc8ff, intensity: 2.4 }, accent: { color: 0xff5a7a, intensity: 2.0 } },
+    ],
+  },
+};
+
+// Each melee type comes in exactly one theme of its own (picked with the melee type, not from the skin grid).
+// They're registered as skins `melee-<type>` below so models, kill banners and finishers treat them like any
+// other skin, but they never show up in the gun skin grid and fit only their own melee type.
+export const MELEE_THEMES = {
+  knife: {
+    name: 'Standard Issue', tier: 'Default', blurb: 'Factory gunmetal with a faint cyan status light.',
+    body: { color: 0x3b414b, rough: 0.55, metal: 0.25 },
+    trim: { color: 0x2a2e35, rough: 0.7, metal: 0.1 },
+    metal: { color: 0x1c1f23, rough: 0.35, metal: 0.8 },
+    grip: { color: 0x202328, rough: 0.95, metal: 0 },
+    glow: { color: 0x7fd6ff, intensity: 0.6 },
+  },
+  axe: {
+    name: 'Heirloom', tier: 'Select', blurb: 'Bone enamel, walnut and aged brass.',
+    body: { color: 0xe8dcc4, rough: 0.6, metal: 0 },
+    trim: { color: 0xffffff, rough: 0.55, metal: 0, tex: 'wood' },
+    metal: { color: 0xa98336, rough: 0.35, metal: 0.9 },
+    grip: { color: 0x4f3520, rough: 0.8, metal: 0 },
+    glow: { color: 0xffc46b, intensity: 0.5 },
+  },
+  katana: {
+    name: 'Damascus', tier: 'Exclusive', blurb: 'Folded steel with flowing ripples, bronze furniture.',
+    body: { color: 0xffffff, rough: 0.22, metal: 0.9, tex: 'damascus' },
+    trim: { color: 0x6b4a2a, rough: 0.5, metal: 0.4 },
+    metal: { color: 0xffffff, rough: 0.2, metal: 0.95, tex: 'damascus' },
+    grip: { color: 0x2a1c12, rough: 0.85, metal: 0 },
+    glow: { color: 0xe8eef5, intensity: 0.4 },
+  },
+  karambit: {
     name: 'Nightglass', tier: 'Exclusive', blurb: 'Black chrome that drinks the light, edged in violet.',
     body: { color: 0x0c0c13, rough: 0.12, metal: 0.95 },
     trim: { color: 0x251a3d, rough: 0.2, metal: 0.8 },
@@ -57,55 +129,23 @@ export const SKINS = {
     grip: { color: 0x101018, rough: 0.9, metal: 0 },
     glow: { color: 0xb06bff, intensity: 2.6 },
   },
-  sunset: {
-    name: 'Sunset Lacquer', tier: 'Premium', blurb: 'Hand-sprayed coral-to-gold fade over cream panels.',
-    body: { color: 0xffffff, rough: 0.3, metal: 0.1, tex: 'fade' },
-    trim: { color: 0xf6eee2, rough: 0.45, metal: 0 },
-    metal: { color: 0xb8913f, rough: 0.25, metal: 0.95 },
-    grip: { color: 0x5a3446, rough: 0.9, metal: 0 },
-    glow: { color: 0xffd166, intensity: 1.4 },
-  },
-  heirloom: {
-    name: 'Heirloom', tier: 'Select', blurb: 'Bone enamel, walnut and aged brass.',
-    body: { color: 0xe8dcc4, rough: 0.6, metal: 0 },
-    trim: { color: 0xffffff, rough: 0.55, metal: 0, tex: 'wood' },
-    metal: { color: 0xa98336, rough: 0.35, metal: 0.9 },
-    grip: { color: 0x4f3520, rough: 0.8, metal: 0 },
-    glow: { color: 0x000000, intensity: 0 },
-  },
-  hexcore: {
-    name: 'Hexcore', tier: 'Exclusive', blurb: 'Armoured hex plating with a red reactor core.',
-    body: { color: 0x2a2f3a, rough: 0.45, metal: 0.5, tex: 'hex', texColor: '#ff4655' },
-    trim: { color: 0x171a20, rough: 0.5, metal: 0.4 },
-    metal: { color: 0x2d2f33, rough: 0.3, metal: 0.9 },
-    grip: { color: 0x1a1c20, rough: 0.95, metal: 0 },
-    glow: { color: 0xff4655, intensity: 2.4 },
-  },
-  carbon: {
-    name: 'Carbon Weave', tier: 'Select', blurb: 'Woven carbon fibre under a clear coat, red pinstripe glow.',
-    body: { color: 0xffffff, rough: 0.28, metal: 0.4, tex: 'carbon' },
-    trim: { color: 0x1a1b1e, rough: 0.4, metal: 0.5 },
-    metal: { color: 0x2a2c30, rough: 0.25, metal: 0.95 },
-    grip: { color: 0x121314, rough: 0.95, metal: 0 },
-    glow: { color: 0xff3048, intensity: 1.2 },
-  },
-  damascus: {
-    name: 'Damascus', tier: 'Exclusive', blurb: 'Folded steel with flowing ripples, bronze furniture.',
-    body: { color: 0xffffff, rough: 0.22, metal: 0.9, tex: 'damascus' },
-    trim: { color: 0x6b4a2a, rough: 0.5, metal: 0.4 },
-    metal: { color: 0x8c6a3c, rough: 0.3, metal: 0.95 },
-    grip: { color: 0x2a1c12, rough: 0.85, metal: 0 },
-    glow: { color: 0x000000, intensity: 0 },
-  },
-  tiger: {
+  balisong: {
     name: 'Tiger Stripe', tier: 'Premium', blurb: 'Hand-painted amber and black stripes.',
     body: { color: 0xffffff, rough: 0.5, metal: 0.05, tex: 'tiger', texColor: '#141210', texBase: '#e08a1e' },
     trim: { color: 0x1b1916, rough: 0.6, metal: 0.1 },
     metal: { color: 0x2b2926, rough: 0.35, metal: 0.8 },
-    grip: { color: 0x1a1714, rough: 0.95, metal: 0 },
+    grip: { color: 0xffffff, rough: 0.6, metal: 0.05, tex: 'tiger', texColor: '#141210', texBase: '#e08a1e' },
     glow: { color: 0xffb547, intensity: 0.8 },
   },
-  nebula: {
+  kunai: {
+    name: 'Hexcore', tier: 'Exclusive', blurb: 'Armoured hex plating with a red reactor core.',
+    body: { color: 0x2a2f3a, rough: 0.45, metal: 0.5, tex: 'hex', texColor: '#ff4655' },
+    trim: { color: 0x171a20, rough: 0.5, metal: 0.4 },
+    metal: { color: 0x2d2f33, rough: 0.3, metal: 0.9 },
+    grip: { color: 0xffffff, rough: 0.6, metal: 0.4, tex: 'hex', texColor: '#ff4655' },
+    glow: { color: 0xff4655, intensity: 2.4 },
+  },
+  arc: {
     name: 'Nebula', tier: 'Exclusive', blurb: 'A slice of deep space: drifting gas clouds and pinpoint stars.',
     body: { color: 0xffffff, rough: 0.2, metal: 0.3, tex: 'nebula', texColor: '#c86bff', texBase: '#0b0a1f' },
     trim: { color: 0x15122e, rough: 0.25, metal: 0.7 },
@@ -113,22 +153,8 @@ export const SKINS = {
     grip: { color: 0x0d0b1a, rough: 0.9, metal: 0 },
     glow: { color: 0x7fd6ff, intensity: 2.4 },
   },
-  digital: {
-    name: 'Digital Arctic', tier: 'Select', blurb: 'Pixel camouflage in snow greys.',
-    body: { color: 0xffffff, rough: 0.8, metal: 0, tex: 'digital', texColor: '#6d7b88', texBase: '#d9e0e6' },
-    trim: { color: 0x9aa6b1, rough: 0.8, metal: 0 },
-    metal: { color: 0x3a4048, rough: 0.45, metal: 0.7 },
-    grip: { color: 0x2c3138, rough: 0.95, metal: 0 },
-    glow: { color: 0x000000, intensity: 0 },
-  },
-  racer: {
-    name: 'Racer', tier: 'Premium', blurb: 'Gloss paint with twin racing stripes and a neon underglow.',
-    body: { color: 0xffffff, rough: 0.18, metal: 0.25, tex: 'stripes', texColor: '#f4f4f4', texBase: '#1d4fd8' },
-    trim: { color: 0xf4f4f4, rough: 0.25, metal: 0.1 },
-    metal: { color: 0x1e2227, rough: 0.25, metal: 0.9 },
-    grip: { color: 0x15171a, rough: 0.95, metal: 0 },
-    glow: { color: 0x3fffb0, intensity: 1.8 },
-  },
+  tanto: { ...SKINS.oathblade, models: undefined, variants: undefined, variant: undefined, blurb: 'The Oathblade collection\'s knife: a lacquered tanto with a gold collar and a silk cord. Its edge lights as it leaves your hand.' },
+  bowie: { ...SKINS.starspur, models: undefined, variants: undefined, variant: undefined, blurb: 'The Starspur collection\'s knife: a copper-guarded bowie with a star rowel that spins at the guard.' },
 };
 
 // ---- procedural textures (256 px, tiled across the gun at roughly 8 tiles per metre) ----
@@ -302,7 +328,32 @@ export const PATTERNS = {
 const PRESETS = Object.keys(SKINS);
 export const SKIN_ORDER = [...PRESETS];
 
-export const skinFor = (settings, weaponId) => SKINS[settings.skins?.[weaponId]] ? settings.skins[weaponId] : 'standard';
+// Colour variants of a skin (Valorant's chromas): `variants` lists overrides of the base; each is registered as
+// skin `<id>~<n>` (n from 1), outside SKIN_ORDER. Pick them with the swatches in the skin screen.
+for (const id of PRESETS) {
+  (SKINS[id].variants || []).forEach((v, i) => { SKINS[`${id}~${i + 1}`] = { ...SKINS[id], ...v, variants: undefined, variantOf: id }; });
+}
+export const baseSkin = (id) => SKINS[id]?.variantOf || id;
+export const variantsOf = (id) => {
+  const base = baseSkin(id);
+  return [base, ...(SKINS[base]?.variants || []).map((_, i) => `${base}~${i + 1}`)];
+};
+
+// Melee themes join SKINS after SKIN_ORDER is taken, so they stay out of the skin grid.
+export const meleeSkin = (meleeType) => (MELEE_THEMES[meleeType] ? 'melee-' + meleeType : null);
+for (const [type, def] of Object.entries(MELEE_THEMES)) SKINS[meleeSkin(type)] = { ...def, melee: type };
+
+// Whether a skin can go on a weapon (model skins only fit the weapons they have a model for; a melee type
+// wears only its own theme).
+export const skinFits = (id, weaponId) => {
+  const s = SKINS[id];
+  if (!s) return false;
+  if (MELEE_THEMES[weaponId] || s.melee) return s.melee === weaponId;
+  return !s.models || !!s.models[weaponId];
+};
+export const skinFor = (settings, weaponId) => meleeSkin(weaponId) || (skinFits(settings.skins?.[weaponId], weaponId) ? settings.skins[weaponId] : 'standard');
+// The model design a weapon is drawn with in a skin: the skin's own model, or the weapon's.
+export const designFor = (skinId, weaponId) => SKINS[skinId]?.models?.[weaponId] || weaponId;
 export const isCustom = (id) => id.startsWith('custom-');
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
