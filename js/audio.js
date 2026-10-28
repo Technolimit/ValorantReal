@@ -741,8 +741,13 @@ export class Sound {
     this.noiseHit({ dest: this.out(pos), lp: 1200, hp: 150, decay: 0.7, gain: 0.5, attack: 0.08 });
   }
 
-  swing(heavy) {
+  // A knife swing's whoosh; `snd` (a melee type's, from SWINGS in melee.js) reshapes it and adds a ring or click.
+  swing(heavy, snd) {
     if (!this.ctx) return;
-    this.noiseHit({ dest: this.master, lp: heavy ? 1200 : 1800, hp: 500, decay: heavy ? 0.22 : 0.14, gain: 0.2, attack: 0.03 });
+    const w = { dest: this.master, lp: heavy ? 1200 : 1800, hp: 500, decay: heavy ? 0.22 : 0.14, gain: 0.2, attack: 0.03, ...snd?.whoosh };
+    if (heavy) Object.assign(w, snd?.whoosh && { lp: w.lp * 0.7, decay: w.decay * 1.5 }, snd?.heavyWhoosh, { at: 0.16 });
+    this.noiseHit(w);
+    if (snd?.again) this.noiseHit({ ...w, at: (w.at || 0) + snd.again });
+    for (const t of snd?.tones || []) this.tone({ dest: this.master, ...t, at: (t.at || 0) + (w.at || 0) });
   }
 }

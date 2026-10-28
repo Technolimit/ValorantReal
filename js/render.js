@@ -2,7 +2,8 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { HFOV, VIEW_RECOIL, HITBOX, GUN_HEIGHT } from './config.js';
 import { gunModel, handsModel, studioEnv, ownGlow, poseMeleeParts, rocketModel, paintShellModel, bombletModel } from './models.js';
-import { MELEE, GUN_INSPECT, MODEL_INSPECTS, EQUIP_ANIMS, meleeId, inspectPose } from './melee.js';
+import { MELEE, GUN_INSPECT, MODEL_INSPECTS, EQUIP_ANIMS, SWINGS, meleeId, inspectPose } from './melee.js';
+import { SwingTrails } from './swingfx.js';
 import { skinFor, skinFits, meleeSkin, SKINS } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
 import { BLADES, SMOKE, bloomTargets } from './abilities.js';
@@ -290,6 +291,8 @@ export class Renderer {
 
     this.vm = { group: new THREE.Group(), model: null, kind: null, swayX: 0, swayY: 0, bob: 0, equipStart: -10, equipDur: 1, flashUntil: 0, swingStart: -10, swingHeavy: false };
     this.vmScene.add(this.vm.group);
+    this.trails = new SwingTrails(this.vmScene);
+    this.swings = 0;
     this.recoil = { feel: null };
     this.shake = 0;
     this.shakeP = 0;
@@ -541,7 +544,13 @@ export class Renderer {
       }
     });
     g.on('swing', ({ who, heavy }) => {
-      if (who === g.player) { this.vm.swingStart = performance.now(); this.vm.swingHeavy = heavy; }
+      if (who !== g.player) return;
+      const vm = this.vm;
+      vm.swingStart = performance.now(); vm.swingHeavy = heavy;
+      // A melee type cuts its own way and leaves its own trail, in its theme's colours; light cuts alternate sides.
+      const sw = SWINGS[vm.meleeId];
+      vm.swingAnim = sw ? (heavy ? sw.heavy : sw.light[this.swings++ % sw.light.length]) : null;
+      if (vm.swingAnim) { const sk = SKINS[vm.skin]; this.trails.play(vm.swingAnim.trail, { glow: sk?.glow?.color, accent: sk?.accent?.color }); }
     });
     g.on('equip', ({ who, gun }) => {
       if (who === g.player) { this.vm.equipStart = performance.now(); this.vm.equipDur = gun.def.equip * 1000; this.resetRecoil(); this.cycle = null; }
@@ -588,7 +597,7 @@ export class Renderer {
       if (type === 'rekindled') this.fxBurst(who.eye(), 0xff7a3d, 2.5, 0.5);
     });
     g.on('teleport', ({ from, to }) => { this.fxBurst([from[0], from[1] + 1, from[2]], 0xa67bff, 1.2, 0.4); this.fxBurst([to[0], to[1] + 1, to[2]], 0xa67bff, 1.2, 0.4); });
-    g.on('blade', ({ who }) => { if (who === g.player) { this.vm.swingStart = performance.now(); this.vm.swingHeavy = false; } });
+    g.on('blade', ({ who }) => { if (who === g.player) { this.vm.swingStart = performance.now(); this.vm.swingHeavy = false; this.vm.swingAnim = null; } });
     g.on('ability', ({ who, type }) => {
       if (who !== g.player) return;
       if (type === 'ult') { this.vm.equipStart = performance.now(); this.vm.equipDur = 350; }
@@ -1692,6 +1701,9 @@ export class Renderer {
     if (this.vm.model) this.vm.group.remove(this.vm.model);
     this.vm.model = def.hands ? handsModel(def.color, def.item) : gunModel(id, skin);
     this.vm.melee = MELEE[id] || null;
+    this.vm.meleeId = MELEE[id] ? id : null;
+    this.vm.skin = skin;
+    this.vm.swingAnim = null;
     // Melee types and gun models with their own inspects pulse their glow, so they get their own copy of it.
     this.vm.glow = this.vm.melee || MODEL_INSPECTS[this.vm.model.userData.design] ? ownGlow(this.vm.model, skin) : null;
     // Its own copies of the skin's materials: the same material drawn in both scenes (here and on your body or
@@ -2181,8 +2193,18 @@ export class Renderer {
       px += rp.px || 0; py += rp.py || 0; pz += rp.pz || 0;
       rx += rp.rx || 0; ry += rp.ry || 0; rz += rp.rz || 0;
     }
-    const st = (performance.now() - vm.swingStart) / (vm.swingHeavy ? 500 : 280);
-    if (st >= 0 && st < 1) {
+    // Knife swing: a melee type's own (SWINGS), else a plain slash or lunge.
+    const sa = vm.melee && vm.swingAnim, swT = (performance.now() - vm.swingStart) / 1000;
+    let swingPose = null;
+    if (sa) {
+      if (swT >= 0 && swT < sa.dur) {
+        swingPose = inspectPose(sa, swT);
+        swingPose.t = swT;
+        const v = swingPose.pose;
+        px += v[0]; py += v[1]; pz += v[2]; rx += v[3]; ry += v[4]; rz += v[5];
+      }
+    } else if (swT >= 0 && swT * 1000 < (vm.swingHeavy ? 500 : 280)) {
+      const st = (swT * 1000) / (vm.swingHeavy ? 500 : 280);
       const k = Math.sin(st * Math.PI);
       if (vm.swingHeavy) { px -= k * 0.14; rx += k * 0.4; ry += k * 0.9; }
       else { px -= k * 0.12; rz += k * 0.6; ry += k * 0.6; }
@@ -2213,6 +2235,7 @@ export class Renderer {
       if (m.hip) { px += m.hip[0]; py += m.hip[1]; pz += m.hip[2]; }
       if (m.rot) { rx += m.rot[0] * (1 - (insPose ? 0.6 : 0)); ry += m.rot[1] * (insPose ? 0.4 : 1); rz += m.rot[2] * (insPose ? 0.4 : 1); }
       if (insPose) poseMeleeParts(vm.model, this.inspecting.ins, insPose.t, vm.glow);
+      else if (swingPose) poseMeleeParts(vm.model, sa, swingPose.t, vm.glow);
       else poseMeleeParts(vm.model, drawPose && draw, drawPose?.t, vm.glow); // the pullout (Oathblade Tanto), or at rest
     } else if (insPose && this.inspecting.ins.parts) {
       poseMeleeParts(vm.model, this.inspecting.ins, insPose.t, vm.glow); // a gun model's inspect (the Orbital orb)
@@ -2223,6 +2246,8 @@ export class Renderer {
     vm.group.rotation.set(rx, ry, rz);
     this.vmCamera.fov = 60;
     this.vmCamera.updateProjectionMatrix();
+    this.trails.setVisible(this.vmVisible);
+    this.trails.update(this.renderer.domElement.height);
 
     const flashOn = performance.now() < vm.flashUntil;
     this.vmFlash.visible = flashOn;
