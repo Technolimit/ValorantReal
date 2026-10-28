@@ -213,29 +213,30 @@ function wrap(k, n, y0, z0, y1, z1, w, d, slot, tilt = 0) {
   }
 }
 
-// Orbital's reactor spire: a hollow cone rising from the top of the gun at z (base y0) to a reactor ring,
-// open at the top so you see down into it, lit from the floor, with gold fins down its slope. The orb (part
-// `orb`) sits in the mouth: the inspect floats it out and the reload pops it and seats a fresh one.
-// `s` scales the whole spire. Returns the height of the top of the ring.
+// Orbital's reactor spire: a hollow cone standing on its point, seated flush on the top of the gun at z (whose
+// surface is at y0) and flaring out to a wide reactor ring, open at the top, lit from the floor, with gold fins up
+// its slope. The orb (part `orb`) sits in the mouth with its top just showing over the rim: the inspect floats it
+// out and the reload pops it and seats a fresh one. `s` scales the whole spire. Returns the height of the top of the ring.
 function orbSpire(k, z, y0, s = 1) {
-  const h = 0.064 * s, rb = 0.054 * s, rt = 0.03 * s, top = y0 + h, slope = Math.atan((rb - rt) / h);
+  const h = 0.064 * s, rb = 0.026 * s, rt = 0.05 * s, top = y0 + h, slope = Math.atan((rb - rt) / h);
   k.cyl(rt, h, 'tubeBody', 0, y0 + h / 2, z, 24, 0, 0, 0, rb, true);
   k.cyl(rb * 0.9, 0.003, 'glow', 0, y0 + 0.003, z, 24, 0);
-  k.tor(rb, 0.0045 * s, 'metal', 0, y0 + 0.002, z, PI / 2);
+  k.cyl(rb + 0.009 * s, 0.004, 'trim', 0, y0 + 0.002, z, 24, 0); // a flat seat, flush on the top of the gun
+  k.tor(rb + 0.001 * s, 0.0035 * s, 'metal', 0, y0 + 0.004, z, PI / 2);
   k.tor((rb + rt) / 2 + 0.0012, 0.0018 * s, 'accent', 0, y0 + h / 2, z, PI / 2, 0, 0);
   for (let i = 0; i < 4; i++) {
     const a = PI / 4 + (i * PI) / 2, r = (rb + rt) / 2 + 0.0025 * s;
     k.box(0.006 * s, h * 1.04, 0.011 * s, 'metal', Math.cos(a) * r, y0 + h / 2, Math.sin(a) * r + z, 0, -a, slope);
-    k.box(0.0065 * s, h * 0.5, 0.004 * s, 'glow', Math.cos(a) * (r + 0.001), y0 + h * 0.45, Math.sin(a) * (r + 0.001) + z, 0, -a, slope);
+    k.box(0.0065 * s, h * 0.5, 0.004 * s, 'glow', Math.cos(a) * (r + 0.001), y0 + h * 0.55, Math.sin(a) * (r + 0.001) + z, 0, -a, slope);
   }
   k.tor(rt + 0.002 * s, 0.0075 * s, 'trim', 0, top, z, PI / 2);
   k.tor(rt - 0.004 * s, 0.0026 * s, 'glow', 0, top + 0.003 * s, z, PI / 2);
   for (const x of [-1, 1]) k.box(0.01 * s, 0.018 * s, 0.02 * s, 'metal', x * (rt + 0.009 * s), top - 0.004 * s, z);
-  const oy = top - 0.02 * s;
+  const or = 0.026 * s, oy = top + 0.007 * s - or; // the orb's top sits just above the rim
   k.part('orb', [0, oy, z]);
-  k.ball(0.019 * s, 'glow', 0, oy, z);
-  k.tor(0.024 * s, 0.0018 * s, 'accent', 0, oy, z, 0.6, 0.3);
-  k.tor(0.024 * s, 0.0018 * s, 'glow', 0, oy, z, -0.5, 1.2);
+  k.ball(or, 'glow', 0, oy, z);
+  k.tor(or + 0.006 * s, 0.0018 * s, 'accent', 0, oy, z, 0.6, 0.3);
+  k.tor(or + 0.006 * s, 0.0018 * s, 'glow', 0, oy, z, -0.5, 1.2);
   k.part(null);
   return top + 0.0075 * s;
 }
@@ -774,7 +775,7 @@ const DESIGNS = {
     k.box(0.052, 0.003, 0.06, 'glow', 0, 0.004, 0.03);
     k.box(0.03, 0.01, 0.07, 'trim', 0, 0.058, 0.035);
     k.box(0.03, 0.01, 0.06, 'trim', 0, 0.057, -0.17);
-    const top = orbSpire(k, -0.08, 0.054, 0.82);
+    const top = orbSpire(k, -0.08, 0.0525, 0.82);
     // Shroud: lit face ring, gold vents down each side.
     k.cyl(0.021, 0.07, 'trim', 0, 0.022, -0.255, 16);
     k.cyl(0.023, 0.01, 'body', 0, 0.022, -0.235, 16);
@@ -807,7 +808,7 @@ const DESIGNS = {
     k.box(0.058, 0.003, 0.26, 'glow', 0, -0.004, -0.17);
     k.box(0.036, 0.01, 0.07, 'trim', 0, 0.062, -0.07);
     k.box(0.036, 0.01, 0.08, 'trim', 0, 0.058, -0.28);
-    const top = orbSpire(k, -0.17, 0.055);
+    const top = orbSpire(k, -0.17, 0.0545);
     // Suppressor: gold bands, neon rings between them, lit face.
     k.cyl(0.022, 0.22, 'trim', 0, 0.018, -0.46, 18);
     for (const z of [-0.37, -0.45, -0.53]) k.cyl(0.024, 0.012, 'metal', 0, 0.018, z, 18);
