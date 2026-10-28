@@ -17,5 +17,6 @@
   "outlaw": {"fire": "valorant/marshal-fire.wav", "equip": "valorant/marshal-equip.mp3", "reload": "valorant/operator-reload.mp3", "inspect": "valorant/marshal-inspect.mp3"},
   "operator": {"fire": "valorant/operator-fire.wav", "reload": "valorant/operator-reload.mp3", "equip": "valorant/operator-equip.mp3", "inspect": "valorant/operator-inspect.mp3"},
   "ares": {"fire": "valorant/ares-fire.wav", "reload": "valorant/ares-reload.mp3", "equip": "valorant/ares-equip.mp3", "inspect": "valorant/ares-inspect.mp3"},
-  "odin": {"fire": "valorant/odin-fire.wav", "reload": "valorant/odin-reload.mp3", "equip": "valorant/odin-equip.mp3", "inspect": "valorant/odin-inspect.mp3"}
+  "odin": {"fire": "valorant/odin-fire.wav", "reload": "valorant/odin-reload.mp3", "equip": "valorant/odin-equip.mp3", "inspect": "valorant/odin-inspect.mp3"},
+  "oathblade": {"equip": "oathblade-draw.mp3"}
 }

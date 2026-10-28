@@ -16,6 +16,9 @@ here keeps its built-in sound.
 Gun ids: classic, shorty, frenzy, ghost, sheriff, stinger, spectre, bucky, judge, bulldog, guardian, phantom,
 vandal, warden, marshal, outlaw, operator, ares, odin.
 
+A skin id with an `equip` file gives that skin its own pullout sound on every gun and melee it comes on, in
+place of the gun's: `"oathblade": { "equip": "oathblade-draw.mp3" }` is the Oathblade pullout.
+
 - `fire` plays whenever anyone shoots that gun, and fades with distance like the built-in sound.
 - `reload`, `equip` and `inspect` play for your own gun. A reload sound is fitted to the reload time; inspect plays when you press inspect.
 

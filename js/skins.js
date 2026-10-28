@@ -81,6 +81,7 @@ export const SKINS = {
     glow: { color: 0xbfe4ff, intensity: 2.4 },
     accent: { color: 0xff3b4a, intensity: 2.0 },
     finisher: 'lastStroke',
+    sounds: 'oathblade', // the id its own sound files go under in sounds/index.json (the Tanto shares them)
     variant: 'Ink',
     variants: [
       { variant: 'Crimson Oath', body: { color: 0x5a0b12, rough: 0.14, metal: 0.35 }, grip: { color: 0x15100e, rough: 0.85, metal: 0 }, glow: { color: 0xffd27a, intensity: 2.4 }, accent: { color: 0xff7a2e, intensity: 2.0 } },

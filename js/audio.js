@@ -556,7 +556,7 @@ export class Sound {
     this.tone({ dest: this.master, at: at + 0.04, freq: 5150, end: 4800, decay: 0.35, gain: 0.025 * gain });
   }
 
-  // Oathblade pullout (~0.55 s): a low rush of air as it comes up, two quick bright rings of steel, the second
+  // Oathblade pullout when its sound file (sounds/oathblade-draw.mp3) isn't loaded (~0.55 s): a low rush of air as it comes up, two quick bright rings of steel, the second
   // higher and crisper as it locks into place, and a soft thump.
   bladeDraw() {
     const d = this.master;
@@ -570,11 +570,14 @@ export class Sound {
     this.noiseHit({ dest: d, at: 0.47, lp: 600, decay: 0.1, gain: 0.08 });
   }
 
-  // `blade`: the weapon draws like a blade (Oathblade), so it rings as it comes out.
-  equip(id, blade = false) {
+  // `skin`: the skin on the weapon. A skin can ship its own pullout sound (sounds/index.json, e.g. Oathblade's), which
+  // plays instead of the gun's; your own upload for the gun still wins. `blade`: it draws like a blade (Oathblade),
+  // so with no file it gets the synthesized blade draw.
+  equip(id, skin = null, blade = false) {
     if (!this.ctx) return;
     this.stopAction(); // swapping weapons cancels the reload or inspect
-    const clip = this.clip(`${id}:equip`);
+    const skinClip = skin && this.clips.get(`${skin}:equip@game`);
+    const clip = this.clips.get(`${id}:equip`) || skinClip || (!blade && this.clip(`${id}:equip`));
     if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
     if (blade) { this.bladeDraw(); return; }
     this.noiseHit({ dest: this.master, lp: 1500, hp: 400, decay: 0.08, gain: 0.12 });
