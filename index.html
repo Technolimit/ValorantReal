@@ -141,6 +141,10 @@ button { font: inherit; }
 #pickhint kbd { font: 700 12px system-ui, sans-serif; border: 1px solid var(--line); padding: 0 5px; margin-right: 6px; }
 #minimap { position: absolute; left: 16px; top: 14px; width: 210px; height: 210px; background: rgba(10, 16, 24, 0.55); border: 1px solid var(--line); border-radius: 4px; }
 #minimap.big { left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(8, 12, 18, 0.88); box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35); z-index: 5; }
+#fps { position: fixed; top: 6px; right: 10px; z-index: 50; font: 700 12px/1 ui-monospace, Menlo, Consolas, monospace; color: #7dffb0; background: rgba(0, 0, 0, 0.45); padding: 4px 7px; border-radius: 3px; pointer-events: none; text-shadow: 0 1px 1px #000; }
+#fps.mid { color: #ffd166; }
+#fps.low { color: #ff6b6b; }
+body.show-fps #killfeed { top: 34px; }
 #debug { position: absolute; left: 16px; top: 236px; margin: 0; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; background: rgba(0, 0, 0, 0.55); padding: 8px 10px; border-radius: 4px; white-space: pre; }
 
 #death { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 12px 14px; width: min(320px, 44vw); text-align: left; font-size: 13px; }

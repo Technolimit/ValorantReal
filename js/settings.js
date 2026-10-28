@@ -21,6 +21,7 @@ export const DEFAULTS = {
   sprayTrainer: true, // overlay that draws the spray pattern and where your shots went
   shadows: true,
   weaponFx: true, // viewmodel bloom (glowing skin lines and highlights); off saves a few full-screen passes
+  showFps: true, // frame rate counter in the top right
   renderScale: 'auto', // 0.5 | 0.75 | 1, or 'auto' (see Renderer.autoScale)
   // crosshair
   chColor: '#00ff9c',

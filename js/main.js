@@ -477,6 +477,7 @@ const SCHEMA = [
     ['volume', 'Volume', 'range', { min: 0, max: 1, step: 0.05 }],
     ['shadows', 'Shadows', 'checkbox'],
     ['weaponFx', 'Weapon glow (bloom)', 'checkbox'],
+    ['showFps', 'FPS counter', 'checkbox'],
     ['renderScale', 'Render scale', 'select', { auto: 'Auto (drops when the frame rate does)', 0.5: '50%', 0.75: '75%', 1: '100%' }],
     ['showImpacts', 'Bullet holes', 'checkbox'],
     ['impactSeconds', 'Bullet holes last (s)', 'range', { min: 1, max: 30, step: 1 }],
@@ -1434,8 +1435,24 @@ function inspectHint() {
     : `<b>${escHtml(i.name)}</b>${i.count > 1 ? `${i.idx + 1}/${i.count}<kbd>${key('inspect')}</kbd>next` : ''}<kbd>hold ${key('inspect')}</kbd>examine`;
 }
 
+// FPS counter (top right): frames counted over half a second, so the number is steady enough to read.
+const fps = { el: null, frames: 0, since: 0 };
+function updateFps(t) {
+  const el = fps.el ||= Object.assign(document.body.appendChild(document.createElement('div')), { id: 'fps' });
+  const on = settings.showFps !== false;
+  el.hidden = !on;
+  document.body.classList.toggle('show-fps', on);
+  fps.frames++;
+  if (t - fps.since < 500) return;
+  const rate = (fps.frames * 1000) / (t - fps.since);
+  fps.frames = 0; fps.since = t;
+  el.textContent = `${Math.round(rate)} FPS`;
+  el.className = rate < 30 ? 'low' : rate < 55 ? 'mid' : '';
+}
+
 function frame(t) {
   requestAnimationFrame(frame);
+  updateFps(t);
   let dt = (t - last) / 1000;
   last = t;
   if (dt > 0.25) dt = 0.25;

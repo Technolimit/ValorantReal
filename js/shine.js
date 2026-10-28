@@ -123,6 +123,11 @@ export function updateShine(model, U, t, sweep, flare = 0) {
 export const sweepAt = (k) => (k < 0 || k > 1 ? null : k * k * (3 - 2 * k));
 
 // ---------- viewmodel HDR pass + bloom ----------
+// The gun only covers part of the screen, so every pass below is clipped (scissored) to the box round it on
+// screen, grown by how far the bloom spreads. That keeps the look identical while drawing a fraction of the pixels.
+const BLOOM_PAD = 112; // drawing-buffer pixels: the eighth-size blur reaches about 95 px past what glows
+const _box = new THREE.Box3(), _v = new THREE.Vector3(), _s = new THREE.Vector3(), _m = new THREE.Matrix4();
+
 const QUAD_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
 // Bright pass at quarter size: a 4-tap box filter, keeping what's over the threshold (soft knee).
 const BRIGHT_FRAG = /* glsl */ `
@@ -184,24 +189,67 @@ export class ViewmodelPost {
     this.b[0].setSize(...q); this.b[1].setSize(...q); this.b[2].setSize(...e); this.b[3].setSize(...e);
   }
 
+  // The part of the screen `obj` covers, padded for the bloom and snapped to 8 px so the quarter and eighth size
+  // targets line up with it: [x, y, w, h] in drawing-buffer pixels from the bottom left. Null: the whole screen.
+  // Each visible part's own box is projected (one box round the whole gun would reach far off screen, since the
+  // arm comes right up to the eye).
+  screenRect(obj, camera) {
+    if (!obj) return null;
+    camera.updateMatrixWorld();
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, behind = false;
+    obj.traverseVisible((o) => {
+      if (behind || !(o.isMesh || o.isSprite || o.isPoints || o.isLine)) return;
+      if (o.isSprite) { o.getWorldPosition(_v); o.getWorldScale(_s); _box.setFromCenterAndSize(_v, _s.setScalar(Math.max(_s.x, _s.y))); _m.copy(camera.matrixWorldInverse); }
+      else { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); _box.copy(o.geometry.boundingBox); _m.multiplyMatrices(camera.matrixWorldInverse, o.matrixWorld); }
+      for (let i = 0; i < 8; i++) {
+        _v.set(i & 1 ? _box.max.x : _box.min.x, i & 2 ? _box.max.y : _box.min.y, i & 4 ? _box.max.z : _box.min.z).applyMatrix4(_m);
+        if (_v.z > -camera.near) { behind = true; return; } // crosses the eye: can't bound it on screen
+        _v.applyMatrix4(camera.projectionMatrix);
+        x0 = Math.min(x0, _v.x); x1 = Math.max(x1, _v.x); y0 = Math.min(y0, _v.y); y1 = Math.max(y1, _v.y);
+      }
+    });
+    if (behind) return null;
+    if (x0 > x1) return [0, 0, 0, 0]; // nothing to draw
+    x0 = Math.max(-1, x0); y0 = Math.max(-1, y0); x1 = Math.min(1, x1); y1 = Math.min(1, y1);
+    const { w, h } = this, down = (n) => Math.max(0, 8 * Math.floor(n / 8)), up = (n, max) => Math.min(8 * Math.ceil(max / 8), 8 * Math.ceil(n / 8));
+    const ax = down(((x0 + 1) / 2) * w - BLOOM_PAD), ay = down(((y0 + 1) / 2) * h - BLOOM_PAD);
+    const bx = up(((x1 + 1) / 2) * w + BLOOM_PAD, w), by = up(((y1 + 1) / 2) * h + BLOOM_PAD, h);
+    if (bx <= ax || by <= ay) return [0, 0, 0, 0]; // off screen
+    if ((bx - ax) * (by - ay) > 0.8 * w * h) return null; // nearly everything: not worth clipping
+    return [ax, ay, bx - ax, by - ay];
+  }
+
+  // Clip drawing into `target` to `rect` (full-size pixels) divided by `div`, or not at all when rect is null.
+  clip(target, rect, div) {
+    target.scissorTest = !!rect;
+    if (rect) target.scissor.set(rect[0] / div, rect[1] / div, rect[2] / div, rect[3] / div);
+  }
+
   pass(r, material, target) {
     this.quad.material = material;
     r.setRenderTarget(target);
     r.render(this.qScene, this.qCam);
   }
 
-  // Draw `scene` (the viewmodel) over what's already on screen, with bloom on its bright parts.
-  render(r, scene, camera) {
+  // Draw `scene` (the viewmodel) over what's already on screen, with bloom on its bright parts. `bounds`: the
+  // object whose screen area to limit the passes to (null draws the whole screen, e.g. while a knife trail is out).
+  render(r, scene, camera, bounds = null) {
     const size = r.getDrawingBufferSize(this.tmp ||= new THREE.Vector2());
     this.setSize(size.x, size.y);
+    const rect = this.screenRect(bounds, camera);
+    if (rect && !rect[2]) return;
     r.getClearColor(this.clear);
     const alpha = r.getClearAlpha();
-    r.setRenderTarget(this.rt);
+    const [q1, q2, e1, e2] = this.b, br = this.bright.uniforms, bl = this.blur.uniforms;
+    // Outside the clipped area the small targets must read as black (the blur samples a little past it).
     r.setClearColor(0x000000, 0);
+    if (rect) for (const t of this.b) { this.clip(t, null); r.setRenderTarget(t); r.clear(); }
+    this.clip(this.rt, rect, 1);
+    for (const [t, d] of [[q1, 4], [q2, 4], [e1, 8], [e2, 8]]) this.clip(t, rect, d);
+    r.setRenderTarget(this.rt);
     r.clear();
     r.render(scene, camera);
     r.setClearColor(this.clear, alpha);
-    const [q1, q2, e1, e2] = this.b, br = this.bright.uniforms, bl = this.blur.uniforms;
     br.tSrc.value = this.rt.texture; br.uTexel.value.set(1 / this.w, 1 / this.h);
     this.pass(r, this.bright, q1);
     const blur = (src, dst, dx, dy) => { bl.tSrc.value = src.texture; bl.uDir.value.set(dx / src.width, dy / src.height); this.pass(r, this.blur, dst); };
@@ -209,9 +257,11 @@ export class ViewmodelPost {
     br.tSrc.value = q1.texture; br.uTexel.value.set(0.5 / q1.width, 0.5 / q1.height);
     bl.tSrc.value = q1.texture; bl.uDir.value.set(0, 0); this.pass(r, this.blur, e1); // plain downsample
     blur(e1, e2, 1.5, 0); blur(e2, e1, 0, 1.5);
-    const tm = r.toneMapping, ex = r.toneMappingExposure;
+    const tm = r.toneMapping, ex = r.toneMappingExposure, pr = r.getPixelRatio();
     r.toneMapping = THREE.NeutralToneMapping; r.toneMappingExposure = 1.25; // keeps skin colours true, rolls off highlights
+    if (rect) { r.setScissor(rect[0] / pr, rect[1] / pr, rect[2] / pr, rect[3] / pr); r.setScissorTest(true); }
     this.pass(r, this.comp, null);
+    r.setScissorTest(false);
     r.toneMapping = tm; r.toneMappingExposure = ex;
   }
 }
