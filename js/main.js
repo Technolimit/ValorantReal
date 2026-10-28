@@ -40,7 +40,7 @@ const renderer = new Renderer(canvas, game, settings);
 const sound = new Sound();
 sound.setVolume(settings.volume);
 // The game's own sound files from sounds/index.json, which everyone hears.
-loadGameSounds(WEAPONS).then((clips) => { for (const [key, c] of clips) sound.setClip(`${key}@game`, c.data); });
+loadGameSounds({ ...WEAPONS, ...SKINS }).then((clips) => { for (const [key, c] of clips) sound.setClip(`${key}@game`, c.data); });
 const hud = new Hud(game, renderer, settings);
 const rhud = new RoundHud(game);
 const minimap = new Minimap(game);
@@ -76,7 +76,10 @@ const ears = () => renderer.specTarget || game.player;
 const isEars = (who) => who === ears();
 
 // ---- sound hooks ----
-game.on('shot', ({ who, gun }) => { if (isPlayer(who)) sound.stopAction(); sound.gunshot(gun.def, isEars(who) ? null : who.eye(), gun); });
+game.on('shot', ({ who, gun }) => {
+  if (isPlayer(who)) sound.stopAction();
+  sound.gunshot(gun.def, isEars(who) ? null : who.eye(), gun, SKINS[renderer.skinOf(who, gun.def.id)]?.sounds); // a skin's sound set colours the shot
+});
 game.on('footstep', ({ who }) => sound.footstep(isEars(who) ? null : who.pos, isEars(who)));
 game.on('land', ({ who }) => sound.land(isEars(who) ? null : who.pos, isEars(who)));
 game.on('hit', ({ attacker, target, part, killed, dot }) => {
@@ -89,12 +92,13 @@ game.on('finisher', ({ kind, pos }) => sound.finisher(kind, pos));
 game.on('reload', ({ who, gun }) => { if (isPlayer(who)) sound.reload(gun.reloadDur, RELOAD_SOUNDS[RELOAD_STYLE[designFor(skinFor(settings, gun.def.id), gun.def.id)] || RELOAD_STYLE[gun.def.id]], gun.def.id); });
 game.on('reloadRound', ({ who }) => { if (isPlayer(who)) { sound.click(0, 0.3); sound.thunk(0.03); } });
 game.on('dry', ({ who }) => { if (isPlayer(who)) sound.click(0, 0.3); });
-// Oathblade guns and the Tanto ring like a blade leaving its sheath as they're drawn.
+// Oathblade guns and the Tanto play the Oathblade pullout sound (sounds/oathblade-draw.mp3) as they're drawn.
 const BLADE_DRAW = new Set(['vandalOath', 'sheriffOath', 'tanto']);
 game.on('equip', ({ who, gun }) => {
   if (!isPlayer(who)) return;
   const id = gun?.def?.id, w = id === 'knife' ? meleeId(settings.melee) : id;
-  sound.equip(id, !!w && BLADE_DRAW.has(designFor(skinFor(settings, w), w)));
+  const skin = w && skinFor(settings, w);
+  sound.equip(id, skin && (SKINS[skin]?.sounds || baseSkin(skin)), !!w && BLADE_DRAW.has(designFor(skin, w)));
 });
 game.on('swing', ({ who, heavy }) => { if (isPlayer(who)) sound.swing(heavy); });
 game.on('ability', ({ who, type }) => { if (isPlayer(who)) sound.ability(type); });

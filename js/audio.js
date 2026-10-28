@@ -183,6 +183,15 @@ const FALLOFF = {
 GUN_SOUNDS.headhunter = GUN_SOUNDS.sheriff;
 GUN_SOUNDS.tourdeforce = GUN_SOUNDS.operator;
 // Anything not listed sounds like the stock gun of its model.
+// Skins with their own sound set (`sounds` in skins.js) colour the gun's own shot, file or synth: Oathblade is
+// crisper and higher (sped up, brighter, a thin steel ping), Starspur thunkier and lower (slowed, warmer, a low thump).
+//   rate: playback speed / pitch   low, high: shelf gains in dB at 220 Hz / 3.5 kHz
+//   ping: [Hz, gain, decay] a ring on top   thunk: [from Hz, to Hz, decay, gain] a low knock under it
+const FIRE_TONE = {
+  oathblade: { rate: 1.12, low: -5, high: 6, ping: [5600, 0.04, 0.09] },
+  starspur: { rate: 0.88, low: 5, high: -5, thunk: [140, 60, 0.12, 0.16] },
+};
+
 const MODEL_SOUND = { pistol: 'classic', revolver: 'sheriff', smg: 'stinger', rifle: 'vandal', dmr: 'guardian', sniper: 'marshal', shotgun: 'judge', heavy: 'ares' };
 
 export class Sound {
@@ -365,8 +374,9 @@ export class Sound {
     return f.ref / (f.ref + f.roll * (d - f.ref));
   }
 
-  // gun (optional): the Gun firing, which keys the Ares / Odin spin-up whir per gun.
-  gunshot(def, pos, gun) {
+  // gun (optional): the Gun firing, which keys the Ares / Odin spin-up whir per gun. tone: the shooter's skin
+  // sound set, if it has one in FIRE_TONE.
+  gunshot(def, pos, gun, tone = null) {
     if (!this.ctx) return;
     const s = GUN_SOUNDS[def.id] || GUN_SOUNDS[MODEL_SOUND[def.model]];
     const clip = this.clip(`${def.id}:fire`);
@@ -390,14 +400,28 @@ export class Sound {
     send.gain.value = wet;
     send.connect(verb);
     const mix = c.createGain();
-    mix.connect(dest);
-    mix.connect(send);
+    const T = FIRE_TONE[tone];
+    let out = mix;
+    if (T) {
+      for (const [type, freq, gain] of [['lowshelf', 220, T.low], ['highshelf', 3500, T.high]]) {
+        const f = c.createBiquadFilter();
+        f.type = type; f.frequency.value = freq; f.gain.value = gain;
+        out.connect(f);
+        out = f;
+      }
+      const k = pos ? 1.6 : 0.55;
+      if (T.ping) this.tone({ dest: out, at: 0.002, freq: T.ping[0], decay: T.ping[2], gain: T.ping[1] * k, type: 'triangle' });
+      if (T.thunk) this.tone({ dest: out, freq: T.thunk[0], end: T.thunk[1], decay: T.thunk[2], gain: T.thunk[3] * k });
+    }
+    out.connect(dest);
+    out.connect(send);
     if (clip) {
       mix.gain.value = pos ? 1.2 : 0.6;
-      this.playClip(clip, mix);
+      const src = this.playClip(clip, mix);
+      if (T) src.playbackRate.value = T.rate;
       return;
     }
-    const v = 1 + (Math.random() - 0.5) * 0.06; // a little variation per shot so sprays don't sound looped
+    const v = (1 + (Math.random() - 0.5) * 0.06) * (T?.rate || 1); // a little variation per shot so sprays don't sound looped
     const g = s.gain * (pos ? 1.6 : 0.55);
     const L = (o) => this.noiseHit({ dest: mix, ...o, gain: o.gain * g });
     if (s.crack) L({ ...s.crack, hp: s.crack.hp * v, lp: s.crack.lp });
@@ -556,7 +580,7 @@ export class Sound {
     this.tone({ dest: this.master, at: at + 0.04, freq: 5150, end: 4800, decay: 0.35, gain: 0.025 * gain });
   }
 
-  // Oathblade pullout (~0.55 s): a low rush of air as it comes up, two quick bright rings of steel, the second
+  // Oathblade pullout when its sound file (sounds/oathblade-draw.mp3) isn't loaded (~0.55 s): a low rush of air as it comes up, two quick bright rings of steel, the second
   // higher and crisper as it locks into place, and a soft thump.
   bladeDraw() {
     const d = this.master;
@@ -570,11 +594,14 @@ export class Sound {
     this.noiseHit({ dest: d, at: 0.47, lp: 600, decay: 0.1, gain: 0.08 });
   }
 
-  // `blade`: the weapon draws like a blade (Oathblade), so it rings as it comes out.
-  equip(id, blade = false) {
+  // `skin`: the skin on the weapon. A skin can ship its own pullout sound (sounds/index.json, e.g. Oathblade's), which
+  // plays instead of the gun's; your own upload for the gun still wins. `blade`: it draws like a blade (Oathblade),
+  // so with no file it gets the synthesized blade draw.
+  equip(id, skin = null, blade = false) {
     if (!this.ctx) return;
     this.stopAction(); // swapping weapons cancels the reload or inspect
-    const clip = this.clip(`${id}:equip`);
+    const skinClip = skin && this.clips.get(`${skin}:equip@game`);
+    const clip = this.clips.get(`${id}:equip`) || skinClip || (!blade && this.clip(`${id}:equip`));
     if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
     if (blade) { this.bladeDraw(); return; }
     this.noiseHit({ dest: this.master, lp: 1500, hp: 400, decay: 0.08, gain: 0.12 });
