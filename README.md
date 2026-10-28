@@ -20,6 +20,8 @@ agent select: the pick rules, offline 5v5, and an online room with a player join
 checks that bots carry the spike out of spawn and plant it on Divide. `node tools/check-bot-wallbang.mjs` checks that bots
 stop shooting when their target ducks behind a wall, and still shoot when they can see it.
 `node tools/check-buy-drop.mjs` checks that buying over a carried-over gun drops it and buying over one bought this round sells it back.
+`node tools/check-economy.mjs [--offline] [--shots <dir>]` checks the 5v5 buy menu (credits, next-round minimum, loss bonus,
+team credits), weapon requests offline and online, and ultimate orbs; `--shots` saves pictures of the shop and an orb.
 `node tools/check-world.mjs` checks that the collision grid answers exactly like testing every box.
 `node tools/profile.mjs [seconds] [--shadows on] [--scale 1] [--cpu] [--spikes]` plays a 5v5 on Divide headless and reports
 the cost of a tick and a frame, draw calls and garbage. `node tools/check-net-smooth.mjs` measures how smoothly another player moves
@@ -57,6 +59,12 @@ Abilities work in both modes.
 - **5v5 rounds** (Divide): the match always has ten players. Each joiner takes a bot's place on the team
   with fewer humans, so people are split evenly and bots fill the rest. When someone leaves, a bot takes
   over their body. Buying, the spike, the economy and halftime run on the host.
+- **Buy menu (B, 5v5):** laid out like Valorant's: your credits, the least you'll have next round and the loss
+  bonus ladder along the top; guns in four columns with shields and abilities underneath; the team on the right
+  with each teammate's credits, gun, shield and weapon request. Click a gun you can't afford to request it, and
+  click a teammate's request to buy it for them: it drops at their feet with your skin. Bots ask for rifles when
+  the team is buying and they're short, and fill requests (yours too) from what they have left.
+- **Ultimate orbs:** hold F on one for 3 s for an ultimate point. A ring on the floor fills while you take it.
 - **Deathmatch:** free for all with bots, on any map.
 
 - **This browser (BroadcastChannel):** tabs and windows of the same browser on the same site. Nothing leaves

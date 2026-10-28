@@ -605,7 +605,7 @@ export class Sound {
   sting(kind) {
     if (!this.ctx) return;
     const d = this.master;
-    const seq = { planted: [[660, 0], [520, 0.18], [660, 0.36]], defused: [[520, 0], [780, 0.15]], win: [[523, 0], [659, 0.12], [784, 0.24]], loss: [[392, 0], [330, 0.16], [262, 0.32]], start: [[880, 0]] }[kind] || [];
+    const seq = { planted: [[660, 0], [520, 0.18], [660, 0.36]], defused: [[520, 0], [780, 0.15]], win: [[523, 0], [659, 0.12], [784, 0.24]], orb: [[784, 0], [1175, 0.07], [1568, 0.14]], gift: [[660, 0], [990, 0.09]], loss: [[392, 0], [330, 0.16], [262, 0.32]], start: [[880, 0]] }[kind] || [];
     for (const [f, at] of seq) this.tone({ dest: d, at, freq: f, decay: 0.28, gain: 0.2, type: 'triangle' });
     if (kind === 'detonate') { this.noiseHit({ dest: d, lp: 600, decay: 1.6, gain: 0.9, attack: 0.01 }); this.tone({ dest: d, freq: 90, end: 30, decay: 1.4, gain: 0.5, type: 'sawtooth' }); }
   }

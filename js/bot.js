@@ -139,6 +139,13 @@ export class Bot {
     inp.fwd = 0; inp.side = 0; inp.walk = false; inp.fire = false; inp.alt = false; inp.use = false;
     inp.crouch = this.crouchSpray;
     const mode = this.game.mode;
+    // A teammate bought us the gun we asked for: go and pick it up (it dropped where we stood).
+    const gift = mode && mode.phase !== 'end' && this.game.drops.find(d => d.for === me && d.gun.def.id !== me.inv[d.gun.def.slot]?.def.id);
+    if (gift && (mode.phase === 'buy' || now - this.lastSeen > 2)) {
+      this.moveTo(gift.pos, now, dt);
+      if (!this.path) this.steer(gift.pos[0] - me.pos[0], gift.pos[2] - me.pos[2], now);
+      return;
+    }
     if (mode && mode.phase === 'buy' && this.goal) { this.target = null; this.pursueGoal(now, dt); inp.fire = false; inp.use = false; return; } // defenders walk to their spots
     if (mode && (mode.phase === 'buy' || mode.phase === 'end')) { this.target = null; return; } // waiting behind the barrier / round over
 

@@ -1552,21 +1552,37 @@ export class Renderer {
     }
   }
 
-  // Ultimate orbs: a floating, spinning crystal on a small base until someone takes it.
+  // Ultimate orbs: a glowing core in a faceted shell with two orbiting rings, floating over a lit floor
+  // plate. While someone takes it the rings spin up and a ring on the floor fills; once taken it bursts.
   updateOrbs() {
     const orbs = this.game.mode?.orbs || [];
     if (this.orbList !== orbs) { // new round or new map: rebuild
       for (const o of this.orbObjs || []) this.scene.remove(o);
       this.orbList = orbs;
+      const C = 0x4fd1ff;
       this.orbObjs = orbs.map(o => {
         const g = new THREE.Group();
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 0.08, 16), new THREE.MeshStandardMaterial({ color: 0x2b2f36, metalness: 0.5, roughness: 0.5 }));
-        base.position.y = 0.04;
-        const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.2), new THREE.MeshStandardMaterial({ color: 0x9be8ff, emissive: 0x4fd1ff, emissiveIntensity: 1.4, transparent: true, opacity: 0.9 }));
-        const glow = new THREE.PointLight(0x4fd1ff, 1.5, 5);
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.44, 0.07, 6), new THREE.MeshStandardMaterial({ color: 0x232830, metalness: 0.6, roughness: 0.45 }));
+        base.position.y = 0.035;
+        const plate = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.58, 48), new THREE.MeshBasicMaterial({ color: C, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false }));
+        plate.rotation.x = -Math.PI / 2; plate.position.y = 0.02;
+        // Capture progress: a brighter ring that fills around the plate (drawn up to the share taken).
+        const progGeo = new THREE.RingGeometry(0.62, 0.72, 64, 1);
+        const prog = new THREE.Mesh(progGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
+        prog.rotation.x = -Math.PI / 2; prog.position.y = 0.025;
+        const core = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), new THREE.MeshBasicMaterial({ color: 0xe6fbff }));
+        const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(0.21, 0), new THREE.MeshStandardMaterial({ color: 0x9be8ff, emissive: C, emissiveIntensity: 1.2, transparent: true, opacity: 0.55, flatShading: true, depthWrite: false }));
+        const ringMat = new THREE.MeshBasicMaterial({ color: C, transparent: true, opacity: 0.9 });
+        const ring1 = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.012, 6, 48), ringMat);
+        const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.01, 6, 48), ringMat);
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.16, 0.85, 12, 1, true), new THREE.MeshBasicMaterial({ color: C, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
+        beam.position.y = 0.45;
+        const glow = new THREE.PointLight(C, 1.6, 5);
         glow.position.y = 0.9;
-        g.add(base, gem, glow);
-        g.userData = { gem };
+        const orb = new THREE.Group();
+        orb.add(core, shell, ring1, ring2);
+        g.add(base, plate, prog, beam, orb, glow);
+        g.userData = { orb, shell, ring1, ring2, prog, progGeo, beam, plate, glow, taken: o.taken, burst: 0 };
         g.position.set(...o.pos);
         this.scene.add(g);
         return g;
@@ -1574,11 +1590,32 @@ export class Renderer {
     }
     const t = this.game.time;
     orbs.forEach((o, i) => {
-      const g = this.orbObjs[i];
-      g.visible = !o.taken;
-      const gem = g.userData.gem;
-      gem.position.y = 0.9 + Math.sin(t * 2 + i) * 0.06;
-      gem.rotation.y = t * (o.prog > 0 ? 6 : 1.5); // spins up while someone takes it
+      const g = this.orbObjs[i], u = g.userData;
+      if (o.taken && !u.taken) u.burst = t; // just taken: burst
+      u.taken = o.taken;
+      const b = u.burst ? (t - u.burst) / 0.45 : 1;
+      g.visible = !o.taken || b < 1;
+      if (!g.visible) return;
+      const frac = Math.min(1, (o.prog || 0) / ROUND.orb);
+      const spin = 1 + frac * 7;
+      u.orb.position.y = 0.95 + Math.sin(t * 2 + i) * 0.05;
+      u.shell.rotation.y = t * 0.8 * spin; u.shell.rotation.x = t * 0.4;
+      u.ring1.rotation.set(Math.PI / 2 + Math.sin(t * 0.9 + i) * 0.5, t * 1.3 * spin, 0);
+      u.ring2.rotation.set(Math.cos(t * 1.1 + i) * 0.6, 0, t * 1.7 * spin);
+      u.progGeo.setDrawRange(0, Math.round(64 * frac) * 6);
+      u.prog.visible = frac > 0 && !o.taken;
+      u.glow.intensity = 1.6 + frac * 2;
+      if (o.taken) { // burst: swell and fade
+        const k = 1 + b * 1.6;
+        u.orb.scale.setScalar(k);
+        u.shell.material.opacity = 0.55 * (1 - b);
+        u.beam.visible = u.plate.visible = false;
+        u.glow.intensity = 4 * (1 - b);
+      } else {
+        u.orb.scale.setScalar(1 + frac * 0.15);
+        u.shell.material.opacity = 0.55;
+        u.beam.visible = u.plate.visible = true;
+      }
     });
   }
 
