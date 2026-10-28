@@ -26,7 +26,8 @@ team credits), weapon requests offline and online, and ultimate orbs; `--shots` 
 `node tools/profile.mjs [seconds] [--shadows on] [--scale 1] [--cpu] [--spikes]` plays a 5v5 on Divide headless and reports
 the cost of a tick and a frame, draw calls and garbage. `node tools/check-net-smooth.mjs` measures how smoothly another player moves
 on your screen online, with a jittery connection simulated.
-`node tools/check-spectate-sound.mjs` checks that a dead player spectating in 5v5 hears from the spectated
+`node tools/check-spike-sound.mjs [--offline]` checks the plant and defuse sounds (start, progress, halfway, finished and cancel),
+for bots, for you, and for a client hearing a bot on the host. `node tools/check-spectate-sound.mjs` checks that a dead player spectating in 5v5 hears from the spectated
 teammate's position. `node tools/render-guns.mjs [out-dir]` renders every gun's firing sound to WAV (through the game's own synth) so
 you can listen to and compare them outside the game.
 

@@ -132,6 +132,38 @@ function spikeBeeps() {
   if (game.time - lastBeep >= gap) { lastBeep = game.time; sound.beep(sp.pos, left < 10); }
 }
 
+// Plant and defuse cues, read off the spike every frame rather than from the host's events, so they sound the
+// same offline, on the host and on a client (whose spike comes from the host's snapshots), for bots and people.
+// Progress ticks run on a local clock from where the plant or defuse started, so 20 Hz snapshots don't make
+// them stutter.
+const SPIKE_TICK = { plant: 0.4, defuse: 0.35 };
+let spikeAct = null; // { kind: 'plant' | 'defuse', who, t0, p0, ticks }
+function spikeActionSounds() {
+  const m = game.mode, sp = m?.spike;
+  let kind = null, who = null, prog = 0;
+  if (sp?.state === 'carried' && m.phase === 'live' && sp.carrier && sp.plantProg > 0) { kind = 'plant'; who = sp.carrier; prog = sp.plantProg; }
+  else if (sp?.state === 'planted' && m.phase === 'planted' && sp.defuser) { kind = 'defuse'; who = sp.defuser; prog = sp.defuseProg; }
+  const where = (c) => (isEars(c) ? null : kind === 'defuse' || !c ? sp.pos : c.pos);
+  if (spikeAct && (spikeAct.kind !== kind || spikeAct.who !== who)) {
+    const a = spikeAct, pos = isEars(a.who) ? null : sp?.pos || a.who.pos;
+    spikeAct = null;
+    if (a.kind === 'plant' && sp?.state === 'planted') sound.spikeCue('plantDone', pos);
+    else if (a.kind === 'defuse' && sp?.state === 'defused') sound.spikeCue('defuseDone', pos);
+    else if (sp && sp.state !== 'exploded') sound.spikeCue('cancel', isEars(a.who) ? null : a.who.pos);
+  }
+  if (!kind) return;
+  const total = kind === 'plant' ? ROUND.plant : ROUND.defuse, step = SPIKE_TICK[kind];
+  if (!spikeAct) {
+    spikeAct = { kind, who, t0: game.time, p0: prog, ticks: Math.floor(prog / step) };
+    sound.spikeCue(kind === 'plant' ? 'plantStart' : 'defuseStart', where(who));
+    return;
+  }
+  const p = Math.min(total, spikeAct.p0 + game.time - spikeAct.t0), n = Math.floor(p / step);
+  if (n > spikeAct.ticks) { spikeAct.ticks = n; sound.spikeCue(kind === 'plant' ? 'plantTick' : 'defuseTick', where(who), p / total); }
+}
+game.on('defuseHalf', ({ mode }) => { const sp = mode.spike; if (sp?.pos) sound.spikeCue('defuseHalf', isEars(sp.defuser) ? null : sp.pos); });
+game.on('roundClear', () => { spikeAct = null; });
+
 // ---- pointer lock ----
 async function lock() {
   try {
@@ -1413,7 +1445,7 @@ function frame(t) {
     hud.specTarget = renderer.specTarget;
     hud.update(dt, look);
     inspectHint();
-    spikeBeeps(); rhud.update(dt); if (hud.buyOpen) rhud.updateHover(hud.cursor);
+    spikeBeeps(); spikeActionSounds(); rhud.update(dt); if (hud.buyOpen) rhud.updateHover(hud.cursor);
     minimap.update();
     const ear = ears();
     sound.setListener(ear.eye(), ear.yaw);
