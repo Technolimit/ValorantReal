@@ -3,12 +3,14 @@ import * as THREE from '../vendor/three.module.min.js';
 import { HFOV, VIEW_RECOIL, HITBOX, GUN_HEIGHT } from './config.js';
 import { gunModel, handsModel, studioEnv, ownGlow, poseMeleeParts, rocketModel, paintShellModel, bombletModel } from './models.js';
 import { MELEE, GUN_INSPECT, MODEL_INSPECTS, meleeId, inspectPose } from './melee.js';
-import { skinFor, skinFits, SKINS } from './skins.js';
+import { skinFor, skinFits, meleeSkin, SKINS } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
 import { BLADES, SMOKE, bloomTargets } from './abilities.js';
 
 // Blitz's Finale launcher, shown in the hands (and on her body) while the ultimate is out.
 const FINALE = { id: 'finale', name: 'Finale', cat: 'Ability', model: 'launcher', launcher: true };
+// Finisher effects a skin can name (`finisher` in skins.js), drawn by fxCollapse / fxLastLight below.
+const FINISHERS = ['collapse', 'lastLight'];
 import { ROUND } from './rounds.js';
 import { materialOf } from './map.js';
 import { dirFromAngles } from './entity.js';
@@ -541,14 +543,21 @@ export class Renderer {
     g.on('equip', ({ who, gun }) => {
       if (who === g.player) { this.vm.equipStart = performance.now(); this.vm.equipDur = gun.def.equip * 1000; this.resetRecoil(); this.cycle = null; }
     });
-    g.on('kill', ({ victim, killer }) => {
+    g.on('kill', ({ victim, killer, def }) => {
       const ch = this.characters.get(victim);
       if (ch) ch.deathT = performance.now();
       if (victim === g.player) this.deathCam = { killer, yaw: g.player.yaw, pitch: g.player.pitch, t: performance.now() };
+      this.queueFinisher(killer, victim, def);
+    });
+    // In 5v5 a finisher plays on the kill that ends the round (the round is called a moment after that kill).
+    g.on('roundEnd', ({ reason }) => {
+      const f = this.pendingFinisher;
+      this.pendingFinisher = null;
+      if (f && reason === 'eliminated' && g.time - f.at < 2) this.playFinisher(f.kind, f.victim, f.skin);
     });
     g.on('respawn', ({ who }) => {
       const ch = this.characters.get(who);
-      if (ch) { ch.deathT = 0; ch.group.visible = true; ch.group.rotation.set(0, 0, 0); }
+      if (ch) { ch.deathT = 0; ch.vanish = null; ch.group.visible = true; ch.group.rotation.set(0, 0, 0); ch.group.scale.setScalar(1); }
       if (who === g.player) { this.deathCam = null; this.resetRecoil(); }
     });
     g.on('start', () => { this.syncCharacters(); this.clearSmokes(); this.clearDecals(); });
@@ -784,6 +793,142 @@ export class Renderer {
       const k = (now - t0) / life;
       m.scale.setScalar(Math.max(0.01, r * (0.2 + 0.8 * Math.sqrt(k))));
       m.material.opacity = 0.35 * (1 - k);
+    });
+  }
+
+  // ---------- finishers ----------
+  // A kill with a finisher skin (`finisher` in skins.js): plays at once in deathmatch; in 5v5 it waits to see
+  // whether this kill ends the round. Any later kill replaces it.
+  queueFinisher(killer, victim, def) {
+    if (!killer || !victim || killer === victim || !def) return;
+    const skin = this.skinOf(killer, this.modelOf(killer, def.id)), kind = SKINS[skin]?.finisher;
+    const f = FINISHERS.includes(kind) ? { kind, skin, victim, at: this.game.time } : null;
+    if (this.game.mode) this.pendingFinisher = f;
+    else if (f) this.playFinisher(kind, victim, skin);
+  }
+
+  // Finishers take their colours from the skin (variant) that got the kill: its glow and its accent.
+  playFinisher(kind, victim, skin) {
+    const ch = this.characters.get(victim);
+    const pos = ch?.group.visible ? [ch.group.position.x, ch.group.position.y, ch.group.position.z] : [...victim.pos];
+    const s = SKINS[skin] || {}, col = { glow: s.glow?.color ?? 0x3fb4ff, accent: s.accent?.color ?? s.glow?.color ?? 0xb44dff };
+    this.lastFinisher = { kind, skin, at: this.game.time };
+    this.game.emit('finisher', { kind, pos });
+    if (kind === 'collapse') this.fxCollapse(pos, ch, col);
+    else if (kind === 'lastLight') this.fxLastLight(pos, ch, col);
+  }
+
+  // The body shrinks away to nothing over `dur` seconds, starting `delay` seconds from now.
+  vanishBody(ch, delay, dur) {
+    if (ch) ch.vanish = { start: performance.now() + delay * 1000, dur: dur * 1000 };
+  }
+
+  // Orbital: "Collapse". An orb in the accent colour swells at the body's chest with two rings in the glow colour orbiting it, the body is
+  // drawn into it, the rings close in, and the orb implodes to a point and pops in a flat shockwave.
+  fxCollapse(pos, ch, col) {
+    const c = [pos[0], pos[1] + 1.0, pos[2]], t0 = this.game.time, life = 2.4, implode = 1.6;
+    const add = (col, o = 0.85) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const g = new THREE.Group();
+    g.position.set(...c);
+    const shell = new THREE.Color(col.accent).multiplyScalar(0.75), hot = new THREE.Color(col.accent).lerp(new THREE.Color(0xffffff), 0.7);
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: shell, transparent: true, opacity: 0.85, depthWrite: false }));
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12), add(hot, 0.9));
+    core.material.depthTest = false; // the hot core shows through the shell
+    orb.add(core);
+    const rings = [0, 1].map(i => {
+      const r = new THREE.Mesh(new THREE.TorusGeometry(1, 0.025, 8, 48), add(col.glow, 0.9));
+      r.rotation.set(Math.PI / 2 + (i ? 0.7 : -0.5), i ? 0.4 : -0.3, 0);
+      g.add(r);
+      return r;
+    });
+    g.add(orb);
+    this.vanishBody(ch, 0.35, 1.0);
+    let popped = false;
+    this.fxAdd(g, t0 + life, (now) => {
+      const t = now - t0;
+      const grow = Math.min(1, t / 0.6), shut = Math.max(0, Math.min(1, (t - implode + 0.25) / 0.25));
+      orb.scale.setScalar(Math.max(0.001, (0.18 + 0.3 * grow + 0.04 * Math.sin(t * 22)) * (1 - shut)));
+      rings.forEach((r, i) => {
+        const rad = Math.max(0.001, (1.0 - 0.35 * grow) * (1 - shut));
+        r.scale.setScalar(rad);
+        r.rotation.z += (i ? 0.12 : -0.15);
+        r.material.opacity = 0.9 * (1 - shut);
+      });
+      if (!popped && t >= implode) {
+        popped = true;
+        this.fxBurst(c, col.accent, 3.2, 0.45);
+        this.fxBurst(c, col.glow, 1.6, 0.3, true);
+        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], col.glow, 3.5, 0.7);
+        this.burst(c, null, new THREE.Color(col.accent).toArray(), 24, 4);
+      }
+      g.visible = !popped;
+    });
+  }
+
+  // Starspur: "Last Light". A star in the accent colour rises spinning out of the body while a dust ring in the glow colour rolls out
+  // along the ground and the body burns away; the star flares like a low sun and leaves a star brand on the
+  // floor that fades.
+  fxLastLight(pos, ch, col) {
+    const t0 = this.game.time, life = 3.2, flare = 1.7;
+    const add = (col, o) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const starGeo = (R, r = R * 0.45) => {
+      const sh = new THREE.Shape();
+      for (let i = 0; i < 10; i++) {
+        const a = Math.PI / 2 + (i / 10) * Math.PI * 2, d = i % 2 ? r : R;
+        i ? sh.lineTo(Math.cos(a) * d, Math.sin(a) * d) : sh.moveTo(Math.cos(a) * d, Math.sin(a) * d);
+      }
+      return new THREE.ShapeGeometry(sh);
+    };
+    const g = new THREE.Group();
+    g.position.set(pos[0], pos[1], pos[2]);
+    const star = new THREE.Mesh(starGeo(0.42), new THREE.MeshBasicMaterial({ color: col.accent, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }));
+    const halo = new THREE.Mesh(starGeo(0.62, 0.2), add(col.glow, 0.55));
+    halo.position.z = -0.01;
+    star.add(halo);
+    g.add(star);
+    const dust = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 48), add(col.glow, 0.6));
+    dust.rotation.x = -Math.PI / 2;
+    dust.position.y = 0.04;
+    const brand = new THREE.Mesh(starGeo(0.75), add(col.accent, 0.0));
+    brand.rotation.x = -Math.PI / 2;
+    brand.position.y = 0.03;
+    g.add(dust, brand);
+    this.vanishBody(ch, 0.3, 1.1);
+    this.burst([pos[0], pos[1] + 0.9, pos[2]], null, new THREE.Color(col.accent).toArray(), 16, 2.5);
+    let flared = false;
+    this.fxAdd(g, t0 + life, (now) => {
+      const t = now - t0;
+      const rise = Math.min(1, t / flare);
+      star.position.y = 0.4 + 1.4 * (1 - (1 - rise) * (1 - rise));
+      star.rotation.y = t * (4 + 6 * rise);
+      const pop = Math.max(0, t - flare);
+      star.scale.setScalar(Math.max(0.001, Math.min(1, t / 0.3) + pop * 3));
+      star.material.opacity = 0.95 * Math.max(0, 1 - pop / 0.35);
+      halo.material.opacity = 0.5 * Math.max(0, 1 - pop / 0.35);
+      const roll = Math.min(1, t / 1.4);
+      dust.scale.setScalar(0.3 + 2.2 * roll);
+      dust.material.opacity = 0.6 * (1 - roll);
+      dust.rotation.z = t * 2;
+      brand.material.opacity = 0.7 * Math.min(1, Math.max(0, (t - 0.8) / 0.4)) * Math.max(0, 1 - (t - 2.0) / 1.2);
+      if (!flared && t >= flare) {
+        flared = true;
+        const p = [pos[0], pos[1] + 1.8, pos[2]];
+        this.fxBurst(p, col.accent, 3, 0.5);
+        this.burst(p, null, new THREE.Color(col.glow).toArray(), 22, 3.5);
+      }
+    });
+  }
+
+  // A flat ring rolling out along the ground.
+  fxShock(pos, color, r, life) {
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(...pos);
+    const t0 = this.game.time;
+    this.fxAdd(m, t0 + life, (now) => {
+      const k = (now - t0) / life;
+      m.scale.setScalar(Math.max(0.01, r * Math.sqrt(k)));
+      m.material.opacity = 0.7 * (1 - k);
     });
   }
 
@@ -1202,6 +1347,7 @@ export class Renderer {
 
   // The skin a combatant shows on a weapon: yours from settings, bots' and other players' from their skinMap.
   skinOf(c, weaponId) {
+    if (meleeSkin(weaponId)) return meleeSkin(weaponId); // a melee type always wears its own theme
     if (!c) return 'standard';
     if (c === this.game.player) return skinFor(this.settings, weaponId);
     const id = c.skinMap?.[weaponId] || c.skinMap?.all;
@@ -1886,6 +2032,11 @@ export class Renderer {
           const t = (now - ch.deathT) / 450;
           ch.group.rotation.x = -Math.min(1, t) * Math.PI / 2 * 0.9;
           if (t > 2.5 && !this.game.mode) ch.group.visible = false; // in 5v5 bodies stay for the round
+          if (ch.vanish) { // a finisher takes the body
+            const k = Math.min(1, Math.max(0, (now - ch.vanish.start) / ch.vanish.dur));
+            ch.group.scale.setScalar(Math.max(0.001, 1 - k * k));
+            if (k >= 1) ch.group.visible = false;
+          }
         } else ch.group.visible = false;
         continue;
       }

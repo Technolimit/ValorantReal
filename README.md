@@ -106,19 +106,40 @@ the game (stored in the browser's localStorage). **Maps → Download** saves any
 
 ## Skins (all client-side)
 
-16 preset finishes plus a **custom skin editor** (Skins → New custom skin): colours, roughness and
-metallic for each part, 13 procedural patterns with their own colours, and glow. Custom skins are saved in
-localStorage and can be shared as a `TFSKIN1.…` code or exported/imported as JSON. Bots wear random
-presets, and other online players see your skins.
+**Skins** opens a Valorant-style **collection**: every weapon drawn in the skin it wears, grouped by type, with
+one card for your melee. Pick a weapon to open its screen: a big preview you can drag to turn, its skins down the
+side, the skin's **colour variants** as swatches bottom-left, and **Equip** bottom-right (clicking around only
+previews; nothing changes until you equip). Esc or Back returns to the collection.
+
+The gun skins are **Standard Issue**, **Ember Circuit** and **Glacier**, plus two model skins with four colour
+variants each, plus a **custom skin editor** (New custom skin): colours, roughness and metallic for each part, 13
+procedural patterns with their own colours, and glow. Custom skins are saved in localStorage and can be shared as a
+`TFSKIN1.…` code or exported/imported as JSON. Bots wear random presets, and other online players see your skins.
 
 **Model skins** replace the gun itself, not just its paint: a skin's `models` maps a weapon to its own design in
 `js/models.js`, which brings its own inspect (`MODEL_INSPECTS` in `js/melee.js`) and reload (keyed by the design in
-`js/reloadanim.js`), and the skin menu only offers it on those weapons. The first is **Orbital** (Vandal): a
-purple and gold receiver with a reactor ring on top holding a glowing orb. Inspect floats the orb out of the
-ring while the gun is turned side-on in front of you; reload pops the spent orb out and seats a fresh one.
+`js/reloadanim.js`), and the skin screen only offers it on those weapons. A skin's `variants` are recolours of it
+(registered as `<skin>~1`, `~2`, …).
 
-**Melee types** (Skins → Melee): Tactical Knife, Hatchet, Katana, Karambit, Balisong, Kunai and Arc Blade.
-Picking one equips it in your knife slot (they all hit like the knife; it's cosmetic), and each takes any
-finish. Each has three inspects (`js/melee.js`): press **Y** to inspect, press it again mid-inspect to chain
-into the next one, and hold it to examine the weapon with the mouse. The skin menu's *Play inspect* button
-previews them. Bots carry random melee types, and other online players see yours.
+- **Orbital** (Vandal; Violet, Solar, Glacial, Eclipse): a receiver with a reactor ring on top holding a glowing
+  orb. Inspect floats the orb out of the ring; reload pops the spent orb out and seats a fresh one.
+- **Starspur** (Sheriff, Marshal, Judge, and the Bowie melee; Frontier, Dusk Rider, Silver Dollar, Red Mesa): an
+  original space-western set in bone enamel, copper and star-fire glow, every gun with a spur rowel that spins.
+  Sheriff: long octagonal barrel, six lit chambers; inspects *Gunslinger* (twirled twice on the trigger finger)
+  and *Cylinder roll* (drum swung out and spun up). Marshal: lit under-tube and a rowel bolt knob; *Long look*
+  and *Spur cock*. Judge: twin barrels and a five-chamber drum; *Drum roll* and *Barrels up*.
+
+**Finishers**: Orbital's *Collapse* (the body is drawn into an orb that implodes in a shockwave) and Starspur's
+*Last Light* (a star rises spinning out of the body, flares, and leaves a star brand on the floor). They play on
+every kill in deathmatch and, as in Valorant, on the kill that ends the round in 5v5, in the colours of the variant
+that got the kill. Everyone in the match sees them.
+
+**Melee types** (the Melee card): Tactical Knife, Hatchet, Katana, Karambit, Balisong, Kunai, Arc Blade and the
+Starspur Bowie. Each comes in one theme of its own (Standard Issue, Heirloom, Damascus, Nightglass, Tiger Stripe,
+Hexcore, Nebula, Starspur); equipping one puts it in your knife slot (they all hit like the knife). Each has its
+own inspects (`js/melee.js`): press **Y** to inspect, press it again mid-inspect to chain into the next one, and
+hold it to examine the weapon with the mouse. The skin screen's *Play inspect* button previews them. Bots carry
+random melee types, and other online players see yours.
+
+`node tools/check-skins.mjs [shots-dir]` checks the skin list, the collection and weapon screens, variants, the
+Starspur models with their inspects and reloads, and finishers.

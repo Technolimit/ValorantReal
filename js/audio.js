@@ -610,6 +610,24 @@ export class Sound {
     if (kind === 'detonate') { this.noiseHit({ dest: d, lp: 600, decay: 1.6, gain: 0.9, attack: 0.01 }); this.tone({ dest: d, freq: 90, end: 30, decay: 1.4, gain: 0.5, type: 'sawtooth' }); }
   }
 
+  // Finishers (render.js): Collapse hums up and implodes with a thump; Last Light is a ricochet whine, a
+  // jingle of spur rowels, then a bright chord as the star flares.
+  finisher(kind, pos) {
+    if (!this.ctx) return;
+    const d = this.out(pos, 'other');
+    if (kind === 'collapse') {
+      this.tone({ dest: d, freq: 140, end: 620, decay: 1.55, gain: 0.16, type: 'sawtooth' });
+      this.tone({ dest: d, freq: 280, end: 1240, decay: 1.55, gain: 0.08 });
+      this.noiseHit({ dest: d, at: 1.6, lp: 900, decay: 0.6, gain: 0.7, attack: 0.005 });
+      this.tone({ dest: d, at: 1.6, freq: 1400, end: 120, decay: 0.5, gain: 0.25 });
+    } else if (kind === 'lastLight') {
+      this.tone({ dest: d, freq: 2600, end: 900, decay: 0.55, gain: 0.12, type: 'triangle' });
+      for (const [f, at] of [[2093, 0.35], [2637, 0.5], [3136, 0.65], [2637, 0.8]]) this.tone({ dest: d, at, freq: f, decay: 0.22, gain: 0.08, type: 'triangle' });
+      this.noiseHit({ dest: d, at: 1.55, hp: 1500, lp: 9000, decay: 0.5, gain: 0.25, attack: 0.15 });
+      for (const f of [440, 554, 659]) this.tone({ dest: d, at: 1.7, freq: f, decay: 1.0, gain: 0.1, type: 'triangle' });
+    }
+  }
+
   smoke(pos) {
     if (!this.ctx) return;
     this.noiseHit({ dest: this.out(pos), lp: 1200, hp: 150, decay: 0.7, gain: 0.5, attack: 0.08 });

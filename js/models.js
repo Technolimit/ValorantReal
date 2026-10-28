@@ -195,6 +195,16 @@ function scope(k, z, y, r, len) {
   return cy;
 }
 
+// A star of `n` tapered points in the side (y-z) plane, facing out along x: Starspur's spur rowels and inlays.
+// `hub` paints a small axle through the middle (spur rowels spin on it).
+function star(k, x, y, z, r, slot, hub = null, n = 5, t = 0.0035) {
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * PI * 2;
+    k.cyl(0.0004, r, slot, x, y + Math.cos(a) * r / 2, z + Math.sin(a) * r / 2, 4, a, 0, 0, t);
+  }
+  if (hub) k.cyl(r * 0.3, 0.007, hub, x, y, z, 10, 0, 0, PI / 2);
+}
+
 // ---------- weapon designs ----------
 // Each returns { muzzle: [x, y, z], sightY } and adds its parts to the kit.
 const DESIGNS = {
@@ -284,6 +294,24 @@ const DESIGNS = {
     k.box(0.0035, 0.012, 0.43, 'lens', 0, 0.0, -0.26);
     k.part('w');
     return { muzzle: [0, 0, -0.45], sightY: 0 };
+  },
+
+  // Starspur Bowie: a clip-point blade with a teal edge and copper spine, a copper guard with a spur rowel
+  // (part `rowel`) hung under it, bone handle with leather wraps and a copper pommel.
+  bowie(k) {
+    k.prof([[-0.03, 0.015], [-0.17, 0.017], [-0.2, 0.012], [-0.252, 0.004], [-0.236, -0.006], [-0.2, -0.014], [-0.12, -0.017], [-0.03, -0.015]], 0.006, 'metal', 0, 0.001);
+    k.prof([[-0.05, -0.0145], [-0.12, -0.0168], [-0.2, -0.0142], [-0.236, -0.0062], [-0.25, 0.003], [-0.23, -0.002], [-0.2, -0.0105], [-0.12, -0.0128], [-0.05, -0.0112]], 0.0068, 'glow', 0, 0.0004);
+    k.box(0.0068, 0.003, 0.13, 'trim', 0, 0.0165, -0.1);
+    k.box(0.016, 0.052, 0.012, 'trim', 0, 0, -0.022);
+    k.ball(0.006, 'accent', 0, 0.028, -0.022);
+    k.part('rowel', [0, -0.042, -0.022], 'w');
+    star(k, 0, -0.042, -0.022, 0.014, 'trim', 'accent', 6);
+    k.part('w');
+    k.cyl(0.0135, 0.1, 'body', 0, 0, 0.035, 8);
+    k.teeth(3, 0.005, 0.065, 0.029, 0.029, 0.007, 'grip', 0, 0);
+    k.cyl(0.016, 0.018, 'trim', 0, 0, 0.094, 8);
+    k.tor(0.0163, 0.0016, 'glow', 0, 0, 0.094);
+    return { muzzle: [0, 0, -0.25], sightY: 0 };
   },
 
   // Finale: a shoulder-fired launcher, painted like the rest of Blitz's gear. The loaded rocket's warhead
@@ -671,6 +699,110 @@ const DESIGNS = {
     k.box(0.052, 0.012, 0.022, 'metal', 0, 0.03, 0.305);
     irons(k, -0.47, 0.0, 0.066);
     return { muzzle: [0, 0.014, -0.64], sightY: 0.076 };
+  },
+
+  // ---- Starspur collection (model skins, see skins.js): bone enamel, copper, teal chambers, spur rowels ----
+  // Sheriff: long octagonal barrel with cooling fins, a drum with six lit chambers (part `cyl`) and a spur
+  // rowel for a hammer (part `spur`). The whole gun is part `w`, pivoting on the trigger guard, so the
+  // inspect can twirl it on your finger.
+  sheriffSpur(k) {
+    k.part('w', [0, -0.02, 0.008]);
+    k.prof([[0.045, 0.0], [0.045, 0.05], [0.02, 0.06], [-0.04, 0.056], [-0.04, -0.008], [0.03, -0.02]], 0.03, 'trim');
+    k.box(0.026, 0.01, 0.1, 'body', 0, 0.061, -0.005);
+    k.cyl(0.0125, 0.25, 'metal', 0, 0.032, -0.165, 8);
+    k.box(0.012, 0.012, 0.25, 'body', 0, 0.047, -0.165);
+    k.box(0.0124, 0.003, 0.22, 'glow', 0, 0.0545, -0.16);
+    k.box(0.018, 0.014, 0.19, 'body', 0, 0.013, -0.135);
+    k.box(0.0185, 0.003, 0.15, 'accent', 0, 0.007, -0.13);
+    for (const z of [-0.232, -0.248, -0.264]) k.cyl(0.0175, 0.005, 'trim', 0, 0.032, z, 8);
+    k.cyl(0.0145, 0.014, 'trim', 0, 0.032, -0.284, 8);
+    k.tor(0.0105, 0.0026, 'glow', 0, 0.032, -0.292);
+    k.part('cyl', [0, 0.027, -0.005], 'w');
+    k.cyl(0.03, 0.062, 'metal', 0, 0.027, -0.005, 12);
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * PI * 2; k.cyl(0.0058, 0.064, 'glow', Math.cos(a) * 0.019, 0.027 + Math.sin(a) * 0.019, -0.005, 8); }
+    k.tor(0.0302, 0.0028, 'accent', 0, 0.027, -0.005);
+    k.part('spur', [0, 0.066, 0.05], 'w');
+    star(k, 0, 0.066, 0.05, 0.017, 'trim', 'accent', 6);
+    k.part('w');
+    k.prof([[0.03, -0.01], [0.075, -0.035], [0.105, -0.11], [0.065, -0.12], [0.03, -0.06], [0.005, -0.02]], 0.034, 'grip');
+    for (const x of [-0.0175, 0.0175]) star(k, x, -0.065, 0.058, 0.012, 'accent');
+    k.box(0.036, 0.01, 0.046, 'trim', 0, -0.117, 0.086, -0.25);
+    k.box(0.022, 0.005, 0.045, 'trim', 0, -0.026, 0.008);
+    k.box(0.005, 0.018, 0.005, 'metal', 0, -0.015, 0.0, 0.3);
+    k.box(0.004, 0.012, 0.01, 'trim', 0, 0.06, -0.276);
+    k.box(0.003, 0.004, 0.004, 'glow', 0, 0.067, -0.276);
+    for (const x of [-0.006, 0.006]) k.box(0.005, 0.01, 0.008, 'trim', x, 0.07, 0.03);
+    k.part(null);
+    shell(k, 0.006, 0.04);
+    return { muzzle: [0, 0.032, -0.298], sightY: 0.069 };
+  },
+
+  // Marshal: copper receiver, long bone forend with copper bands, a teal-lit tube under the barrel, a copper
+  // scope, and a star rowel for a bolt knob (part `rowel`, inside `bolt`).
+  marshalSpur(k) {
+    k.prof([[0.06, -0.022], [0.06, 0.044], [-0.22, 0.044], [-0.24, 0.018], [-0.24, -0.022]], 0.046, 'trim');
+    k.box(0.047, 0.004, 0.2, 'glow', 0, 0.014, -0.09);
+    for (const x of [-0.0235, 0.0235]) star(k, x, 0.0, -0.17, 0.014, 'accent');
+    k.prof([[-0.04, -0.022], [-0.04, 0.008], [-0.56, 0.008], [-0.56, -0.014], [-0.3, -0.032]], 0.048, 'body');
+    for (const z of [-0.3, -0.46]) k.box(0.05, 0.03, 0.012, 'trim', 0, -0.006, z);
+    k.cyl(0.0105, 0.5, 'metal', 0, 0.02, -0.56, 8);
+    k.cyl(0.0072, 0.22, 'glow', 0, 0.0, -0.67, 10);
+    k.box(0.02, 0.034, 0.012, 'trim', 0, 0.01, -0.775);
+    k.cyl(0.016, 0.05, 'trim', 0, 0.02, -0.81, 8);
+    for (const z of [-0.8, -0.815]) k.box(0.034, 0.005, 0.006, 'metal', 0, 0.02, z);
+    k.tor(0.0115, 0.0025, 'glow', 0, 0.02, -0.836);
+    k.part('bolt', [0.012, 0.03, 0.03]);
+    k.cyl(0.005, 0.04, 'metal', 0.03, 0.03, 0.03, 8, 0, 0, PI / 2);
+    k.part('rowel', [0.052, 0.03, 0.03], 'bolt');
+    star(k, 0.052, 0.03, 0.03, 0.013, 'trim', 'glow', 6);
+    k.part(null);
+    k.part('mag');
+    k.box(0.026, 0.05, 0.04, 'metal', 0, -0.045, -0.1);
+    k.box(0.027, 0.006, 0.041, 'trim', 0, -0.07, -0.1);
+    k.part(null);
+    shell(k, 0.0065, 0.055);
+    k.prof([[0.06, 0.03], [0.32, 0.02], [0.33, -0.09], [0.29, -0.09], [0.14, -0.05], [0.09, -0.1], [0.05, -0.09], [0.07, -0.03], [0.06, -0.02]], 0.044, 'body');
+    k.box(0.0455, 0.06, 0.032, 'grip', 0, -0.074, 0.114, 0.78);
+    k.box(0.046, 0.112, 0.014, 'trim', 0, -0.035, 0.33);
+    for (const x of [-0.0225, 0.0225]) star(k, x, -0.02, 0.235, 0.016, 'accent');
+    k.box(0.024, 0.005, 0.05, 'trim', 0, -0.03, 0.02);
+    const sy = scope(k, -0.08, 0.044, 0.02, 0.24);
+    return { muzzle: [0, 0.02, -0.84], sightY: sy };
+  },
+
+  // Judge: a coach-gun take on the drum shotgun: twin barrels with copper bands, a copper-rimmed drum with
+  // five lit chambers (part `mag`), a spur rowel on the left of the receiver (part `spur`), bone and leather.
+  judgeSpur(k) {
+    k.prof([[0.22, -0.03], [0.22, 0.06], [0.02, 0.07], [-0.08, 0.07], [-0.2, 0.05], [-0.2, -0.03]], 0.064, 'body');
+    k.box(0.0655, 0.026, 0.4, 'metal', 0, -0.018, 0.01);
+    k.box(0.066, 0.022, 0.2, 'trim', 0, 0.012, 0.05);
+    k.box(0.067, 0.004, 0.2, 'glow', 0, 0.025, 0.05);
+    shell(k, 0.012, 0.06);
+    k.part('mag', [0, -0.066, -0.03]);
+    k.cyl(0.048, 0.06, 'metal', 0, -0.066, -0.03, 10, 0, 0, PI / 2);
+    for (let i = 0; i < 5; i++) { const a = (i / 5) * PI * 2; k.cyl(0.0085, 0.062, 'glow', 0, -0.066 + Math.cos(a) * 0.029, -0.03 + Math.sin(a) * 0.029, 8, 0, 0, PI / 2); }
+    for (const x of [-0.031, 0.031]) k.tor(0.046, 0.0035, 'trim', x, -0.066, -0.03, 0, PI / 2, 0);
+    k.part(null);
+    charger(k, -0.06, 0.04, -0.036);
+    k.part('spur', [-0.036, 0.03, 0.12]);
+    star(k, -0.036, 0.03, 0.12, 0.016, 'trim', 'accent', 6);
+    k.part(null);
+    for (const x of [-0.0125, 0.0125]) {
+      k.cyl(0.012, 0.24, 'metal', x, 0.026, -0.31, 10);
+      k.tor(0.0092, 0.0022, 'glow', x, 0.026, -0.431);
+    }
+    k.box(0.05, 0.006, 0.22, 'body', 0, 0.041, -0.3);
+    for (const z of [-0.24, -0.39]) k.box(0.052, 0.03, 0.012, 'trim', 0, 0.026, z);
+    k.box(0.006, 0.02, 0.008, 'trim', 0, 0.054, -0.41);
+    k.box(0.004, 0.005, 0.005, 'glow', 0, 0.066, -0.41);
+    k.box(0.03, 0.06, 0.03, 'grip', 0, -0.05, -0.14);
+    k.box(0.036, 0.1, 0.044, 'grip', 0, -0.06, 0.08, -0.22);
+    k.box(0.024, 0.005, 0.05, 'trim', 0, -0.035, 0.03);
+    k.prof([[0.22, 0.05], [0.36, 0.035], [0.37, -0.075], [0.33, -0.08], [0.24, -0.03], [0.22, -0.03]], 0.046, 'body');
+    k.box(0.048, 0.112, 0.014, 'trim', 0, -0.02, 0.37);
+    for (const x of [-0.0235, 0.0235]) star(k, x, -0.012, 0.3, 0.014, 'accent');
+    for (const x of [-0.008, 0.008]) k.box(0.005, 0.012, 0.008, 'trim', x, 0.068, 0.05);
+    return { muzzle: [0, 0.026, -0.435], sightY: 0.069 };
   },
 
   warden(k) {
@@ -1092,6 +1224,48 @@ export function studioEnv(renderer) {
   envCache.set(renderer, tex);
   return tex;
 }
+
+// ---------- skin menu thumbnails ----------
+// A side-on picture of a weapon in a skin (a data URL), drawn once per weapon and skin on a small renderer of its
+// own and cached: the collection grid shows one per weapon.
+let thumbKit = null;
+const thumbCache = new Map();
+export function gunThumb(weaponId, skinId) {
+  const key = weaponId + '|' + skinId;
+  if (thumbCache.has(key)) return thumbCache.get(key);
+  if (!thumbKit) {
+    const canvas = document.createElement('canvas');
+    const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+    r.setSize(360, 120, false);
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xe8f0ff, 0x30302c, 1.4));
+    const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(1, 1.5, 1); scene.add(key);
+    const rim = new THREE.DirectionalLight(0x9fc8ff, 1.6); rim.position.set(-1.5, 0.6, -1); scene.add(rim);
+    scene.environment = studioEnv(r);
+    thumbKit = { r, scene, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 10) };
+  }
+  const { r, scene, cam } = thumbKit;
+  const m = gunModel(weaponId, skinId, { noHands: true });
+  for (const h of m.userData.hands || []) h.parent.remove(h); // hidden meshes still count toward the bounds
+  if (m.userData.parts.shell) m.userData.parts.shell.parent.remove(m.userData.parts.shell);
+  if (MELEE[weaponId]) m.children.filter(c => c.material === skinMaterials(skinId).sleeve || c.material === skinMaterials(skinId).glove).forEach(c => m.remove(c));
+  m.rotation.set(0.05, PI / 2, MELEE[weaponId] ? -0.5 : 0, 'YXZ'); // muzzle to the left, as in the game's collection
+  scene.add(m);
+  const box = new THREE.Box3().setFromObject(m), c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+  const aspect = 3, half = Math.max(size.x / 2 / aspect, size.y / 2) * 1.08;
+  Object.assign(cam, { left: -half * aspect, right: half * aspect, top: half, bottom: -half });
+  cam.position.set(c.x, c.y, c.z + 2);
+  cam.lookAt(c);
+  cam.updateProjectionMatrix();
+  r.render(scene, cam);
+  const url = r.domElement.toDataURL('image/png');
+  scene.remove(m);
+  m.traverse(o => o.geometry?.dispose());
+  thumbCache.set(key, url);
+  return url;
+}
+// A custom skin that is edited or deleted draws fresh pictures.
+onSkinsChanged((id) => { for (const k of thumbCache.keys()) if (k.endsWith('|' + id)) thumbCache.delete(k); });
 
 // ---------- skin menu preview ----------
 export class GunPreview {

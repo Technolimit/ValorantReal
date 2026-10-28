@@ -9,7 +9,7 @@ import { Bot, BOT_NAMES } from './bot.js';
 import { Kit, AGENT_ORDER, smokeBlocks, SMOKE, SLAB, insideSlab } from './abilities.js';
 import { dirFromAngles as dirOf } from './entity.js';
 import { netStep } from './net.js';
-import { SKINS, SKIN_ORDER } from './skins.js';
+import { SKINS, SKIN_ORDER, variantsOf } from './skins.js';
 
 const TURRET = { id: 'sentry', name: 'Sentry', cat: 'Ability', dmg: [[50, 0, 0, 0]] };
 const BOOMER = { id: 'boomer', name: 'Boomer', cat: 'Ability', dmg: [[50, 0, 0, 0]] };
@@ -129,7 +129,11 @@ export class Game {
       // Most bots run a skin: one preset across their guns (cosmetic only).
       if (Math.random() < 0.7) c.skinMap = { all: botSkins[Math.floor(Math.random() * botSkins.length)] };
       // Some also run a model skin on the gun it's made for (an Orbital Vandal).
-      for (const sid of modelSkins) if (Math.random() < 0.2) for (const w of Object.keys(SKINS[sid].models)) (c.skinMap ||= {})[w] = sid;
+      for (const sid of modelSkins) {
+        if (Math.random() >= 0.2) continue;
+        const pick = variantsOf(sid)[Math.floor(Math.random() * variantsOf(sid).length)]; // in any of its colours
+        for (const w of Object.keys(SKINS[sid].models)) (c.skinMap ||= {})[w] = pick;
+      }
       this.combatants.push(c);
       this.bots.push(c);
     }
