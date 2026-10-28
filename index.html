@@ -112,6 +112,8 @@ button { font: inherit; }
 .ab.ult.ready { border-color: #ffd54a; box-shadow: 0 0 12px rgba(255, 213, 74, 0.5); }
 .ab.ult.ready b { color: #ffd54a; }
 .ab.ult .pips i.on { background: #ffd54a; }
+.ab.ult.gain { animation: ultgain 1s ease-out; }
+@keyframes ultgain { 0% { box-shadow: 0 0 0 0 rgba(79, 209, 255, 0.9); border-color: #7fe3ff; } 100% { box-shadow: 0 0 0 14px rgba(79, 209, 255, 0); } }
 .ab.flash { border-color: var(--text); }
 @media (max-width: 1100px) { #abilities { bottom: 92px; } }
 #blind { position: absolute; inset: 0; background: #fff; opacity: 0; }
@@ -211,23 +213,93 @@ th { color: var(--muted); font-weight: 500; }
 #rchannel i { display: block; height: 6px; margin-top: 4px; background: rgba(255, 255, 255, 0.2); }
 #rchannel i b { display: block; height: 100%; background: #ffd54a; }
 #rcredits { position: absolute; right: 24px; bottom: 118px; font-size: 18px; font-weight: 700; color: #ffd54a; text-shadow: 0 1px 3px #000; }
+#rnotice { position: absolute; left: 20px; top: 38%; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+#rnotice div { padding: 5px 10px; background: rgba(15, 25, 35, 0.75); border-left: 2px solid #ffd54a; font-size: 12px; text-shadow: 0 1px 2px #000; animation: rnin .2s ease-out; }
+#rnotice b.rq { color: #ffd54a; }
+@keyframes rnin { from { opacity: 0; transform: translateX(-8px); } }
 #rhint { position: absolute; top: 66%; left: 50%; transform: translateX(-50%); font-size: 13px; letter-spacing: 1px; color: var(--text); text-shadow: 0 1px 3px #000; pointer-events: none; }
-#shop { position: absolute; inset: 5vh 3vw; background: rgba(12, 20, 28, 0.95); border: 1px solid var(--line); padding: 16px 20px; overflow: auto; pointer-events: auto; }
-.shop-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 12px; }
-.shop-head h2 { margin: 0; letter-spacing: 3px; text-transform: uppercase; }
-#shop-credits { font-size: 22px; font-weight: 700; color: #ffd54a; }
-.shop-head p { flex: 1; margin: 0; color: var(--muted); font-size: 12px; }
-#shop-close { background: none; border: 1px solid var(--line); color: var(--text); padding: 6px 12px; cursor: pointer; }
-#shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
-#shop-grid h3 { margin: 0 0 6px; font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
-.scard { display: grid; grid-template-columns: 1fr auto; width: 100%; margin-bottom: 5px; padding: 7px 9px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--text); text-align: left; cursor: pointer; font: inherit; }
-.scard .n { font-weight: 600; font-size: 13px; } .scard .c { color: #ffd54a; font-size: 12px; }
-.scard .s { grid-column: span 2; color: var(--muted); font-size: 10.5px; margin-top: 2px; }
-.scard:hover, .scard.hover { border-color: var(--text); }
-.scard.owned { border-color: #4fd1c5; background: rgba(79, 209, 197, 0.14); }
-.scard.poor { opacity: 0.45; }
-#shop-team { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; font-size: 12px; color: var(--muted); }
-#shop-team b { color: #ffd54a; font-weight: 600; } #shop-team .me { color: var(--text); }
+/* Buy menu: Valorant's layout in the game's own look. */
+#shop { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px; padding: 3.2vh 3vw 2vh; overflow: auto; pointer-events: auto;
+  background: radial-gradient(120% 90% at 50% 40%, rgba(15, 25, 35, 0.78), rgba(8, 13, 19, 0.94)); backdrop-filter: blur(6px); }
+#shop .cr { width: .82em; height: .82em; margin-right: .22em; vertical-align: -0.06em; }
+.shop-top { display: flex; align-items: flex-end; gap: 28px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.shop-title { display: flex; align-items: baseline; gap: 14px; flex: 1; }
+.shop-title h2 { margin: 0; font-size: 30px; letter-spacing: 6px; text-transform: uppercase; font-weight: 800; }
+#shop-phase { font-size: 11px; letter-spacing: 2.5px; color: var(--muted); }
+#shop-time { font-size: 18px; font-variant-numeric: tabular-nums; }
+.shop-econ { display: flex; gap: 26px; }
+.econ { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.econ small { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+.econ b { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+#shop-credits { font-size: 28px; color: #fff; }
+#shop-min { color: var(--muted); }
+#shop-loss { display: flex; gap: 3px; height: 26px; align-items: flex-end; }
+#shop-loss i { position: relative; width: 34px; height: 8px; background: rgba(255, 255, 255, 0.14); font-style: normal; }
+#shop-loss i.on { background: var(--accent); }
+#shop-loss i.next { outline: 1px solid rgba(255, 255, 255, 0.6); outline-offset: 1px; }
+#shop-loss i span { position: absolute; bottom: 11px; left: 0; right: 0; text-align: center; font-size: 9.5px; color: var(--muted); letter-spacing: .5px; }
+#shop-loss i.next span { color: var(--text); }
+#shop-close { background: none; border: 1px solid var(--line); color: var(--text); padding: 7px 14px; cursor: pointer; font: inherit; font-size: 12px; letter-spacing: 1px; }
+.shop-body { display: flex; gap: 18px; flex: 1; min-height: 0; }
+.shop-main { flex: 1; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+#shop-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.scol { display: flex; flex-direction: column; gap: 12px; }
+#shop h3 { margin: 0 0 6px; font-size: 10.5px; color: var(--muted); letter-spacing: 2.5px; text-transform: uppercase; font-weight: 600; }
+.scard { position: relative; display: block; width: 100%; margin-bottom: 6px; padding: 0; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.08); color: var(--text); text-align: left; cursor: pointer; font: inherit; transition: background .08s, border-color .08s; }
+.scard.gun { height: 74px; }
+.scard .pr { position: absolute; top: 6px; left: 8px; font-size: 12px; font-weight: 600; letter-spacing: .5px; color: var(--text); }
+.scard .n { position: absolute; bottom: 6px; left: 8px; font-size: 11px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; }
+.scard .tag { position: absolute; bottom: 6px; right: 8px; font-size: 9px; letter-spacing: 1.5px; color: var(--muted); }
+.scard.gun img { position: absolute; right: 8px; top: 50%; width: 62%; height: 64%; object-fit: contain; object-position: right center; transform: translateY(-50%); opacity: .88; pointer-events: none; }
+.scard:hover, .scard.hover { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 255, 255, 0.85); }
+.scard.owned { background: rgba(236, 232, 225, 0.2); border-color: rgba(236, 232, 225, 0.55); }
+.scard.owned .tag { color: var(--text); }
+.scard.poor .pr { color: var(--accent); }
+.scard.poor img, .scard.poor .n { opacity: .45; }
+.scard.req { border-color: #ffd54a; }
+.scard.req .tag { color: #ffd54a; }
+#shop-gear { display: grid; grid-template-columns: 3fr 4fr; gap: 12px; }
+.sgear > div { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.scard.gear { height: 78px; margin: 0; }
+.scard.gear .shi { position: absolute; right: 10px; top: 12px; width: 30px; height: 30px; color: #cfe9ff; opacity: .85; }
+.scard.ab .key { position: absolute; right: 10px; top: 8px; font-size: 22px; font-weight: 800; color: var(--agent, var(--text)); opacity: .9; }
+.scard.ab .pips { position: absolute; left: 8px; bottom: 24px; display: flex; gap: 3px; }
+.scard.ab .pips i { width: 10px; height: 4px; background: rgba(255, 255, 255, 0.2); }
+.scard.ab .pips i.on { background: var(--text); }
+.scard.ab .pips.ult i { width: 6px; height: 6px; border-radius: 50%; }
+.scard.ab .pips.ult i.on { background: #ffd54a; }
+.scard.ab em { position: absolute; left: 8px; bottom: 24px; font-style: normal; font-size: 11px; color: var(--muted); }
+.shop-side { width: clamp(260px, 24vw, 340px); display: flex; flex-direction: column; gap: 12px; }
+#shop-detail { min-height: 180px; padding: 12px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); font-size: 12px; }
+#shop-detail .dh { display: flex; align-items: baseline; gap: 8px; }
+#shop-detail .dh b { font-size: 18px; letter-spacing: 2px; text-transform: uppercase; }
+#shop-detail .dh small { flex: 1; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; font-size: 10px; }
+#shop-detail .dimg { display: block; width: 100%; height: 64px; object-fit: contain; margin: 8px 0; opacity: .9; }
+#shop-detail p { color: var(--muted); line-height: 1.45; margin: 8px 0 0; } #shop-detail p.dim { opacity: .7; }
+.dtab { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.dtab th, .dtab td { padding: 3px 4px; text-align: right; font-size: 11px; } .dtab th:first-child, .dtab td:first-child { text-align: left; color: var(--muted); }
+.dtab tr + tr td { border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.dstats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-top: 8px; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; }
+.dstats b { display: block; color: var(--text); font-size: 13px; letter-spacing: 0; text-transform: none; }
+#shop-team { padding: 12px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); }
+#shop-team h3 { display: flex; justify-content: space-between; } #shop-team h3 span { color: var(--text); letter-spacing: 0; font-size: 12px; }
+.tmate { display: grid; grid-template-columns: 34px 1fr auto auto; align-items: center; gap: 8px; padding: 6px 4px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.tmate.me .tinfo b { color: #ffd54a; }
+.tmate.asking { background: rgba(255, 213, 74, 0.06); }
+.tport { width: 34px; height: 34px; background: rgba(0, 0, 0, 0.35); border-bottom: 2px solid var(--ag); }
+.tport svg { width: 100%; height: 100%; }
+.tinfo { min-width: 0; } .tinfo b { display: block; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tinfo small { font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+.tload { display: flex; align-items: center; gap: 4px; } .tload img { height: 18px; width: 58px; object-fit: contain; object-position: right; opacity: .85; }
+.tload .none { font-size: 10px; color: var(--muted); } .tload .tsh svg { width: 15px; height: 15px; color: #cfe9ff; display: block; }
+.tcr { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
+.scard.treq { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 2px 10px; padding: 5px 8px; margin: 2px 0 0; border-color: rgba(255, 213, 74, 0.6); background: rgba(255, 213, 74, 0.1); }
+.scard.treq .rl { font-size: 9px; letter-spacing: 1.8px; color: #ffd54a; }
+.scard.treq img { grid-row: span 2; height: 22px; width: 64px; object-fit: contain; order: -1; }
+.scard.treq .rp { font-size: 11px; font-weight: 600; }
+.scard.treq.poor { opacity: .55; } .scard.treq.mine { border-style: dashed; }
+#shop-note { margin: 0; color: var(--muted); font-size: 11px; letter-spacing: .5px; text-align: center; }
+@media (max-width: 1000px) { .shop-body { flex-direction: column; } .shop-side { width: auto; } #shop-gear { grid-template-columns: 1fr; } }
 .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 14px; }
 .mode { padding: 12px 14px; text-align: left; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--text); cursor: pointer; font: inherit; }
 .mode b { display: block; font-size: 15px; letter-spacing: 1px; text-transform: uppercase; }
@@ -467,6 +539,7 @@ th { color: var(--muted); font-weight: 500; }
   <div id="rbanner"></div>
   <div id="rchannel" hidden><span id="rchtext">PLANTING</span><i><b id="rchbar"></b></i></div>
   <div id="rcredits" hidden></div>
+  <div id="rnotice"></div>
   <div id="rhint"></div>
   <div id="killfeed"></div>
   <div id="center-msg"></div>
@@ -507,9 +580,20 @@ th { color: var(--muted); font-weight: 500; }
     <div id="buy-groups"></div>
   </div>
   <div id="shop" hidden>
-    <div class="shop-head"><h2>Buy</h2><span id="shop-credits"></span><p id="shop-note"></p><button id="shop-close">Close (B)</button></div>
-    <div id="shop-grid"></div>
-    <div id="shop-team"></div>
+    <div class="shop-top">
+      <div class="shop-title"><h2>Shop</h2><span id="shop-phase"></span><b id="shop-time"></b></div>
+      <div class="shop-econ">
+        <div class="econ"><small>Credits</small><b id="shop-credits"></b></div>
+        <div class="econ"><small>Min. next round</small><b id="shop-min"></b></div>
+        <div class="econ"><small>Loss bonus</small><span id="shop-loss"></span></div>
+      </div>
+      <button id="shop-close">Close (B)</button>
+    </div>
+    <div class="shop-body">
+      <div class="shop-main"><div id="shop-grid"></div><div id="shop-gear"></div></div>
+      <aside class="shop-side"><div id="shop-detail"></div><div id="shop-team"></div></aside>
+    </div>
+    <p id="shop-note"></p>
   </div>
   <div id="cursor" hidden></div>
   <div id="netbadge" hidden></div>

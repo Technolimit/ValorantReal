@@ -302,7 +302,7 @@ export class NetSession {
     g.on('drop', (d) => {
       if (this.role !== 'host' || d.nid) return;
       d.nid = ++this.dropSeq;
-      this.t.send({ k: 'drop', id: d.nid, w: d.gun.def.id, mag: d.gun.mag, res: d.gun.reserve, pos: d.pos.map(r3), from: d.from.map(r3), yaw: r3(d.yaw), by: d.by?.nid, skin: d.skin });
+      this.t.send({ k: 'drop', id: d.nid, w: d.gun.def.id, mag: d.gun.mag, res: d.gun.reserve, pos: d.pos.map(r3), from: d.from.map(r3), yaw: r3(d.yaw), by: d.by?.nid, for: d.for?.nid, skin: d.skin });
     });
     g.on('pickup', (d) => { if (this.role === 'host' && d.nid) this.t.send({ k: 'pick', id: d.nid }); });
     g.on('tracer', ({ who, gun, from, to, device }) => {
@@ -771,10 +771,14 @@ export class NetSession {
   }
 
   modeState() {
-    const mode = this.game.mode, now = this.game.time, sp = mode.spike;
+    const g = this.game, mode = g.mode, now = g.time, sp = mode.spike;
     return {
       ph: mode.phase, pe: r3(mode.phaseEnd - now), r: mode.round, sc: [...mode.score], ss: mode.startSide,
       ob: mode.orbs?.map(o => [o.taken ? 1 : 0, r3(o.prog), o.by?.nid || null]),
+      // The buy menu's economy: loss streaks, open weapon requests, and what everyone has bought.
+      ls: [...mode.lossStreak],
+      rq: [...mode.requests].filter(([c]) => c.nid).map(([c, r]) => [c.nid, r.id]),
+      lo: mode.phase === 'buy' ? g.combatants.filter(c => c.nid).map(c => [c.nid, c.inv.primary?.def.id || 0, c.armorKind && c.armor > 0 ? c.armorKind : 0]) : null,
       sp: sp ? { st: sp.state, pos: sp.pos?.map(r3) || null, car: sp.carrier?.nid || null, pp: r3(sp.plantProg || 0), dp: r3(sp.defuseProg || 0), df: sp.defuser?.nid || null, site: sp.site, pa: r3(now - (sp.plantedAt || 0)), hd: !!sp.halfDone } : null,
       lr: mode.lastResult || null,
     };
@@ -914,9 +918,10 @@ export class NetSession {
     const gun = new Gun(def);
     gun.mag = clampInt(m.mag, 0, def.mag || 0); gun.reserve = clampInt(m.res, 0, def.reserve || 0);
     const by = this.byNid.get(m.by) || null;
-    const d = { nid: m.id, gun, pos: m.pos, from: m.from || m.pos, at: g.time, by, yaw: +m.yaw || 0, skin: typeof m.skin === 'string' && SKINS[m.skin] ? m.skin : by?.skinOf?.(def.id) };
+    const d = { nid: m.id, gun, pos: m.pos, from: m.from || m.pos, at: g.time, by, for: this.byNid.get(m.for) || null, yaw: +m.yaw || 0, skin: typeof m.skin === 'string' && SKINS[m.skin] ? m.skin : by?.skinOf?.(def.id) };
     g.drops.push(d);
     g.emit('drop', d);
+    if (d.for && by) g.emit('gifted', { from: by, to: d.for, id: def.id }); // a teammate's request, filled
   }
 
   requestBuy(item, sell) {
@@ -1075,6 +1080,8 @@ function cleanItem(it) {
   if (it.type === 'weapon' && WEAPONS[it.id] && WEAPONS[it.id].cost !== undefined) return { type: 'weapon', id: it.id };
   if (it.type === 'shield' && ['light', 'regen', 'heavy'].includes(it.id)) return { type: 'shield', id: it.id };
   if (it.type === 'ability' && ['c', 'q', 'e'].includes(it.key)) return { type: 'ability', key: it.key };
+  if (it.type === 'request' && WEAPONS[it.id] && WEAPONS[it.id].cost) return { type: 'request', id: it.id };
+  if (it.type === 'gift' && typeof it.to === 'string' && it.to.length < 40) return { type: 'gift', to: it.to };
   return null;
 }
 

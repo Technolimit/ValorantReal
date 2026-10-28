@@ -107,6 +107,8 @@ game.on('shadowChannel', () => sound.pulse(null, 'near'));
 game.on('blade', ({ who }) => { if (isPlayer(who)) sound.swing(false); });
 game.on('end', () => showEnd());
 game.on('planted', () => sound.sting('planted'));
+game.on('orbTaken', ({ who }) => { if (who === game.player) sound.sting('orb'); });
+game.on('gifted', ({ to }) => { if (to === game.player) sound.sting('gift'); });
 game.on('live', () => sound.sting('start'));
 game.on('roundEnd', (r) => { if (r.reason === 'detonated') sound.sting('detonate'); else if (r.reason === 'defused') sound.sting('defused'); setTimeout(() => sound.sting(r.winTeam === game.player.team ? 'win' : 'loss'), r.reason === 'detonated' ? 900 : 300); });
 let lastBeep = 0;
@@ -1333,7 +1335,7 @@ function frame(t) {
     hud.specTarget = renderer.specTarget;
     hud.update(dt, look);
     inspectHint();
-    spikeBeeps(); rhud.update(dt);
+    spikeBeeps(); rhud.update(dt); if (hud.buyOpen) rhud.updateHover(hud.cursor);
     minimap.update();
     const ear = ears();
     sound.setListener(ear.eye(), ear.yaw);
@@ -1346,5 +1348,5 @@ function frame(t) {
 requestAnimationFrame(frame);
 
 // Exposed for automated checks in a headless browser; `frozen` stops the loop from ticking.
-const hooks = { game, renderer, sound, settings, startMatch, playerInput, openAgents, switchAgent, net, hostOnline, joinOnline, servers, peerOptions, frozen: false };
+const hooks = { game, renderer, rhud, sound, settings, startMatch, playerInput, openAgents, switchAgent, net, hostOnline, joinOnline, servers, peerOptions, frozen: false };
 window.__game = hooks;

@@ -12,6 +12,8 @@
 //   * Dead players stay dead until the next round. Survivors keep their weapons and remaining shields.
 //     Unused ability charges carry over; the signature ability (E) refills every round.
 //   * Ultimate orbs come back every round: hold F on one for 3 s for 1 ultimate point.
+//   * Weapon requests: click a gun you can't afford in the buy menu to ask your team for it; a teammate who
+//     buys it for you pays for it, and it drops at your feet with their skin.
 import { WEAPONS } from './weapons.js';
 import { Gun } from './gun.js';
 import { Combatant } from './entity.js';
@@ -40,6 +42,7 @@ export class RoundMode {
     this.score = [0, 0];
     this.round = 0;
     this.lossStreak = [0, 0];
+    this.requests = new Map(); // requester -> { id: weapon, at }
     this.phase = 'buy';
     this.phaseEnd = 0;
     this.spike = null;
@@ -115,6 +118,7 @@ export class RoundMode {
       this.spawn(c, now);
     }
     this.boughtThisRound = new Map();
+    this.requests = new Map();
     // Spike to a random attacker.
     // The spike starts on the floor just in front of the attackers' spawn: whoever walks over it carries it.
     this.spike = { state: 'dropped', carrier: null, pos: this.spikeSpawnPos(), plantProg: 0, defuseProg: 0, defuser: null, plantedAt: 0, site: null };
@@ -124,6 +128,7 @@ export class RoundMode {
     this.setBarriers(true);
     this.buyCall = [this.teamBuyCall(0), this.teamBuyCall(1)];
     for (const c of g.bots) this.botBuy(c);
+    this.botGifts(true);
     this.plan = null;
     this.planBots(true);
     this.emit('round', { round: this.round });
@@ -217,6 +222,7 @@ export class RoundMode {
     }
     if (this.phase === 'buy') {
       if (this.spike?.state === 'dropped') this.tickSpike(now); // the spike can be grabbed during the buy phase
+      this.tickRequests(now);
       // A rush goes at once; a default takes map control first and executes 12-26 s in.
       if (now >= this.phaseEnd) { this.phase = 'live'; this.liveAt = now; this.phaseEnd = now + ROUND.round; this.setBarriers(false); this.emit('live'); this.goTime = now + (this.plan?.style === 'rush' ? 1 + Math.random() * 2 : 12 + Math.random() * 14); }
       return;
@@ -341,6 +347,69 @@ export class RoundMode {
 
   addUlt(c) { if (c.kit) c.kit.ultPoints = Math.min(c.kit.ultCost, c.kit.ultPoints + 1); }
 
+  // ---------- economy ----------
+  // The loss bonus a team gets if it loses the next round, and the least c will have next round
+  // (what's left now plus that bonus), as the buy menu shows them.
+  nextLossBonus(team) { return ECON.loss[Math.min(3, (this.lossStreak?.[team] || 0) + 1) - 1]; }
+  minNextRound(c) {
+    if (this.round === ROUND.half || this.round >= ROUND.half * 2) return null; // halftime / overtime set credits instead
+    return Math.min(ECON.max, c.credits + this.nextLossBonus(c.team));
+  }
+
+  // ---------- weapon requests ----------
+  // Ask the team for a gun you can't afford; asking for the same one again takes the request back.
+  request(c, id) {
+    const def = WEAPONS[id];
+    if (!def || !def.cost) return 'Can\'t request that';
+    if (!this.canBuy(c)) return 'Requests are only possible during the buy phase';
+    if (this.requests.get(c)?.id === id) { this.requests.delete(c); this.emit('request', { who: c, id: null }); return null; }
+    if (c.inv[def.slot]?.def.id === id) return 'Already owned';
+    this.requests.set(c, { id, at: this.game.time });
+    this.emit('request', { who: c, id });
+    return null;
+  }
+
+  // buyer pays for to's request; the gun drops at to's feet with the buyer's skin (as in Valorant).
+  buyFor(buyer, to) {
+    if (!this.canBuy(buyer)) return 'Buying is only possible during the buy phase';
+    const rq = to && this.requests.get(to);
+    if (!rq || to === buyer || to.team !== buyer.team) return 'No request to fill';
+    const def = WEAPONS[rq.id];
+    if (buyer.credits < def.cost) return 'Not enough credits';
+    buyer.credits -= def.cost;
+    this.requests.delete(to);
+    const g = this.game;
+    const d = { gun: new Gun(def), pos: [to.pos[0], to.pos[1] + 0.06, to.pos[2]], from: buyer.eye(), at: g.time, by: buyer, for: to, yaw: to.yaw + (Math.random() - 0.5) * 0.8, skin: buyer.skinOf?.(def.id) };
+    g.drops.push(d);
+    g.emit('drop', d);
+    this.emit('gifted', { from: buyer, to, id: def.id });
+    return null;
+  }
+
+  // Who an item's `to` names: a combatant's network id online, or its index offline.
+  refOf(c) { return c.nid ?? 'i' + this.game.combatants.indexOf(c); }
+  byRef(r) { return this.game.combatants.find(c => this.refOf(c) === r) || null; }
+
+  // Bots fill requests from what they have left after their own buy: right away at the start of the
+  // round, and a second or two after a person asks. A bot whose own request nobody filled gives up with
+  // a few seconds left and buys what it can.
+  botGifts(start) {
+    const now = this.game.time;
+    for (const [to, rq] of this.requests) {
+      if (!start && now - rq.at < 1.5) continue;
+      const cost = WEAPONS[rq.id].cost;
+      const buyer = this.game.bots.filter(b => b !== to && b.team === to.team && !this.requests.has(b) && b.credits >= cost + (b.inv.primary ? 0 : 3900))
+        .sort((a, b) => b.credits - a.credits)[0];
+      if (buyer) this.buyFor(buyer, to);
+    }
+  }
+  tickRequests(now) {
+    if (!this.requests.size || this.mirror) return;
+    if (!this._nextGift || now >= this._nextGift) { this._nextGift = now + 0.5; this.botGifts(false); }
+    if (this.phaseEnd - now > 6) return;
+    for (const [c] of this.requests) if (c.isBot) { this.requests.delete(c); this.emit('request', { who: c, id: null }); this.botBuy(c, true); }
+  }
+
   // ---------- ultimate orbs ----------
   resetOrbs() { this.orbs = (this.game.map.ultOrbs || []).map(p => ({ pos: [...p], taken: false, prog: 0, by: null })); }
 
@@ -411,6 +480,8 @@ export class RoundMode {
 
   // item: { type: 'weapon', id } | { type: 'shield', id } | { type: 'ability', key }
   buy(c, item) {
+    if (item.type === 'request') return this.request(c, item.id);
+    if (item.type === 'gift') return this.buyFor(c, typeof item.to === 'object' ? item.to : this.byRef(item.to));
     if (!this.canBuy(c)) return 'Buying is only possible during the buy phase';
     const bought = this.boughtThisRound.get(c) || [];
     if (item.type === 'weapon') {
@@ -426,6 +497,7 @@ export class RoundMode {
       else if (cur && !this.mirror) this.game.dropGun(c, def.slot, false);
       c.give(def.id);
       c.equip(def.slot, this.game.time, true);
+      if (this.requests.get(c)?.id === def.id) { this.requests.delete(c); this.emit('request', { who: c, id: null }); }
     } else if (item.type === 'shield') {
       const s = SHIELDS[item.id];
       if (c.armor >= s.armor && (c.armorKind || 'light') === item.id) return 'Already have that shield';
@@ -488,7 +560,7 @@ export class RoundMode {
     return avg + nextBonus >= FULL ? 'eco' : 'force';
   }
 
-  botBuy(c) {
+  botBuy(c, noRequest = false) {
     const has = c.inv.primary;
     const cr = () => c.credits;
     const tryBuy = (item) => this.buy(c, item) === null;
@@ -507,6 +579,13 @@ export class RoundMode {
       if (Math.random() < 0.5) { tryBuy({ type: 'shield', id: 'light' }); tryBuy({ type: 'weapon', id: pick(['ghost', 'frenzy']) }); }
       else tryBuy({ type: 'weapon', id: 'sheriff' });
       this.botBuyAbilities(c);
+      return;
+    }
+    // The team is buying but this one can't afford a rifle: ask for one, buy shields and wait for a teammate.
+    if (!has && !noRequest && call === 'full' && cr() < 2900 && Math.random() < 0.8) {
+      this.request(c, pick(['vandal', 'phantom', 'vandal']));
+      tryBuy({ type: 'shield', id: cr() >= 1000 ? 'heavy' : 'light' });
+      this.botBuyAbilities(c, 0);
       return;
     }
     if (!has && cr() >= 3900) { tryBuy({ type: 'weapon', id: pick(['vandal', 'phantom', 'vandal', 'phantom', 'operator', 'odin']) }); tryBuy({ type: 'shield', id: 'heavy' }); }
@@ -897,6 +976,22 @@ export class NetRoundMode extends RoundMode {
         o.taken = !!taken; o.prog = prog; o.by = byNid(by) || null;
       });
     }
+    if (Array.isArray(m.ls)) this.lossStreak = this.flip ? [m.ls[1], m.ls[0]] : [m.ls[0], m.ls[1]];
+    if (Array.isArray(m.rq)) {
+      const before = this.requests;
+      this.requests = new Map();
+      for (const [n, id] of m.rq) {
+        const c = byNid(n);
+        if (c && WEAPONS[id]) this.requests.set(c, before.get(c)?.id === id ? before.get(c) : { id, at: now });
+        if (c && before.get(c)?.id !== id) this.emit('request', { who: c, id });
+      }
+      for (const [c] of before) if (!this.requests.has(c)) this.emit('request', { who: c, id: null });
+    }
+    // Teammates' loadouts for the buy menu (our own comes from our own purchases).
+    if (Array.isArray(m.lo)) for (const [n, w, sh] of m.lo) {
+      const c = byNid(n);
+      if (c && c !== p) { c.netPrimary = WEAPONS[w] ? w : null; c.netShield = sh || null; }
+    }
     this.phase = m.ph;
     if (prev !== m.ph) {
       if (prev === 'buy' && m.ph !== 'buy') { this.setBarriers(false); this.liveAt = now; this.emit('live'); }
@@ -933,6 +1028,7 @@ export class NetRoundMode extends RoundMode {
   }
   applyPurchase(item, sell, credits) {
     const p = this.game.player;
+    if (item.type === 'request' || item.type === 'gift') { p.credits = credits; return null; } // the host's state brings the rest
     this.applying = true;
     p.credits = 99999; // the host already checked the price; credits are set from its answer below
     const err = sell ? super.sell(p, item) : super.buy(p, item);
