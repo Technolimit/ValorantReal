@@ -1,4 +1,4 @@
-// Headless checks for skins: the preset list, the single Melee entry (one theme per melee type), the Starspur
+// Headless checks for skins: the preset list, the single Melee entry (one theme per melee type), the Starspur and Oathblade
 // models with their inspects and reloads, and finishers (only the kill that ends the round in 5v5, or the match in deathmatch), and pullouts.
 //   node tools/check-skins.mjs [shots-dir]     (needs playwright; with a dir, saves the skin menu and finishers)
 // Exits with code 1 if any check fails.
@@ -60,8 +60,8 @@ await check('Gun skins: Standard, Ember Circuit, Glacier, plus model skins only 
   const on = (w) => SKIN_ORDER.filter(id => skinFits(id, w));
   const r = { list: SKIN_ORDER.join(), vandal: on('vandal').join(), sheriff: on('sheriff').join(), marshal: on('marshal').join(), judge: on('judge').join(), phantom: on('phantom').join() };
   return {
-    pass: r.list === 'standard,ember,glacier,orbital,starspur' && r.vandal === 'standard,ember,glacier,orbital' && r.phantom === 'standard,ember,glacier'
-      && ['sheriff', 'marshal', 'judge'].every(w => r[w] === 'standard,ember,glacier,starspur'),
+    pass: r.list === 'standard,ember,glacier,orbital,starspur,oathblade' && r.vandal === 'standard,ember,glacier,orbital,oathblade' && r.phantom === 'standard,ember,glacier'
+      && r.sheriff === 'standard,ember,glacier,starspur,oathblade' && ['marshal', 'judge'].every(w => r[w] === 'standard,ember,glacier,starspur'),
     ...r,
   };
 }));
@@ -103,7 +103,7 @@ await check('Weapon screen: previewing a variant changes nothing until Equip', (
   document.getElementById('skin-equip').click();
   const after = { ...__screen(), worn: h.settings.skins.vandal };
   return {
-    pass: before.list.join() === 'Standard Issue,Ember Circuit,Glacier,Orbital' && before.swatches === 4 && before.variant === 'Glacial' && before.worn === 'standard'
+    pass: before.list.join() === 'Standard Issue,Ember Circuit,Glacier,Orbital,Oathblade' && before.swatches === 4 && before.variant === 'Glacial' && before.worn === 'standard'
       && before.equip === 'Equip skin' && after.worn === 'orbital~2' && after.equip === 'Equipped',
     before, after,
   };
@@ -118,7 +118,7 @@ await check('Melee screen: the melee types, each in its own theme; Equip swaps y
   });
   await page.waitForTimeout(300);
   await shot('menu-melee', '.panel.skins');
-  return { pass: r.list.length === 8 && r.title === 'Damascus Katana' && r.swatches === 1 && r.equipped === 'katana' && r.newHidden, ...r };
+  return { pass: r.list.length === 9 && r.title === 'Damascus Katana' && r.swatches === 1 && r.equipped === 'katana' && r.newHidden, ...r };
 });
 
 if (SHOTS) {
@@ -130,6 +130,14 @@ if (SHOTS) {
   await page.evaluate(() => { __open('melee'); __pick('Bowie'); });
   await page.waitForTimeout(400);
   await shot('menu-starspur-bowie', '.panel.skins');
+  for (const [w, v] of [['vandal', 0], ['vandal', 1], ['vandal', 2], ['vandal', 3], ['sheriff', 0], ['sheriff', 1]]) {
+    await page.evaluate(([w, v]) => { __open(w); __pick('Oathblade'); __variant(v); }, [w, v]);
+    await page.waitForTimeout(400);
+    await shot(`menu-oathblade-${w}-${v}`, '.panel.skins');
+  }
+  await page.evaluate(() => { __open('melee'); __pick('Tanto'); });
+  await page.waitForTimeout(400);
+  await shot('menu-oathblade-tanto', '.panel.skins');
   await page.evaluate(() => document.getElementById('skin-detail-back').click());
   await page.waitForTimeout(200);
   await shot('collection-after', '.panel.skins');
@@ -174,6 +182,57 @@ await check('Starspur Sheriff and Marshal pull out with a twirl', () => page.eva
   return { pass: out.sheriff.turns >= 2 && out.marshal.turns >= 1 && out.marshal.wraps, ...out };
 }));
 
+await check('Oathblade models build with their moving parts; inspects run; reloads darken and relight the edge', () => page.evaluate(async () => {
+  const { gunModel, poseMeleeParts } = await import('./js/models.js');
+  const { MODEL_INSPECTS, MELEE } = await import('./js/melee.js');
+  const { reloadPose } = await import('./js/reloadanim.js');
+  const { Gun } = await import('./js/gun.js');
+  const want = { vandal: ['edge', 'mag', 'bolt', 'swipe'], sheriff: ['w', 'edge', 'cyl', 'swipe', 'shell'] };
+  const out = {};
+  let ok = true;
+  for (const [w, parts] of Object.entries(want)) {
+    const m = gunModel(w, 'oathblade');
+    const d = m.userData.design, have = Object.keys(m.userData.parts);
+    const ins = MODEL_INSPECTS[d] || [];
+    for (const i of ins) for (let t = 0; t <= i.dur; t += 0.1) { const p = poseMeleeParts(m, i, t, null); if (p.pose.some(Number.isNaN)) ok = false; }
+    const gun = new Gun(__W[w]);
+    gun.reloading = true; gun.reloadStart = 0; gun.reloadDur = gun.def.reload || 2; gun.reloadEnd = gun.reloadDur; gun.roundStart = 0;
+    const at = (share) => {
+      const p = reloadPose(m, gun.def, gun, share * gun.reloadDur, null);
+      if (Object.values(p).some(Number.isNaN)) ok = false;
+      const hand = (part) => m.userData.hands.some(h => h.userData.part === part && h.visible);
+      return { edge: +m.userData.parts.edge.scale.z.toFixed(2), swipe: hand('swipe') && m.userData.parts.swipe.visible, glow: +(p.glow ?? 1).toFixed(2) };
+    };
+    const r = { start: at(0.02), dark: at(0.4), swiping: at(w === 'vandal' ? 0.72 : 0.78), flash: at(w === 'vandal' ? 0.86 : 0.88), end: at(0.99) };
+    out[w] = { d, inspects: ins.map(i => i.name).join('/'), ...r };
+    if (!parts.every(p => have.includes(p)) || ins.length !== 2 || r.start.edge < 0.9 || r.dark.edge > 0.05 || !r.swiping.swipe
+      || r.swiping.edge <= 0.05 || r.swiping.edge >= 0.95 || r.start.swipe || r.flash.glow < 2 || r.end.edge < 0.99) ok = false;
+  }
+  const b = gunModel('tanto', 'melee-tanto');
+  out.tanto = { edge: !!b.userData.parts.edge, cord: !!b.userData.parts.cord, inspects: MELEE.tanto.inspects.map(i => i.name).join('/') };
+  if (!b.userData.parts.edge || !b.userData.parts.cord || MELEE.tanto.inspects.length !== 3) ok = false;
+  return { pass: ok, ...out };
+}));
+
+await check('Oathblade pullouts: drawn like a blade, the edge lighting from the guard as it comes out', () => page.evaluate(async () => {
+  const { gunModel, poseMeleeParts } = await import('./js/models.js');
+  const { EQUIP_ANIMS } = await import('./js/melee.js');
+  const out = {};
+  for (const [w, skin] of [['vandal', 'oathblade'], ['sheriff', 'oathblade~1'], ['tanto', 'melee-tanto']]) {
+    const m = gunModel(w, skin), a = EQUIP_ANIMS[m.userData.design];
+    const pose = (t) => poseMeleeParts(m, a, t, null);
+    const edge = (t) => { pose(t); return +m.userData.parts.edge.scale.z.toFixed(2); };
+    let roll = 0, flip = 0, peak = 0;
+    for (let t = 0; a && t <= a.dur; t += 0.02) { const p = pose(t); roll = Math.max(roll, p.parts.w?.[5] || 0); flip = Math.min(flip, p.parts.w?.[3] || 0); peak = Math.max(peak, +p.glow.toFixed(2)); }
+    out[w] = { design: m.userData.design, edgeStart: a ? edge(0) : null, edgeEnd: a ? edge(a.dur) : null, roll: +(roll / Math.PI).toFixed(2), flip: +(-flip / Math.PI).toFixed(2), peak };
+  }
+  return {
+    pass: Object.values(out).every(o => o.edgeStart < 0.05 && o.edgeEnd === 1 && o.peak > 2.9) && out.vandal.design === 'vandalOath'
+      && out.sheriff.roll >= 2 && out.tanto.flip >= 1,
+    ...out,
+  };
+}));
+
 // Start a deathmatch that ends on your next kill, kill a bot with a weapon in a skin, and report the finisher that
 // played (if any). `before` is a kill made first, mid-match, as [weapon, skins].
 await page.evaluate(() => {
@@ -197,16 +256,19 @@ await check('Deathmatch: only the match-winning kill plays a finisher, and only 
     lastWithEmber: await __finish('vandal', { vandal: 'ember' }, 'knife', ['vandal', { vandal: 'orbital' }]),
     bowie: await __finish('knife', {}, 'bowie'),
     katana: await __finish('knife', {}, 'katana'),
+    oathblade: await __finish('vandal', { vandal: 'oathblade~3' }, 'knife', ['sheriff', { sheriff: 'oathblade' }]),
+    tanto: await __finish('knife', {}, 'tanto'),
   }));
   return {
     pass: r.orbital.mid === null && r.orbital.end === 'collapse' && r.orbital.over && r.starspur.end === 'lastLight'
-      && r.lastWithEmber.mid === null && r.lastWithEmber.end === null && r.bowie.end === 'lastLight' && r.katana.end === null,
+      && r.lastWithEmber.mid === null && r.lastWithEmber.end === null && r.bowie.end === 'lastLight' && r.katana.end === null
+      && r.oathblade.mid === null && r.oathblade.end === 'lastStroke' && r.tanto.end === 'lastStroke',
     ...Object.fromEntries(Object.entries(r).map(([k, v]) => [k, `${v.mid}/${v.end}`])),
   };
 });
 
 if (SHOTS) {
-  for (const [kind, weapon, skins, times] of [['collapse', 'vandal', { vandal: 'orbital' }, [0.4, 1.2, 1.7]], ['lastLight', 'sheriff', { sheriff: 'starspur' }, [0.5, 1.2, 1.8]]]) {
+  for (const [kind, weapon, skins, times] of [['collapse', 'vandal', { vandal: 'orbital' }, [0.4, 1.2, 1.7]], ['lastLight', 'sheriff', { sheriff: 'starspur' }, [0.5, 1.2, 1.8]], ['lastStroke', 'vandal', { vandal: 'oathblade' }, [0.36, 0.5, 0.8, 1.3, 2.3]]]) {
     await page.evaluate(async () => {
       const g = await __start({ map: 'arena' });
       // Stand the victim 3.5 m in front of you (your spawn is open ground) and look at it.
@@ -222,7 +284,7 @@ if (SHOTS) {
     // Step the game to each moment by hand (headless, the game sits paused) and let a frame draw.
     let done = 0;
     for (const t of times) {
-      await page.evaluate((dt) => { __tick(window.__game.game, dt); document.getElementById('pause').hidden = true; }, t - done); done = t;
+      await page.evaluate((dt) => { __tick(window.__game.game, dt); document.getElementById('pause').hidden = true; document.getElementById('end').hidden = true; }, t - done); done = t;
       await page.waitForTimeout(150);
       await shot(`finisher-${kind}-${t}`);
     }
@@ -255,7 +317,7 @@ await check('5v5: a finisher waits for the round-ending kill, and needs that kil
 
 await check('Finishers leave nothing behind once they end', async () => {
   const out = {};
-  for (const [weapon, skins] of [['vandal', { vandal: 'orbital' }], ['sheriff', { sheriff: 'starspur' }]]) {
+  for (const [weapon, skins] of [['vandal', { vandal: 'orbital' }], ['sheriff', { sheriff: 'starspur' }], ['vandal', { vandal: 'oathblade~2' }]]) {
     const r = await page.evaluate(async ([weapon, skins]) => {
       const h = window.__game, g = await __start({});
       __tick(g, 0.1); h.renderer.updateFx2();
@@ -265,7 +327,7 @@ await check('Finishers leave nothing behind once they end', async () => {
       return { before, during: h.renderer.fx2.length };
     }, [weapon, skins]);
     await page.waitForTimeout(1800); // the body's vanish runs on the clock
-    out[weapon] = { ...r, ...await page.evaluate(() => {
+    out[Object.values(skins)[0]] = { ...r, ...await page.evaluate(() => {
       const h = window.__game, g = h.game;
       __tick(g, 3); h.renderer.updateFx2();
       return { after: h.renderer.fx2.length - g.drops.length, body: h.renderer.characters.get(g.bots[0]).group.visible };

@@ -71,6 +71,23 @@ export const SKINS = {
       { variant: 'Red Mesa', body: { color: 0x7a2a1c, rough: 0.5, metal: 0.05 }, trim: { color: 0xd9a441, rough: 0.28, metal: 0.95 }, grip: { color: 0x2a1a12, rough: 0.8, metal: 0 }, glow: { color: 0xffd166, intensity: 2.2 }, accent: { color: 0xff6a3d, intensity: 2.0 } },
     ],
   },
+  oathblade: {
+    name: 'Oathblade', tier: 'Ultra', blurb: 'Black lacquer and gold leaf over folded steel. Every gun carries a blade, and its edge lights as you draw.',
+    models: { vandal: 'vandalOath', sheriff: 'sheriffOath' },
+    body: { color: 0x0d0d11, rough: 0.14, metal: 0.35 },
+    trim: { color: 0xc9a24a, rough: 0.25, metal: 1 },
+    metal: { color: 0xffffff, rough: 0.18, metal: 0.95, tex: 'damascus', texColor: '#c9ced6', texBase: '#4a5058' },
+    grip: { color: 0x6e0f18, rough: 0.85, metal: 0 },
+    glow: { color: 0xbfe4ff, intensity: 2.4 },
+    accent: { color: 0xff3b4a, intensity: 2.0 },
+    finisher: 'lastStroke',
+    variant: 'Ink',
+    variants: [
+      { variant: 'Crimson Oath', body: { color: 0x5a0b12, rough: 0.14, metal: 0.35 }, grip: { color: 0x15100e, rough: 0.85, metal: 0 }, glow: { color: 0xffd27a, intensity: 2.4 }, accent: { color: 0xff7a2e, intensity: 2.0 } },
+      { variant: 'Jade Court', body: { color: 0x0f3b2e, rough: 0.16, metal: 0.3 }, grip: { color: 0x1c1712, rough: 0.85, metal: 0 }, glow: { color: 0xd9fff2, intensity: 2.4 }, accent: { color: 0x5cffc0, intensity: 2.0 } },
+      { variant: 'First Snow', body: { color: 0xece6da, rough: 0.2, metal: 0.1 }, trim: { color: 0xb8bec6, rough: 0.2, metal: 1 }, grip: { color: 0x1d2a44, rough: 0.85, metal: 0 }, glow: { color: 0x8fc8ff, intensity: 2.4 }, accent: { color: 0xff5a7a, intensity: 2.0 } },
+    ],
+  },
 };
 
 // Each melee type comes in exactly one theme of its own (picked with the melee type, not from the skin grid).
@@ -133,6 +150,7 @@ export const MELEE_THEMES = {
     grip: { color: 0x0d0b1a, rough: 0.9, metal: 0 },
     glow: { color: 0x7fd6ff, intensity: 2.4 },
   },
+  tanto: { ...SKINS.oathblade, models: undefined, variants: undefined, variant: undefined, blurb: 'The Oathblade collection\'s knife: a lacquered tanto with a gold collar and a silk cord. Its edge lights as it leaves your hand.' },
   bowie: { ...SKINS.starspur, models: undefined, variants: undefined, variant: undefined, blurb: 'The Starspur collection\'s knife: a copper-guarded bowie with a star rowel that spins at the guard.' },
 };
 

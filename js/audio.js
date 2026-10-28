@@ -496,6 +496,7 @@ export class Sound {
     for (const [f, kind] of steps) {
       const at = duration * f;
       if (kind === 'thunk') this.thunk(at);
+      else if (kind === 'shing') this.shing(at, 0.6);
       else this.click(at, 0.28);
     }
   }
@@ -547,11 +548,21 @@ export class Sound {
     this.tone({ dest: this.master, at, freq: 140, end: 70, decay: 0.08, gain: 0.25 });
   }
 
-  equip(id) {
+  // A blade leaving its sheath, or a hand run along an edge: a bright steel ring over a hiss.
+  shing(at = 0, gain = 1) {
+    if (!this.ctx) return;
+    this.noiseHit({ dest: this.master, at, hp: 3500, lp: 12000, decay: 0.32, gain: 0.16 * gain, attack: 0.03 });
+    this.tone({ dest: this.master, at: at + 0.04, freq: 3400, end: 2900, decay: 0.55, gain: 0.05 * gain, type: 'triangle' });
+    this.tone({ dest: this.master, at: at + 0.04, freq: 5150, end: 4800, decay: 0.35, gain: 0.025 * gain });
+  }
+
+  // `blade`: the weapon draws like a blade (Oathblade), so it rings as it comes out.
+  equip(id, blade = false) {
     if (!this.ctx) return;
     this.stopAction(); // swapping weapons cancels the reload or inspect
     const clip = this.clip(`${id}:equip`);
     if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
+    if (blade) { this.shing(0.03); this.click(0, 0.12); return; }
     this.noiseHit({ dest: this.master, lp: 1500, hp: 400, decay: 0.08, gain: 0.12 });
     this.click(0.1, 0.18);
   }
@@ -611,7 +622,7 @@ export class Sound {
   }
 
   // Finishers (render.js): Collapse hums up and implodes with a thump; Last Light is a ricochet whine, a
-  // jingle of spur rowels, then a bright chord as the star flares.
+  // jingle of spur rowels, then a bright chord as the star flares; Last Stroke is one ringing cut, then petals.
   finisher(kind, pos) {
     if (!this.ctx) return;
     const d = this.out(pos, 'other');
@@ -624,7 +635,13 @@ export class Sound {
       this.tone({ dest: d, freq: 2600, end: 900, decay: 0.55, gain: 0.12, type: 'triangle' });
       for (const [f, at] of [[2093, 0.35], [2637, 0.5], [3136, 0.65], [2637, 0.8]]) this.tone({ dest: d, at, freq: f, decay: 0.22, gain: 0.08, type: 'triangle' });
       this.noiseHit({ dest: d, at: 1.55, hp: 1500, lp: 9000, decay: 0.5, gain: 0.25, attack: 0.15 });
-      for (const f of [440, 554, 659]) this.tone({ dest: d, at: 1.7, freq: f, decay: 1.0, gain: 0.1, type: 'triangle' });
+      for (const f of [440, 554, 659]) this.tone({ dest: d, at: 1.7, freq: f, decay: 1.0, gain: 0.1, type: 'triangle' });    } else if (kind === 'lastStroke') {
+      // Last Stroke: a held breath, one ringing cut, then a soft rush of petals over a low drum and a bell.
+      this.noiseHit({ dest: d, at: 0.28, hp: 3000, lp: 12000, decay: 0.25, gain: 0.35, attack: 0.02 });
+      this.tone({ dest: d, at: 0.3, freq: 3600, end: 2700, decay: 0.7, gain: 0.08, type: 'triangle' });
+      this.noiseHit({ dest: d, at: 0.55, lp: 1400, hp: 200, decay: 0.9, gain: 0.3, attack: 0.12 });
+      this.tone({ dest: d, at: 0.55, freq: 95, end: 48, decay: 0.6, gain: 0.35 });
+      for (const [f, at] of [[1318, 0.62], [1976, 0.7]]) this.tone({ dest: d, at, freq: f, decay: 1.2, gain: 0.05, type: 'triangle' });
     }
   }
 
