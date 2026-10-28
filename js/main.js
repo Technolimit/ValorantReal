@@ -9,7 +9,7 @@ import { DT, YAW_PER_COUNT } from './config.js';
 import { WEAPONS, BUY_GROUPS } from './weapons.js';
 import { SKINS, SKIN_ORDER, skinFor, skinFits, designFor, swatch, meleeSkin, baseSkin, variantsOf, isCustom, saveCustomSkin, deleteCustomSkin, skinCode, parseSkinCode, sanitizeSkin, registerSkin, PATTERNS } from './skins.js';
 import { GunPreview, gunThumb } from './models.js';
-import { MELEE, MELEE_ORDER, MODEL_INSPECTS, isMelee, meleeId } from './melee.js';
+import { MELEE, MELEE_ORDER, MODEL_INSPECTS, SWINGS, isMelee, meleeId } from './melee.js';
 import { RELOAD_STYLE, RELOAD_SOUNDS } from './reloadanim.js';
 import { loadGameSounds } from './customsounds.js';
 import { AGENTS, AGENT_ORDER, Kit } from './abilities.js';
@@ -100,7 +100,7 @@ game.on('equip', ({ who, gun }) => {
   const skin = w && skinFor(settings, w);
   sound.equip(id, skin && (SKINS[skin]?.sounds || baseSkin(skin)), !!w && BLADE_DRAW.has(designFor(skin, w)));
 });
-game.on('swing', ({ who, heavy }) => { if (isPlayer(who)) sound.swing(heavy); });
+game.on('swing', ({ who, heavy }) => { if (isPlayer(who)) sound.swing(heavy, SWINGS[meleeId(settings.melee)]?.sound); });
 game.on('ability', ({ who, type }) => { if (isPlayer(who)) sound.ability(type); });
 game.on('smoke', ({ pos, kind }) => { if (kind !== 'fire') sound.smoke(pos); });
 game.on('flash', ({ pos }) => sound.flashbang(pos));

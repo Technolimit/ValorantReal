@@ -376,6 +376,35 @@ await check('Finishers leave nothing behind once they end', async () => {
   return { pass: Object.values(out).every(o => o.during > o.before && o.after <= o.before && !o.body && o.light === 0 && o.left <= 0), ...out };
 });
 
+await check('Every melee type swings its own way and leaves a trail that clears', async () => {
+  const r = await page.evaluate(async () => {
+    const { SWINGS, MELEE_ORDER, sample } = await import('./js/melee.js');
+    const h = window.__game, g = await __start({ botCount: 0 }), p = g.player, rd = h.renderer;
+    const out = {};
+    for (const m of MELEE_ORDER) {
+      const sw = SWINGS[m];
+      h.settings.melee = m;
+      p.equip('melee', g.time, true);
+      rd.render(0, 1 / 60, { dx: 0, dy: 0 });
+      g.emit('swing', { who: p, heavy: false }); g.emit('swing', { who: p, heavy: true });
+      const tracks = [...sw.light, sw.heavy].map(s => JSON.stringify(sample(s.track, s.dur * 0.3)));
+      out[m] = { light: sw.light.length, trails: rd.trails.live.length, distinct: new Set(tracks).size === tracks.length, anim: rd.vm.swingAnim === sw.heavy };
+      rd.trails.clear();
+    }
+    const flat = JSON.stringify(Object.values(SWINGS).map(s => s.heavy.trail));
+    g.emit('swing', { who: p, heavy: true });
+    const live = rd.trails.live.length;
+    return { out, unique: new Set(Object.values(SWINGS).map(s => JSON.stringify(s.light[0].trail))).size, kinds: MELEE_ORDER.length, flat: flat.length > 0, live };
+  });
+  await page.waitForTimeout(1600); // trails run on the clock; the longest lasts about 1.1 s
+  const after = await page.evaluate(() => { const rd = window.__game.renderer; rd.render(0, 1 / 60, { dx: 0, dy: 0 }); return { left: rd.trails.live.length, meshes: rd.vmScene.children.filter(o => o.isMesh || o.isPoints).length }; });
+  const all = Object.values(r.out);
+  return {
+    pass: all.length === r.kinds && all.every(o => o.light >= 2 && o.trails >= 2 && o.distinct && o.anim) && r.unique === r.kinds && r.live > 0 && after.left === 0 && after.meshes === 0,
+    ...r.out.tanto, unique: r.unique, ...after,
+  };
+});
+
 await check('No page errors', () => ({ pass: errors.length === 0, errors: errors.slice(0, 3) }));
 
 await browser.close();

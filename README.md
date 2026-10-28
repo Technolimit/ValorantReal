@@ -155,5 +155,20 @@ own inspect (`js/melee.js`), its moves flowing into one another as one smooth an
 and hold it to examine the weapon with the mouse. Model skins' guns likewise have one inspect each. The skin screen's *Play inspect* button previews them. Bots carry
 random melee types, and other online players see yours.
 
+Each melee type also swings its own way (`SWINGS` in `js/melee.js`), leaving a trail of light across the screen in
+its theme's colours (`js/swingfx.js`); light swings alternate sides, and each has its own whoosh:
+
+- **Oathblade Tanto:** one drawn cut clean across the screen that leaves a long trail of light with a thread of red
+  lacquer under it, motes drifting off; the heavy cuts an X that breaks into light where the strokes cross.
+- **Starspur Bowie:** a rising backhand with the rowel spinning, a teal arc throwing copper stars; the heavy hacks
+  down overhead and bursts stars at the middle of the screen.
+- **Nebula Arc Blade:** a wide saber sweep, a cyan core in a violet haze shedding stars; the heavy sweeps most of a circle.
+- **Damascus Katana:** a flat silver crescent across the whole screen; the heavy rises corner to corner and lingers.
+- **Nightglass Karambit:** a hooking violet cut with a spin on the ring; the heavy spins a full circle, then rips.
+- **Tiger Stripe Balisong:** a flick that rolls the knife and rakes three amber claw marks.
+- **Hexcore Kunai:** a fast red jab; the heavy helicopters once, stabs and throws out a hexagon.
+- **Heirloom Hatchet:** forehand chops shedding embers; the heavy is an overhead chop with a shower of sparks.
+- **Tactical Knife:** a quick slash with a thin cyan streak; the heavy is a straight stab.
+
 `node tools/check-skins.mjs [shots-dir]` checks the skin list, the collection and weapon screens, variants, the
-Starspur and Oathblade models with their inspects, pullouts and reloads, and finishers.
+Starspur and Oathblade models with their inspects, pullouts and reloads, finishers, and the melee swings and their trails.

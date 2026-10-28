@@ -441,6 +441,231 @@ export const MELEE = {
   },
 };
 
+// Swings: each melee type cuts its own way. `light` (fire) is a list played in turn, so the cuts alternate
+// sides; `heavy` (alt fire) winds up for the 0.18 s before it lands. Each is keyframed like an inspect (track,
+// parts, glow; `dur` in seconds) and carries `trail`: the strokes of light it leaves on screen (see swingfx.js:
+// half-screen-height units from the middle, y up; `color` 'glow' or 'accent' takes the theme's colour).
+// `sound` shapes its whoosh (Sound.swing).
+const flipX = (s) => ({ ...s, pts: s.pts?.map(([x, y]) => [-x, y]), arc: s.arc && [-s.arc[0], s.arc[1], s.arc[2], Math.PI - s.arc[3], Math.PI - s.arc[4]] });
+// The same cut from the other side, a backhand: turns flipped, the strokes mirrored, and the hand starting across
+// the body and sweeping back out (flipping the hand's sideways move as well would swing it off the screen).
+function mirrored(sw) {
+  const reach = Math.min(...sw.track.map(f => f[1]));
+  const fl = (f, i, all) => {
+    const px = i === 0 || i === all.length - 1 ? f[1] : reach - f[1];
+    return Object.assign([f[0], px, f[2], f[3], f[4], -f[5], -f[6], ...f.slice(7)], { ease: f.ease });
+  };
+  return { ...sw, track: sw.track.map(fl), trail: sw.trail.map(flipX) };
+}
+// Three parallel strokes a little apart along `off`, each a beat after the last: claw marks.
+const rake = (pts, off, t0, t1, rest) => [-1, 0, 1].map((k, i) => ({ pts: pts.map(([x, y]) => [x + off[0] * k, y + off[1] * k]), t0: t0 + i * 0.02, t1: t1 + i * 0.02, ...rest }));
+// A hexagon of radius r round (cx, cy), with points along each side so the curve through them stays straight.
+const hexPts = (cx, cy, r, rot = Math.PI / 6) => {
+  const v = [...Array(7)].map((_, i) => [cx + Math.cos(rot + (i * TAU) / 6) * r, cy + Math.sin(rot + (i * TAU) / 6) * r]), out = [];
+  for (let i = 0; i < 6; i++) for (let k = 0; k < 4; k++) out.push([v[i][0] + (v[i + 1][0] - v[i][0]) * (k / 4), v[i][1] + (v[i + 1][1] - v[i][1]) * (k / 4)]);
+  out.push(v[6]);
+  return out;
+};
+
+const KNIFE_LIGHT = {
+  dur: 0.42,
+  track: [[0, ...Z], [0.04, 0.03, 0.02, 0, 0.1, -0.35, -0.3], S(0.16, -0.16, -0.03, -0.06, -0.15, 0.85, 0.55), [0.42, ...Z]],
+  trail: [{ pts: [[1.0, 0.45], [0.3, 0.1], [-0.4, -0.2], [-1.0, -0.45]], t0: 0.03, t1: 0.15, w: 0.05, linger: 0.14, core: 0.45 }],
+};
+const AXE_LIGHT = {
+  dur: 0.45,
+  track: [[0, ...Z], [0.05, 0.02, 0.05, 0.02, 0.45, -0.25, -0.4], S(0.18, -0.12, -0.03, -0.05, -0.2, 0.5, 0.75), [0.45, ...Z]],
+  glow: [[0, 1], S(0.18, 2.2), [0.45, 1]],
+  trail: [{ pts: [[0.85, 0.8], [0.35, 0.25], [-0.15, -0.25], [-0.5, -0.75]], t0: 0.04, t1: 0.18, w: 0.11, linger: 0.18, core: 0.3, sparks: 5, sparkSize: 9 }],
+};
+// The hatchet's backhand is its own (mirrored, the chop would drop it out of sight): high across the body, down and out.
+const AXE_BACK = {
+  ...AXE_LIGHT,
+  track: [[0, ...Z], [0.05, -0.15, 0.06, 0.02, 0.45, 0.3, 0.45], S(0.18, 0, -0.01, -0.05, -0.2, -0.45, -0.75), [0.45, ...Z]],
+  trail: AXE_LIGHT.trail.map(flipX),
+};
+const KATANA_LIGHT = {
+  dur: 0.44,
+  track: [[0, ...Z], [0.04, 0.06, 0.04, 0.02, 0.05, -0.6, -1.3], S(0.17, -0.2, 0.02, -0.06, 0, 1.0, -1.35), [0.44, ...Z]],
+  glow: [[0, 1], S(0.15, 3), [0.44, 1]],
+  trail: [{ pts: [[1.8, 0.05], [0.6, -0.08], [-0.6, -0.06], [-1.8, 0.08]], t0: 0.03, t1: 0.16, w: 0.045, linger: 0.28, core: 0.9 }],
+};
+const KARAMBIT_LIGHT = {
+  dur: 0.44,
+  track: [[0, ...Z], [0.04, 0.03, 0, 0, 0.2, -0.3, -0.2], S(0.18, -0.13, -0.04, -0.04, -0.2, 0.7, 0.8), [0.44, ...Z]],
+  parts: { w: [[0, ...Z, 1], ...spin(0, 0.12, 0, -1), [0.44, 0, 0, 0, -TAU, 0, 0, 1]] },
+  glow: [[0, 1], [0.18, 2.6], [0.44, 1]],
+  trail: [{ arc: [0.25, -0.15, 0.75, 0.35, Math.PI + 0.6], t0: 0.03, t1: 0.2, w: 0.07, linger: 0.22, core: 0.45 }],
+};
+const BALISONG_LIGHT = {
+  dur: 0.4,
+  track: [[0, ...Z], [0.04, 0.03, 0.03, 0, 0.25, -0.3, -0.3], S(0.15, -0.1, -0.05, -0.04, -0.2, 0.6, 0.5), [0.4, ...Z]],
+  parts: { w: [[0, ...Z, 1], ...spin(0.02, 0.2, 2, 1), [0.4, 0, 0, 0, 0, 0, TAU, 1]] },
+  trail: rake([[0.6, 0.55], [0.15, 0.05], [-0.3, -0.45]], [0.11, -0.1], 0.03, 0.13, { w: 0.045, linger: 0.22, core: 0.55 }),
+};
+const KUNAI_LIGHT = {
+  dur: 0.38,
+  track: [[0, ...Z], [0.03, 0.01, 0, 0.04, 0.05, 0.05, 0], S(0.11, -0.08, 0.05, -0.16, -0.05, 0.12, 0), [0.38, ...Z]],
+  glow: [[0, 1], S(0.11, 2.5), [0.38, 1]],
+  trail: [{ pts: [[0.6, -0.7], [0.3, -0.35], [0.06, -0.04]], t0: 0.02, t1: 0.1, w: 0.06, linger: 0.14, core: 0.7, taper: 0.6 }],
+};
+// A second jab, rising from lower down (a thrust mirrored would come from the wrong hand).
+const KUNAI_JAB = {
+  ...KUNAI_LIGHT,
+  track: [[0, ...Z], [0.03, 0.01, -0.02, 0.04, -0.1, 0.02, 0.3], S(0.11, -0.06, 0.07, -0.16, 0.1, 0.1, 0.35), [0.38, ...Z]],
+  trail: [{ pts: [[0.42, -0.85], [0.2, -0.42], [0.02, 0.02]], t0: 0.02, t1: 0.1, w: 0.06, linger: 0.14, core: 0.7, taper: 0.6 }],
+};
+const ARC_LIGHT = {
+  dur: 0.44,
+  track: [[0, ...Z], [0.04, 0.04, 0.04, 0.02, 0.2, -0.5, -0.6], S(0.17, -0.17, -0.02, -0.06, -0.1, 0.95, 0.7), [0.44, ...Z]],
+  parts: { beam: [[0, ...Z, 1], S(0.12, ...Z, 1.2), [0.4, ...Z, 1]] },
+  glow: [[0, 1], S(0.12, 3), [0.44, 1]],
+  trail: [
+    { pts: [[1.3, 0.7], [0.5, 0.2], [-0.4, -0.15], [-1.3, -0.35]], t0: 0.03, t1: 0.17, w: 0.12, linger: 0.3, core: 0.75, sparks: 8, sparkSize: 11, sparkColor: 0xffffff },
+    { pts: [[1.3, 0.7], [0.5, 0.2], [-0.4, -0.15], [-1.3, -0.35]], t0: 0.03, t1: 0.17, w: 0.26, linger: 0.36, core: 0, alpha: 0.55, color: 0xc86bff },
+  ],
+};
+const TANTO_LIGHT = {
+  dur: 0.46,
+  track: [[0, ...Z], [0.04, 0.05, 0.04, 0.02, 0.15, -0.55, -0.9], S(0.15, -0.2, -0.03, -0.07, -0.1, 1.0, 0.3), [0.46, ...Z]],
+  glow: [[0, 1], S(0.13, 3.6), [0.46, 1]],
+  trail: [
+    { pts: [[1.9, 0.6], [0.6, 0.06], [-0.6, -0.16], [-1.9, -0.12]], t0: 0.03, t1: 0.15, w: 0.07, linger: 0.55, core: 1, sparks: 9, sparkSize: 9 },
+    { pts: [[1.9, 0.54], [0.6, 0.015], [-0.6, -0.2], [-1.9, -0.16]], t0: 0.045, t1: 0.165, w: 0.025, linger: 0.4, core: 0.2, color: 'accent', alpha: 0.9 },
+  ],
+};
+const BOWIE_LIGHT = {
+  dur: 0.42,
+  track: [[0, ...Z], [0.04, -0.02, -0.02, 0.02, -0.1, 0.45, 0.5], S(0.16, 0.04, 0.04, -0.06, 0.25, -0.75, -0.6), [0.42, ...Z]],
+  parts: { rowel: [[0, ...Z, 1], ...spin(0, 0.4, 0, 3), [0.42, 0, 0, 0, 3 * TAU, 0, 0, 1]] },
+  glow: [[0, 1], S(0.16, 2.6), [0.42, 1]],
+  trail: [{ pts: [[-1.1, -0.4], [-0.3, -0.05], [0.4, 0.2], [1.1, 0.45]], t0: 0.03, t1: 0.16, w: 0.07, linger: 0.25, core: 0.5, sparks: 6, sparkSize: 13, sparkColor: 'accent' }],
+};
+
+export const SWINGS = {
+  // Standard issue: a quick, clean slash with a thin status-light streak; the heavy is a straight stab.
+  knife: {
+    light: [KNIFE_LIGHT, mirrored(KNIFE_LIGHT)],
+    heavy: {
+      dur: 0.85,
+      track: [[0, ...Z], [0.16, 0.02, -0.01, 0.08, 0.15, 0.1, 0], S(0.27, -0.09, 0.05, -0.2, -0.05, 0.1, 0), [0.4, -0.085, 0.05, -0.19, -0.04, 0.1, 0], [0.85, ...Z]],
+      trail: [{ pts: [[0.75, -0.75], [0.35, -0.35], [0.05, -0.03]], t0: 0.19, t1: 0.27, w: 0.07, linger: 0.16, core: 0.6, taper: 0.6, burst: 4, sparkSize: 9 }],
+    },
+  },
+  // Heirloom hatchet: forehand chops that shed embers; the heavy is an overhead chop with a shower of sparks.
+  axe: {
+    light: [AXE_LIGHT, AXE_BACK],
+    heavy: {
+      dur: 0.9,
+      track: [[0, ...Z], [0.18, 0, 0.06, 0.08, 0.8, 0.1, 0.1], S(0.32, -0.05, -0.1, -0.08, -0.85, 0.1, 0), [0.5, -0.05, -0.095, -0.08, -0.8, 0.1, 0], [0.9, ...Z]],
+      glow: [[0, 1], [0.18, 1.4], S(0.32, 3), [0.9, 1]],
+      trail: [{ pts: [[0.15, 1.1], [0.1, 0.5], [0.02, -0.1], [-0.02, -0.8]], t0: 0.2, t1: 0.32, w: 0.15, linger: 0.25, core: 0.35, burst: 10, sparkSize: 10 }],
+    },
+  },
+  // Damascus katana: a flat cut across the whole screen, a thin silver crescent; the heavy rises corner to corner.
+  katana: {
+    light: [KATANA_LIGHT, mirrored(KATANA_LIGHT)],
+    heavy: {
+      dur: 0.9,
+      track: [[0, ...Z], [0.17, -0.06, -0.08, 0.04, -0.3, 0.6, 0.9], S(0.3, 0.08, 0.08, -0.06, 0.5, -0.7, -0.6), [0.5, 0.075, 0.075, -0.06, 0.48, -0.68, -0.6], [0.9, ...Z]],
+      glow: [[0, 1], S(0.3, 3.5), [0.9, 1]],
+      trail: [{ pts: [[-1.5, -0.9], [-0.5, -0.3], [0.5, 0.25], [1.6, 0.85]], t0: 0.18, t1: 0.3, w: 0.06, linger: 0.45, core: 1, sparks: 4, sparkSize: 9 }],
+    },
+  },
+  // Nightglass karambit: a hooking cut that spins once on the ring; the heavy spins a full violet circle, then rips.
+  karambit: {
+    light: [KARAMBIT_LIGHT, mirrored(KARAMBIT_LIGHT)],
+    heavy: {
+      dur: 0.85,
+      track: [[0, ...Z], [0.18, 0, 0.05, 0.03, 0.3, -0.2, -0.2], S(0.32, -0.12, -0.05, -0.08, -0.3, 0.7, 0.9), [0.45, -0.11, -0.045, -0.075, -0.28, 0.68, 0.88], [0.85, ...Z]],
+      parts: { w: [[0, ...Z, 1], ...spin(0, 0.2, 0, -2), [0.85, 0, 0, 0, -2 * TAU, 0, 0, 1]] },
+      glow: [[0, 1], [0.2, 2.8], S(0.32, 3.5), [0.85, 1]],
+      trail: [
+        { arc: [0.05, 0, 0.5, -Math.PI / 2, -Math.PI / 2 + TAU], t0: 0.02, t1: 0.2, w: 0.05, linger: 0.32, core: 0.4 },
+        { pts: [[0.7, 0.5], [0, 0], [-0.7, -0.5]], t0: 0.22, t1: 0.32, w: 0.08, linger: 0.25, core: 0.6 },
+      ],
+    },
+  },
+  // Tiger Stripe balisong: a flick-cut that rolls the knife and rakes three claw marks; the heavy rakes the other way.
+  balisong: {
+    light: [BALISONG_LIGHT, mirrored(BALISONG_LIGHT)],
+    heavy: {
+      dur: 0.85,
+      track: [[0, ...Z], [0.17, 0, 0.06, 0.04, 0.5, 0.4, 0.6], S(0.3, 0.02, -0.08, -0.06, -0.4, -0.3, -0.4), [0.45, 0.02, -0.075, -0.06, -0.38, -0.28, -0.4], [0.85, ...Z]],
+      parts: { w: [[0, ...Z, 1], ...spin(0, 0.17, 2, 2), [0.85, 0, 0, 0, 0, 0, 2 * TAU, 1]] },
+      glow: [[0, 1], S(0.3, 2.6), [0.85, 1]],
+      trail: rake([[-0.7, 0.8], [0, 0.05], [0.6, -0.7]], [0.12, 0.1], 0.19, 0.31, { w: 0.06, linger: 0.3, core: 0.55 }),
+    },
+  },
+  // Hexcore kunai: fast red jabs from low and lower; the heavy helicopters once in the hand, then stabs and throws out a hexagon.
+  kunai: {
+    light: [KUNAI_LIGHT, KUNAI_JAB],
+    heavy: {
+      dur: 0.85,
+      track: [[0, ...Z], [0.16, 0.02, 0.04, 0.06, 0.3, 0.1, 0], S(0.26, -0.09, 0.06, -0.2, -0.05, 0.12, 0), [0.45, -0.085, 0.058, -0.19, -0.05, 0.12, 0], [0.85, ...Z]],
+      parts: { w: [[0, ...Z, 1], ...spin(0, 0.18, 1, 1), [0.85, 0, 0, 0, 0, TAU, 0, 1]] },
+      glow: [[0, 1], [0.18, 2], S(0.27, 4), [0.85, 1]],
+      trail: [
+        { pts: [[0.6, -0.7], [0.3, -0.35], [0.06, -0.04]], t0: 0.18, t1: 0.26, w: 0.07, linger: 0.16, core: 0.7, taper: 0.6 },
+        { pts: hexPts(0.04, 0, 0.3), t0: 0.26, t1: 0.36, w: 0.06, linger: 0.34, core: 1, taper: 0, burst: 6, sparkSize: 10 },
+      ],
+    },
+  },
+  // Nebula arc blade: a wide saber sweep, a cyan core in a violet haze shedding stars; the heavy sweeps most of a circle.
+  arc: {
+    light: [ARC_LIGHT, mirrored(ARC_LIGHT)],
+    heavy: {
+      dur: 0.9,
+      track: [[0, ...Z], [0.17, 0.02, 0.06, 0.04, 0.4, -0.6, -0.9], S(0.32, -0.16, -0.03, -0.08, -0.2, 1.1, 0.9), [0.5, -0.155, -0.028, -0.078, -0.19, 1.08, 0.88], [0.9, ...Z]],
+      parts: { beam: [[0, ...Z, 1], [0.17, ...Z, 1.1], S(0.3, ...Z, 1.3), [0.6, ...Z, 1], [0.9, ...Z, 1]] },
+      glow: [[0, 1], [0.17, 2], S(0.3, 4.5), [0.9, 1]],
+      trail: [
+        { arc: [0, 0, 0.85, 0.2, Math.PI + 0.8], t0: 0.18, t1: 0.32, w: 0.12, linger: 0.4, core: 0.75, sparks: 14, sparkSize: 11, sparkColor: 0xffffff },
+        { arc: [0, 0, 0.85, 0.2, Math.PI + 0.8], t0: 0.18, t1: 0.32, w: 0.28, linger: 0.45, core: 0, alpha: 0.55, color: 0xc86bff },
+      ],
+    },
+  },
+  // Oathblade tanto: one drawn cut clean across the screen that leaves a long trail of light, a thread of red
+  // lacquer under it, motes drifting off; the heavy cuts an X, the second stroke breaking into light at the cross.
+  tanto: {
+    light: [TANTO_LIGHT, mirrored(TANTO_LIGHT)],
+    heavy: {
+      dur: 0.95,
+      track: [[0, ...Z], [0.15, 0.06, 0.07, 0.04, 0.6, -0.4, -0.6], S(0.27, -0.16, -0.06, -0.07, -0.4, 0.8, 0.5), [0.34, -0.15, 0.06, -0.04, 0.5, 0.7, 0.6], S(0.49, 0.06, -0.07, -0.07, -0.4, -0.5, -0.4), [0.62, 0.055, -0.065, -0.065, -0.38, -0.48, -0.38], [0.95, ...Z]],
+      glow: [[0, 1], S(0.27, 3.6), [0.36, 1.6], S(0.49, 4), [0.95, 1]],
+      trail: [
+        { pts: [[1.4, 1.0], [0.45, 0.3], [-0.45, -0.3], [-1.4, -1.0]], t0: 0.18, t1: 0.27, w: 0.055, linger: 0.6, core: 1 },
+        { pts: [[1.4, 0.95], [0.45, 0.26], [-0.45, -0.34], [-1.4, -1.05]], t0: 0.19, t1: 0.28, w: 0.018, linger: 0.45, core: 0.15, color: 'accent', alpha: 0.9 },
+        { pts: [[-1.4, 0.95], [-0.45, 0.3], [0.45, -0.3], [1.4, -0.95]], t0: 0.4, t1: 0.49, w: 0.055, linger: 0.6, core: 1, burst: 10, burstAt: 0.5, sparkSize: 9 },
+        { pts: [[-1.4, 0.9], [-0.45, 0.26], [0.45, -0.34], [1.4, -1.0]], t0: 0.41, t1: 0.5, w: 0.018, linger: 0.45, core: 0.15, color: 'accent', alpha: 0.9 },
+      ],
+    },
+  },
+  // Starspur bowie: a rising backhand with the rowel spinning, a teal arc that throws copper stars; the heavy hacks
+  // down overhead and bursts a spray of stars where it crosses the middle.
+  bowie: {
+    light: [BOWIE_LIGHT, mirrored(BOWIE_LIGHT)],
+    heavy: {
+      dur: 0.88,
+      track: [[0, ...Z], [0.17, 0.02, 0.09, 0.05, 0.9, -0.2, -0.3], S(0.3, -0.1, -0.08, -0.07, -0.7, 0.4, 0.3), [0.48, -0.095, -0.075, -0.07, -0.68, 0.38, 0.3], [0.88, ...Z]],
+      parts: { rowel: [[0, ...Z, 1], ...spin(0, 0.5, 0, 4), [0.88, 0, 0, 0, 4 * TAU, 0, 0, 1]] },
+      glow: [[0, 1], [0.17, 1.6], S(0.3, 3.4), [0.88, 1]],
+      trail: [{ pts: [[0.6, 1.0], [0.25, 0.35], [-0.1, -0.25], [-0.4, -0.85]], t0: 0.19, t1: 0.3, w: 0.1, linger: 0.3, core: 0.5, burst: 12, burstAt: 0.5, sparkSize: 14, sparkColor: 'accent' }],
+    },
+  },
+};
+// How each swing sounds: the whoosh's filter, and any ring or click on top (Sound.swing).
+for (const [id, snd] of Object.entries({
+  axe: { whoosh: { lp: 900, decay: 0.2 }, heavyWhoosh: { lp: 700, decay: 0.3, gain: 0.26 } },
+  katana: { whoosh: { hp: 1400, lp: 6000, decay: 0.12, gain: 0.17 }, tones: [{ freq: 2800, end: 2300, decay: 0.3, gain: 0.02, type: 'triangle' }] },
+  karambit: { whoosh: { hp: 700, lp: 2600, decay: 0.09 }, again: 0.08 },
+  balisong: { whoosh: { lp: 2200, decay: 0.11 }, tones: [{ freq: 3200, decay: 0.025, gain: 0.03, type: 'square' }] },
+  kunai: { whoosh: { hp: 1200, lp: 4000, decay: 0.08, gain: 0.18 } },
+  arc: { whoosh: { lp: 2400, decay: 0.18 }, tones: [{ freq: 140, end: 230, decay: 0.28, gain: 0.05, type: 'sawtooth' }] },
+  tanto: { whoosh: { hp: 1500, lp: 7000, decay: 0.14, gain: 0.18 }, tones: [{ at: 0.04, freq: 3600, end: 3300, decay: 0.6, gain: 0.04, type: 'triangle' }] },
+  bowie: { whoosh: { lp: 1900, decay: 0.15 }, tones: [{ at: 0.03, freq: 2400, decay: 0.2, gain: 0.022, type: 'triangle' }, { at: 0.07, freq: 3100, decay: 0.22, gain: 0.02, type: 'triangle' }] },
+})) SWINGS[id].sound = snd;
+
 export const MELEE_ORDER = Object.keys(MELEE);
 export const isMelee = (id) => !!MELEE[id];
 export const meleeId = (id) => (MELEE[id] ? id : 'knife');
