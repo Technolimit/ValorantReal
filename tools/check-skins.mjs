@@ -77,36 +77,64 @@ await check('Every melee type has exactly one theme of its own, and no gun skin 
   };
 }));
 
-await check('The skin menu has one Melee entry; its grid picks the melee type', async () => {
+await check('Collection: every weapon drawn in its skin, plus one Melee card', async () => {
   const r = await page.evaluate(async () => {
     document.getElementById('menu-skins').click();
-    const nav = [...document.querySelectorAll('#skin-weapons button')].map(b => b.dataset.id);
-    document.querySelector('#skin-weapons button[data-id="melee"]').click();
-    const cards = [...document.querySelectorAll('#skin-grid .skin-card b')].map(b => b.textContent);
-    const katana = [...document.querySelectorAll('#skin-grid .skin-card')].find(c => c.querySelector('b').textContent === 'Katana');
-    katana.click();
-    return {
-      melee: nav.filter(id => id === 'melee').length, knives: nav.filter(id => ['knife', 'katana', 'bowie'].includes(id)).length, cards,
-      equipped: window.__game.settings.melee, title: document.getElementById('skin-title').textContent, newHidden: document.getElementById('skin-new').hidden,
-    };
+    const cards = [...document.querySelectorAll('#skin-weapons .coll-card')];
+    return { cards: cards.length, pictures: cards.filter(c => c.querySelector('img').src.startsWith('data:image/png')).length, melee: cards.filter(c => c.dataset.id === 'melee').length, knives: cards.filter(c => ['knife', 'katana'].includes(c.dataset.id)).length };
+  });
+  await page.waitForTimeout(200);
+  await shot('collection', '.panel.skins');
+  return { pass: r.cards === 20 && r.pictures === 20 && r.melee === 1 && r.knives === 0, ...r };
+});
+
+// Open a weapon's screen from the collection, click a skin in the side list (by name), then a variant swatch.
+await page.evaluate(() => {
+  window.__open = (id) => { document.getElementById('skin-detail-back').click(); document.querySelector(`#skin-weapons .coll-card[data-id="${id}"]`).click(); };
+  window.__pick = (name) => [...document.querySelectorAll('#skin-grid .skin-card')].find(c => c.querySelector('b').textContent === name).click();
+  window.__variant = (i) => document.querySelectorAll('#skin-variants button')[i].click();
+  window.__screen = () => ({ title: document.getElementById('skin-title').textContent, variant: document.getElementById('skin-variant-name').textContent, swatches: document.querySelectorAll('#skin-variants button').length, equip: document.getElementById('skin-equip').textContent, list: [...document.querySelectorAll('#skin-grid .skin-card b')].map(b => b.textContent) });
+});
+
+await check('Weapon screen: previewing a variant changes nothing until Equip', () => page.evaluate(() => {
+  const h = window.__game;
+  __open('vandal'); __pick('Orbital'); __variant(2);
+  const before = { ...__screen(), worn: h.settings.skins.vandal || 'standard' };
+  document.getElementById('skin-equip').click();
+  const after = { ...__screen(), worn: h.settings.skins.vandal };
+  return {
+    pass: before.list.join() === 'Standard Issue,Ember Circuit,Glacier,Orbital' && before.swatches === 4 && before.variant === 'Glacial' && before.worn === 'standard'
+      && before.equip === 'Equip skin' && after.worn === 'orbital~2' && after.equip === 'Equipped',
+    before, after,
+  };
+}));
+
+await check('Melee screen: the melee types, each in its own theme; Equip swaps your melee', async () => {
+  const r = await page.evaluate(() => {
+    __open('melee'); __pick('Katana');
+    const s = __screen();
+    document.getElementById('skin-equip').click();
+    return { ...s, equipped: window.__game.settings.melee, newHidden: document.getElementById('skin-new').hidden };
   });
   await page.waitForTimeout(300);
   await shot('menu-melee', '.panel.skins');
-  return { pass: r.melee === 1 && r.knives === 0 && r.cards.length === 8 && r.equipped === 'katana' && r.title === 'Damascus Katana' && r.newHidden, ...r };
+  return { pass: r.list.length === 8 && r.title === 'Damascus Katana' && r.swatches === 1 && r.equipped === 'katana' && r.newHidden, ...r };
 });
 
 if (SHOTS) {
-  for (const [w, sid, ins] of [['sheriff', 'starspur', 1], ['marshal', 'starspur', 0], ['judge', 'starspur', 0], ['vandal', 'orbital', 0]]) {
-    await page.evaluate(([w]) => document.querySelector(`#skin-weapons button[data-id="${w}"]`).click(), [w]);
-    await page.evaluate(([sid]) => [...document.querySelectorAll('#skin-grid .skin-card')].find(c => c.querySelector('b').textContent.toLowerCase() === sid)?.click(), [sid]);
+  for (const [w, name, v] of [['sheriff', 'Starspur', 0], ['marshal', 'Starspur', 1], ['judge', 'Starspur', 3], ['vandal', 'Orbital', 0], ['vandal', 'Orbital', 1], ['sheriff', 'Starspur', 2]]) {
+    await page.evaluate(([w, name, v]) => { __open(w); __pick(name); __variant(v); }, [w, name, v]);
     await page.waitForTimeout(400);
-    await shot(`menu-${sid}-${w}`, '.panel.skins');
+    await shot(`menu-${name.toLowerCase()}-${w}-${v}`, '.panel.skins');
   }
-  await page.evaluate(() => { document.querySelector('#skin-weapons button[data-id="melee"]').click(); [...document.querySelectorAll('#skin-grid .skin-card')].find(c => c.querySelector('b').textContent === 'Bowie').click(); });
+  await page.evaluate(() => { __open('melee'); __pick('Bowie'); });
   await page.waitForTimeout(400);
   await shot('menu-starspur-bowie', '.panel.skins');
+  await page.evaluate(() => document.getElementById('skin-detail-back').click());
+  await page.waitForTimeout(200);
+  await shot('collection-after', '.panel.skins');
 }
-await page.evaluate(() => document.getElementById('skins-back').click());
+await page.evaluate(() => { document.getElementById('skin-detail-back').click(); document.getElementById('skins-back').click(); });
 
 await check('Starspur models build with their moving parts, and their inspects and reloads run', () => page.evaluate(async () => {
   const { gunModel, poseMeleeParts } = await import('./js/models.js');

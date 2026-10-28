@@ -1225,6 +1225,48 @@ export function studioEnv(renderer) {
   return tex;
 }
 
+// ---------- skin menu thumbnails ----------
+// A side-on picture of a weapon in a skin (a data URL), drawn once per weapon and skin on a small renderer of its
+// own and cached: the collection grid shows one per weapon.
+let thumbKit = null;
+const thumbCache = new Map();
+export function gunThumb(weaponId, skinId) {
+  const key = weaponId + '|' + skinId;
+  if (thumbCache.has(key)) return thumbCache.get(key);
+  if (!thumbKit) {
+    const canvas = document.createElement('canvas');
+    const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+    r.setSize(360, 120, false);
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xe8f0ff, 0x30302c, 1.4));
+    const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(1, 1.5, 1); scene.add(key);
+    const rim = new THREE.DirectionalLight(0x9fc8ff, 1.6); rim.position.set(-1.5, 0.6, -1); scene.add(rim);
+    scene.environment = studioEnv(r);
+    thumbKit = { r, scene, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 10) };
+  }
+  const { r, scene, cam } = thumbKit;
+  const m = gunModel(weaponId, skinId, { noHands: true });
+  for (const h of m.userData.hands || []) h.parent.remove(h); // hidden meshes still count toward the bounds
+  if (m.userData.parts.shell) m.userData.parts.shell.parent.remove(m.userData.parts.shell);
+  if (MELEE[weaponId]) m.children.filter(c => c.material === skinMaterials(skinId).sleeve || c.material === skinMaterials(skinId).glove).forEach(c => m.remove(c));
+  m.rotation.set(0.05, PI / 2, MELEE[weaponId] ? -0.5 : 0, 'YXZ'); // muzzle to the left, as in the game's collection
+  scene.add(m);
+  const box = new THREE.Box3().setFromObject(m), c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+  const aspect = 3, half = Math.max(size.x / 2 / aspect, size.y / 2) * 1.08;
+  Object.assign(cam, { left: -half * aspect, right: half * aspect, top: half, bottom: -half });
+  cam.position.set(c.x, c.y, c.z + 2);
+  cam.lookAt(c);
+  cam.updateProjectionMatrix();
+  r.render(scene, cam);
+  const url = r.domElement.toDataURL('image/png');
+  scene.remove(m);
+  m.traverse(o => o.geometry?.dispose());
+  thumbCache.set(key, url);
+  return url;
+}
+// A custom skin that is edited or deleted draws fresh pictures.
+onSkinsChanged((id) => { for (const k of thumbCache.keys()) if (k.endsWith('|' + id)) thumbCache.delete(k); });
+
 // ---------- skin menu preview ----------
 export class GunPreview {
   constructor(canvas) {

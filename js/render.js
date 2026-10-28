@@ -553,7 +553,7 @@ export class Renderer {
     g.on('roundEnd', ({ reason }) => {
       const f = this.pendingFinisher;
       this.pendingFinisher = null;
-      if (f && reason === 'eliminated' && g.time - f.at < 2) this.playFinisher(f.kind, f.victim);
+      if (f && reason === 'eliminated' && g.time - f.at < 2) this.playFinisher(f.kind, f.victim, f.skin);
     });
     g.on('respawn', ({ who }) => {
       const ch = this.characters.get(who);
@@ -801,19 +801,21 @@ export class Renderer {
   // whether this kill ends the round. Any later kill replaces it.
   queueFinisher(killer, victim, def) {
     if (!killer || !victim || killer === victim || !def) return;
-    const kind = SKINS[this.skinOf(killer, this.modelOf(killer, def.id))]?.finisher;
-    const f = FINISHERS.includes(kind) ? { kind, victim, at: this.game.time } : null;
+    const skin = this.skinOf(killer, this.modelOf(killer, def.id)), kind = SKINS[skin]?.finisher;
+    const f = FINISHERS.includes(kind) ? { kind, skin, victim, at: this.game.time } : null;
     if (this.game.mode) this.pendingFinisher = f;
-    else if (f) this.playFinisher(kind, victim);
+    else if (f) this.playFinisher(kind, victim, skin);
   }
 
-  playFinisher(kind, victim) {
+  // Finishers take their colours from the skin (variant) that got the kill: its glow and its accent.
+  playFinisher(kind, victim, skin) {
     const ch = this.characters.get(victim);
     const pos = ch?.group.visible ? [ch.group.position.x, ch.group.position.y, ch.group.position.z] : [...victim.pos];
-    this.lastFinisher = { kind, at: this.game.time };
+    const s = SKINS[skin] || {}, col = { glow: s.glow?.color ?? 0x3fb4ff, accent: s.accent?.color ?? s.glow?.color ?? 0xb44dff };
+    this.lastFinisher = { kind, skin, at: this.game.time };
     this.game.emit('finisher', { kind, pos });
-    if (kind === 'collapse') this.fxCollapse(pos, ch);
-    else if (kind === 'lastLight') this.fxLastLight(pos, ch);
+    if (kind === 'collapse') this.fxCollapse(pos, ch, col);
+    else if (kind === 'lastLight') this.fxLastLight(pos, ch, col);
   }
 
   // The body shrinks away to nothing over `dur` seconds, starting `delay` seconds from now.
@@ -821,19 +823,20 @@ export class Renderer {
     if (ch) ch.vanish = { start: performance.now() + delay * 1000, dur: dur * 1000 };
   }
 
-  // Orbital: "Collapse". A violet orb swells at the body's chest with two blue rings orbiting it, the body is
+  // Orbital: "Collapse". An orb in the accent colour swells at the body's chest with two rings in the glow colour orbiting it, the body is
   // drawn into it, the rings close in, and the orb implodes to a point and pops in a flat shockwave.
-  fxCollapse(pos, ch) {
+  fxCollapse(pos, ch, col) {
     const c = [pos[0], pos[1] + 1.0, pos[2]], t0 = this.game.time, life = 2.4, implode = 1.6;
     const add = (col, o = 0.85) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
     const g = new THREE.Group();
     g.position.set(...c);
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: 0x8a2be2, transparent: true, opacity: 0.85, depthWrite: false }));
-    const core = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12), add(0xe9c8ff, 0.9));
+    const shell = new THREE.Color(col.accent).multiplyScalar(0.75), hot = new THREE.Color(col.accent).lerp(new THREE.Color(0xffffff), 0.7);
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: shell, transparent: true, opacity: 0.85, depthWrite: false }));
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12), add(hot, 0.9));
     core.material.depthTest = false; // the hot core shows through the shell
     orb.add(core);
     const rings = [0, 1].map(i => {
-      const r = new THREE.Mesh(new THREE.TorusGeometry(1, 0.025, 8, 48), add(0x3fb4ff, 0.9));
+      const r = new THREE.Mesh(new THREE.TorusGeometry(1, 0.025, 8, 48), add(col.glow, 0.9));
       r.rotation.set(Math.PI / 2 + (i ? 0.7 : -0.5), i ? 0.4 : -0.3, 0);
       g.add(r);
       return r;
@@ -853,19 +856,19 @@ export class Renderer {
       });
       if (!popped && t >= implode) {
         popped = true;
-        this.fxBurst(c, 0xb44dff, 3.2, 0.45);
-        this.fxBurst(c, 0x3fb4ff, 1.6, 0.3, true);
-        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], 0x3fb4ff, 3.5, 0.7);
-        this.burst(c, null, [0.75, 0.45, 1], 24, 4);
+        this.fxBurst(c, col.accent, 3.2, 0.45);
+        this.fxBurst(c, col.glow, 1.6, 0.3, true);
+        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], col.glow, 3.5, 0.7);
+        this.burst(c, null, new THREE.Color(col.accent).toArray(), 24, 4);
       }
       g.visible = !popped;
     });
   }
 
-  // Starspur: "Last Light". A copper star rises spinning out of the body while a teal dust ring rolls out
+  // Starspur: "Last Light". A star in the accent colour rises spinning out of the body while a dust ring in the glow colour rolls out
   // along the ground and the body burns away; the star flares like a low sun and leaves a star brand on the
   // floor that fades.
-  fxLastLight(pos, ch) {
+  fxLastLight(pos, ch, col) {
     const t0 = this.game.time, life = 3.2, flare = 1.7;
     const add = (col, o) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
     const starGeo = (R, r = R * 0.45) => {
@@ -878,20 +881,20 @@ export class Renderer {
     };
     const g = new THREE.Group();
     g.position.set(pos[0], pos[1], pos[2]);
-    const star = new THREE.Mesh(starGeo(0.42), new THREE.MeshBasicMaterial({ color: 0xffa035, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }));
-    const halo = new THREE.Mesh(starGeo(0.62, 0.2), add(0x3cf0d2, 0.55));
+    const star = new THREE.Mesh(starGeo(0.42), new THREE.MeshBasicMaterial({ color: col.accent, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }));
+    const halo = new THREE.Mesh(starGeo(0.62, 0.2), add(col.glow, 0.55));
     halo.position.z = -0.01;
     star.add(halo);
     g.add(star);
-    const dust = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 48), add(0x3cf0d2, 0.6));
+    const dust = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 48), add(col.glow, 0.6));
     dust.rotation.x = -Math.PI / 2;
     dust.position.y = 0.04;
-    const brand = new THREE.Mesh(starGeo(0.75), add(0xff8a2a, 0.0));
+    const brand = new THREE.Mesh(starGeo(0.75), add(col.accent, 0.0));
     brand.rotation.x = -Math.PI / 2;
     brand.position.y = 0.03;
     g.add(dust, brand);
     this.vanishBody(ch, 0.3, 1.1);
-    this.burst([pos[0], pos[1] + 0.9, pos[2]], null, [1, 0.68, 0.26], 16, 2.5);
+    this.burst([pos[0], pos[1] + 0.9, pos[2]], null, new THREE.Color(col.accent).toArray(), 16, 2.5);
     let flared = false;
     this.fxAdd(g, t0 + life, (now) => {
       const t = now - t0;
@@ -910,8 +913,8 @@ export class Renderer {
       if (!flared && t >= flare) {
         flared = true;
         const p = [pos[0], pos[1] + 1.8, pos[2]];
-        this.fxBurst(p, 0xffae42, 3, 0.5);
-        this.burst(p, null, [0.24, 0.94, 0.82], 22, 3.5);
+        this.fxBurst(p, col.accent, 3, 0.5);
+        this.burst(p, null, new THREE.Color(col.glow).toArray(), 22, 3.5);
       }
     });
   }

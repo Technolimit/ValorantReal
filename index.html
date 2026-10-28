@@ -378,38 +378,56 @@ th { color: var(--muted); font-weight: 500; }
 .skin-actions { gap: 6px !important; }
 .skin-actions button, .skin-actions .mini { padding: 6px 10px !important; font-size: 11px !important; }
 
-/* ---------- Skins ---------- */
-.panel.skins { width: min(980px, 100%); max-height: 94vh; display: flex; flex-direction: column; }
+/* ---------- Skins: a Valorant-style collection (gun grid) and a weapon screen (big preview, skin list, variants) ---------- */
+.panel.skins { width: min(1180px, 100%); max-height: 96vh; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(20, 44, 68, 0.96), rgba(12, 22, 34, 0.96)); }
 .skins-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 12px; }
 .skins-head h2 { margin: 0; }
 .skins-head p { margin: 0; flex: 1; color: var(--muted); font-size: 13px; }
-.skins-head button, .skin-actions button { padding: 8px 16px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: var(--text); cursor: pointer; letter-spacing: 1px; text-transform: uppercase; font-size: 12px; }
-.skins-head button:hover, .skin-actions button:hover { border-color: var(--text); }
-.skins-body { display: grid; grid-template-columns: 190px 1fr; gap: 18px; min-height: 0; flex: 1; }
-#skin-weapons { overflow: auto; padding-right: 4px; }
-#skin-weapons h3 { margin: 10px 0 4px; font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; font-weight: 500; }
-#skin-weapons button { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; margin-bottom: 3px; background: none; border: 1px solid transparent; color: var(--text); text-align: left; cursor: pointer; font-size: 13px; }
-#skin-weapons button small { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#skin-weapons button:hover { border-color: var(--line); }
-#skin-weapons button.sel { border-color: var(--accent); background: rgba(255, 70, 85, 0.12); }
-.skin-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.skin-stage { position: relative; background: radial-gradient(ellipse at 50% 55%, rgba(170, 190, 210, 0.32), rgba(255, 255, 255, 0.04) 70%), #16212c; border: 1px solid var(--line); }
-#skin-preview { display: block; width: 100%; height: clamp(180px, 34vh, 320px); cursor: grab; touch-action: none; }
+.skins-head button, .skin-actions button, .skin-detail-head button, #skin-equip { padding: 8px 16px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: var(--text); cursor: pointer; letter-spacing: 1px; text-transform: uppercase; font-size: 12px; }
+.skins-head button:hover, .skin-actions button:hover, .skin-detail-head button:hover, #skin-equip:hover { border-color: var(--text); }
+#skin-collection { display: flex; flex-direction: column; min-height: 0; }
+#skin-weapons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 14px; overflow: auto; padding-right: 4px; }
+.coll-col h3 { margin: 6px 0 8px; text-align: center; font-size: 16px; letter-spacing: 1px; text-transform: uppercase; font-weight: 800; }
+.coll-card { position: relative; display: block; width: 100%; height: 86px; margin-bottom: 10px; padding: 0; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.18); color: var(--text); cursor: pointer; overflow: hidden; }
+.coll-card:hover { border-color: var(--text); background: rgba(255, 255, 255, 0.1); }
+.coll-card img { position: absolute; inset: 4px 8px 18px; width: calc(100% - 16px); height: calc(100% - 22px); object-fit: contain; }
+.coll-card b { position: absolute; left: 8px; bottom: 5px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+.coll-card small { position: absolute; right: 8px; bottom: 5px; font-size: 10px; color: var(--muted); max-width: 55%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#skin-detail { display: flex; flex-direction: column; min-height: 0; }
+.skin-detail-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 8px; }
+.skin-detail-head h2 { margin: 0; font-size: 34px; letter-spacing: 2px; text-transform: uppercase; color: #ece9b0; }
+.skin-detail-head button { justify-self: start; }
+.skin-detail-body { display: grid; grid-template-columns: 1fr 220px; gap: 14px; min-height: 0; }
+.skin-stage { position: relative; background: radial-gradient(ellipse at 50% 45%, rgba(170, 190, 210, 0.22), rgba(255, 255, 255, 0.02) 70%), #141c26; border: 1px solid var(--line); }
+#skin-preview { display: block; width: 100%; height: clamp(220px, 46vh, 430px); cursor: grab; touch-action: none; }
 #skin-preview:active { cursor: grabbing; }
-.skin-caption { position: absolute; left: 14px; bottom: 10px; pointer-events: none; text-shadow: 0 1px 3px #000; }
-.skin-caption b { display: block; font-size: 20px; letter-spacing: 1px; }
-.skin-caption span { color: var(--muted); font-size: 12px; }
 .skin-hint { position: absolute; right: 12px; top: 8px; color: var(--muted); font-size: 11px; pointer-events: none; }
-#skin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; overflow: auto; }
+.skin-bottom { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 12px; padding: 0 14px 12px; margin-top: -64px; position: relative; }
+.skin-variants { display: flex; flex-direction: column; gap: 4px; }
+#skin-variants { display: flex; gap: 6px; }
+#skin-variants button { width: 34px; height: 34px; padding: 0; border: 2px solid rgba(255, 255, 255, 0.25); cursor: pointer; display: flex; transform: rotate(0); overflow: hidden; background: none; }
+#skin-variants button i { flex: 1; }
+#skin-variants button.sel { border-color: #fff; box-shadow: 0 0 0 1px #fff; }
+#skin-variant-name { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+.skin-caption { text-align: center; pointer-events: none; text-shadow: 0 1px 3px #000; }
+.skin-caption b { display: block; font-size: 26px; font-weight: 400; letter-spacing: 3px; text-transform: uppercase; }
+.skin-caption span { display: block; max-width: 460px; color: var(--muted); font-size: 12px; }
+#skin-equip { justify-self: end; padding: 10px 26px; }
+#skin-equip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+#skin-equip:disabled { opacity: 0.6; cursor: default; }
+.skin-side { display: flex; flex-direction: column; min-height: 0; }
+.skin-side h3 { margin: 0 0 6px; font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; font-weight: 500; }
+#skin-grid { display: flex; flex-direction: column; gap: 6px; overflow: auto; }
 .skin-card { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center; padding: 8px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--text); text-align: left; cursor: pointer; }
 .skin-card:hover { border-color: var(--text); }
-.skin-card.sel { border-color: var(--accent); background: rgba(255, 70, 85, 0.15); }
+.skin-card.sel { border-color: #fff; background: rgba(255, 255, 255, 0.12); }
+.skin-card.worn small::after { content: ' · equipped'; color: var(--good); }
 .skin-card .sw { grid-row: span 2; display: flex; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; transform: rotate(-30deg); border: 1px solid rgba(255, 255, 255, 0.25); }
 .skin-card .sw i { flex: 1; }
 .skin-card b { font-size: 13px; font-weight: 600; }
 .skin-card small { color: var(--muted); font-size: 11px; }
 .skin-actions { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-@media (max-width: 700px) { .skins-body { grid-template-columns: 1fr; } #skin-weapons { display: flex; flex-wrap: wrap; gap: 4px; } #skin-weapons h3 { width: 100%; } #skin-weapons button { width: auto; } #skin-weapons button small { display: none; } }
+@media (max-width: 800px) { #skin-weapons { grid-template-columns: repeat(2, 1fr); } .skin-detail-body { grid-template-columns: 1fr; } .skin-bottom { grid-template-columns: 1fr; margin-top: 0; padding-top: 8px; } #skin-equip { justify-self: stretch; } .skin-detail-head h2 { font-size: 24px; } }
 
 /* ---------- Agent select ---------- */
 #agents { background: radial-gradient(ellipse at 70% 40%, rgba(255, 70, 85, 0.08), transparent 60%), rgba(8, 12, 18, 0.88); }
@@ -719,25 +737,32 @@ th { color: var(--muted); font-weight: 500; }
 
 <div id="skins" class="overlay" hidden>
   <div class="panel skins">
-    <div class="skins-head"><h2>Skins</h2><p>Pick a weapon, then a finish. Drag the preview to turn it.</p><button id="skins-back">Back</button></div>
-    <div class="skins-body">
-      <nav id="skin-weapons"></nav>
-      <div class="skin-main">
+    <div id="skin-collection">
+      <div class="skins-head"><h2>Collection</h2><p>Every weapon in the skin you have on it. Pick one to change it.</p><button id="skin-reset">Reset all to Standard Issue</button><button id="skins-back">Back</button></div>
+      <div id="skin-weapons"></div>
+    </div>
+    <div id="skin-detail" hidden>
+      <div class="skin-detail-head"><button id="skin-detail-back">‹ Back</button><h2 id="skin-weapon-name"></h2><span></span></div>
+      <div class="skin-detail-body">
         <div class="skin-stage">
           <canvas id="skin-preview"></canvas>
-          <div class="skin-caption"><b id="skin-title"></b><span id="skin-sub"></span></div>
           <div class="skin-hint">drag to rotate</div>
+          <div class="skin-bottom">
+            <div class="skin-variants"><div id="skin-variants"></div><small id="skin-variant-name"></small></div>
+            <div class="skin-caption"><b id="skin-title"></b><span id="skin-sub"></span></div>
+            <button id="skin-equip">Equip skin</button>
+          </div>
         </div>
-        <div id="skin-grid"></div>
-        <div id="skin-editor" hidden></div>
-        <div class="skin-actions" id="skin-actions">
-          <button id="skin-all">Use this skin on every weapon</button><button id="skin-reset">Reset all to Standard Issue</button>
-          <button id="skin-inspect" hidden>Play inspect</button><button id="skin-new">New custom skin</button><button id="skin-edit" hidden>Edit</button><button id="skin-delete" hidden>Delete</button>
-          <button id="skin-share">Copy share code</button><button id="skin-paste">Paste share code</button>
-          <button id="skin-export">Export file</button><label class="mini" for="skin-import" style="display:inline-flex;align-items:center">Import file<input id="skin-import" type="file" accept=".json,application/json" hidden></label>
-        </div>
-        <p id="skin-status" class="note"></p>
+        <div class="skin-side"><h3 id="skin-side-title">Skins</h3><div id="skin-grid"></div></div>
       </div>
+      <div id="skin-editor" hidden></div>
+      <div class="skin-actions" id="skin-actions">
+        <button id="skin-inspect" hidden>Play inspect</button><button id="skin-all">Use this skin on every weapon</button>
+        <button id="skin-new">New custom skin</button><button id="skin-edit" hidden>Edit</button><button id="skin-delete" hidden>Delete</button>
+        <button id="skin-share">Copy share code</button><button id="skin-paste">Paste share code</button>
+        <button id="skin-export">Export file</button><label class="mini" for="skin-import" style="display:inline-flex;align-items:center">Import file<input id="skin-import" type="file" accept=".json,application/json" hidden></label>
+      </div>
+      <p id="skin-status" class="note"></p>
     </div>
   </div>
 </div>

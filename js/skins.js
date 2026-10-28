@@ -47,6 +47,12 @@ export const SKINS = {
     glow: { color: 0x3fb4ff, intensity: 2.6 },
     accent: { color: 0xb44dff, intensity: 2.2 },
     finisher: 'collapse',
+    variant: 'Violet',
+    variants: [
+      { variant: 'Solar', body: { color: 0x5a2410, rough: 0.32, metal: 0.65 }, glow: { color: 0xffb347, intensity: 2.6 }, accent: { color: 0xff4d2e, intensity: 2.2 } },
+      { variant: 'Glacial', body: { color: 0x1d4466, rough: 0.3, metal: 0.6 }, metal: { color: 0xc9d3dd, rough: 0.22, metal: 1 }, glow: { color: 0x7fffe0, intensity: 2.6 }, accent: { color: 0x3fb4ff, intensity: 2.2 } },
+      { variant: 'Eclipse', body: { color: 0x121218, rough: 0.2, metal: 0.85 }, metal: { color: 0x8c8f99, rough: 0.2, metal: 1 }, glow: { color: 0xff3355, intensity: 2.8 }, accent: { color: 0xffe2e6, intensity: 1.8 } },
+    ],
   },
   starspur: {
     name: 'Starspur', tier: 'Ultra', blurb: 'Frontier iron for the outer rim: bone enamel, burnished copper and a teal star-fire core. Every gun carries a spinning spur rowel.',
@@ -58,6 +64,12 @@ export const SKINS = {
     glow: { color: 0x3cf0d2, intensity: 2.2 },
     accent: { color: 0xffae42, intensity: 2.0 },
     finisher: 'lastLight',
+    variant: 'Frontier',
+    variants: [
+      { variant: 'Dusk Rider', body: { color: 0x2b2445, rough: 0.4, metal: 0.15 }, glow: { color: 0xff7ad9, intensity: 2.2 }, accent: { color: 0xffae42, intensity: 2.0 } },
+      { variant: 'Silver Dollar', body: { color: 0xdfe3e8, rough: 0.3, metal: 0.3 }, trim: { color: 0xc3c9cf, rough: 0.2, metal: 1 }, glow: { color: 0x5aa8ff, intensity: 2.2 }, accent: { color: 0xdff0ff, intensity: 1.8 } },
+      { variant: 'Red Mesa', body: { color: 0x7a2a1c, rough: 0.5, metal: 0.05 }, trim: { color: 0xd9a441, rough: 0.28, metal: 0.95 }, grip: { color: 0x2a1a12, rough: 0.8, metal: 0 }, glow: { color: 0xffd166, intensity: 2.2 }, accent: { color: 0xff6a3d, intensity: 2.0 } },
+    ],
   },
 };
 
@@ -121,7 +133,7 @@ export const MELEE_THEMES = {
     grip: { color: 0x0d0b1a, rough: 0.9, metal: 0 },
     glow: { color: 0x7fd6ff, intensity: 2.4 },
   },
-  bowie: { ...SKINS.starspur, models: undefined, blurb: 'The Starspur collection\'s knife: a copper-guarded bowie with a star rowel that spins at the guard.' },
+  bowie: { ...SKINS.starspur, models: undefined, variants: undefined, variant: undefined, blurb: 'The Starspur collection\'s knife: a copper-guarded bowie with a star rowel that spins at the guard.' },
 };
 
 // ---- procedural textures (256 px, tiled across the gun at roughly 8 tiles per metre) ----
@@ -294,6 +306,17 @@ export const PATTERNS = {
 
 const PRESETS = Object.keys(SKINS);
 export const SKIN_ORDER = [...PRESETS];
+
+// Colour variants of a skin (Valorant's chromas): `variants` lists overrides of the base; each is registered as
+// skin `<id>~<n>` (n from 1), outside SKIN_ORDER. Pick them with the swatches in the skin screen.
+for (const id of PRESETS) {
+  (SKINS[id].variants || []).forEach((v, i) => { SKINS[`${id}~${i + 1}`] = { ...SKINS[id], ...v, variants: undefined, variantOf: id }; });
+}
+export const baseSkin = (id) => SKINS[id]?.variantOf || id;
+export const variantsOf = (id) => {
+  const base = baseSkin(id);
+  return [base, ...(SKINS[base]?.variants || []).map((_, i) => `${base}~${i + 1}`)];
+};
 
 // Melee themes join SKINS after SKIN_ORDER is taken, so they stay out of the skin grid.
 export const meleeSkin = (meleeType) => (MELEE_THEMES[meleeType] ? 'melee-' + meleeType : null);
