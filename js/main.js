@@ -7,7 +7,7 @@ import { loadSettings, saveSettings, DEFAULTS } from './settings.js';
 import { ACTIONS, FIXED, DEFAULT_BINDS, actionFor, rebind, keyLabel } from './keybinds.js';
 import { DT, YAW_PER_COUNT } from './config.js';
 import { WEAPONS, BUY_GROUPS } from './weapons.js';
-import { SKINS, SKIN_ORDER, skinFor, skinFits, designFor, swatch, isCustom, saveCustomSkin, deleteCustomSkin, skinCode, parseSkinCode, sanitizeSkin, registerSkin, PATTERNS } from './skins.js';
+import { SKINS, SKIN_ORDER, skinFor, skinFits, designFor, swatch, meleeSkin, isCustom, saveCustomSkin, deleteCustomSkin, skinCode, parseSkinCode, sanitizeSkin, registerSkin, PATTERNS } from './skins.js';
 import { GunPreview } from './models.js';
 import { MELEE, MELEE_ORDER, MODEL_INSPECTS, isMelee, meleeId } from './melee.js';
 import { RELOAD_STYLE, RELOAD_SOUNDS } from './reloadanim.js';
@@ -85,6 +85,7 @@ game.on('hit', ({ attacker, target, part, killed, dot }) => {
 });
 // The HUD's kill listener runs first (it was hooked when the HUD was built), so hud.streak already counts this kill.
 game.on('kill', ({ killer, victim }) => { if (isPlayer(killer) && !isPlayer(victim) && game.isEnemy(killer, victim)) sound.killStreak(hud.streak); });
+game.on('finisher', ({ kind, pos }) => sound.finisher(kind, pos));
 game.on('reload', ({ who, gun }) => { if (isPlayer(who)) sound.reload(gun.reloadDur, RELOAD_SOUNDS[RELOAD_STYLE[designFor(skinFor(settings, gun.def.id), gun.def.id)] || RELOAD_STYLE[gun.def.id]], gun.def.id); });
 game.on('reloadRound', ({ who }) => { if (isPlayer(who)) { sound.click(0, 0.3); sound.thunk(0.03); } });
 game.on('dry', ({ who }) => { if (isPlayer(who)) sound.click(0, 0.3); });
@@ -574,55 +575,80 @@ function closeSkins() {
 function buildSkinWeapons() {
   const nav = $('skin-weapons');
   nav.innerHTML = '';
-  const groups = [...BUY_GROUPS, ['Melee', MELEE_ORDER]];
-  for (const [title, ids] of groups) {
+  const add = (id, label, sub) => {
+    const b = document.createElement('button');
+    b.dataset.id = id;
+    b.innerHTML = `<span>${label}</span><small>${sub}</small>`;
+    b.onclick = () => selectSkinWeapon(id === 'melee' ? meleeId(settings.melee) : id);
+    nav.appendChild(b);
+  };
+  for (const [title, ids] of BUY_GROUPS) {
     const h = document.createElement('h3');
     h.textContent = title;
     nav.appendChild(h);
-    for (const id of ids) {
-      const b = document.createElement('button');
-      b.dataset.id = id;
-      const worn = isMelee(id) && meleeId(settings.melee) === id ? ' · <em>equipped</em>' : '';
-      b.innerHTML = `<span>${weaponName(id)}</span><small>${escHtml(SKINS[skinFor(settings, id)].name)}${worn}</small>`;
-      b.onclick = () => selectSkinWeapon(id);
-      nav.appendChild(b);
-    }
+    for (const id of ids) add(id, weaponName(id), escHtml(SKINS[skinFor(settings, id)].name));
   }
+  // Every melee type sits behind one Melee entry: each comes in its own single theme.
+  const h = document.createElement('h3');
+  h.textContent = 'Melee';
+  nav.appendChild(h);
+  add('melee', 'Melee', escHtml(MELEE[meleeId(settings.melee)].name));
 }
 
 // Weapons and melee types share the skin menu (the knife is both).
 const weaponName = (id) => MELEE[id]?.name || WEAPONS[id]?.name || id;
+// Skin-editing buttons don't apply to melee types (their theme is fixed).
+const GUN_ONLY = ['skin-all', 'skin-new', 'skin-share', 'skin-paste', 'skin-export'];
 
 function selectSkinWeapon(id) {
-  // Picking a melee type in the menu equips it (it's what shows in your knife slot).
-  if (isMelee(id) && meleeId(settings.melee) !== id) { settings.melee = id; saveSettings(settings); skinWeapon = id; buildSkinWeapons(); }
   skinWeapon = id;
-  for (const b of $('skin-weapons').querySelectorAll('button')) b.classList.toggle('sel', b.dataset.id === id);
+  const melee = isMelee(id);
+  for (const b of $('skin-weapons').querySelectorAll('button')) b.classList.toggle('sel', b.dataset.id === (melee ? 'melee' : id));
   const grid = $('skin-grid');
   grid.innerHTML = '';
-  const cur = skinFor(settings, id);
-  for (const sid of SKIN_ORDER) {
-    if (!skinFits(sid, id)) continue; // model skins only show on the weapons they have a model for
-    const s = SKINS[sid];
-    const card = document.createElement('button');
-    card.className = 'skin-card' + (sid === cur ? ' sel' : '');
-    card.innerHTML = `<span class="sw">${swatch(sid).map(c => `<i style="background:${c}"></i>`).join('')}</span><b>${escHtml(s.name)}</b><small class="${isCustom(sid) ? 'custom' : ''}">${escHtml(s.tier)}</small>`;
-    card.onclick = () => applySkin(id, sid);
-    card.onmouseenter = () => showSkin(id, sid);
-    card.onmouseleave = () => showSkin(id, skinFor(settings, id));
-    grid.appendChild(card);
+  const card = (sid, title, sub, cls, onPick, onHover) => {
+    const c = document.createElement('button');
+    c.className = 'skin-card' + cls;
+    c.innerHTML = `<span class="sw">${swatch(sid).map(col => `<i style="background:${col}"></i>`).join('')}</span><b>${escHtml(title)}</b><small>${sub}</small>`;
+    c.onclick = onPick;
+    c.onmouseenter = onHover;
+    c.onmouseleave = () => showSkin(id, skinFor(settings, id));
+    grid.appendChild(c);
+  };
+  if (melee) {
+    // The melee grid picks the melee type (each card shows its theme); picking one equips it.
+    for (const m of MELEE_ORDER) {
+      card(meleeSkin(m), MELEE[m].name, escHtml(SKINS[meleeSkin(m)].name), m === id ? ' sel' : '', () => equipMelee(m), () => showSkin(m, meleeSkin(m)));
+    }
+  } else {
+    const cur = skinFor(settings, id);
+    for (const sid of SKIN_ORDER) {
+      if (!skinFits(sid, id)) continue; // model skins only show on the weapons they have a model for
+      const s = SKINS[sid];
+      card(sid, s.name, `<span class="${isCustom(sid) ? 'custom' : ''}">${escHtml(s.tier)}</span>`, sid === cur ? ' sel' : '', () => applySkin(id, sid), () => showSkin(id, sid));
+    }
   }
-  showSkin(id, cur);
-  $('skin-edit').hidden = $('skin-delete').hidden = !isCustom(cur);
+  showSkin(id, skinFor(settings, id));
+  for (const b of GUN_ONLY) $(b).hidden = melee;
+  $('skin-import').parentElement.hidden = melee;
+  $('skin-edit').hidden = $('skin-delete').hidden = melee || !isCustom(skinFor(settings, id));
+}
+
+function equipMelee(m) {
+  settings.melee = m;
+  saveSettings(settings);
+  buildSkinWeapons();
+  selectSkinWeapon(m);
 }
 
 function showSkin(id, sid) {
   preview.show(id, sid);
   if (shownSkin !== sid) { inspectIdx = 0; $('skin-inspect').textContent = 'Play inspect'; }
   shownSkin = sid;
+  shownWeapon = id;
   $('skin-inspect').hidden = !previewInspects();
   $('skin-title').textContent = `${SKINS[sid].name} ${weaponName(id)}`;
-  $('skin-sub').textContent = isMelee(id) && sid === 'standard' ? MELEE[id].blurb : SKINS[sid].blurb;
+  $('skin-sub').textContent = isMelee(id) ? MELEE[id].blurb : SKINS[sid].blurb;
 }
 
 function applySkin(id, sid) {
@@ -651,8 +677,8 @@ $('skin-reset').onclick = () => {
 };
 addEventListener('keydown', (e) => { if (e.code === 'Escape' && !$('skins').hidden) closeSkins(); });
 // Melee types and model skins: play their inspects on the showcase, one after another.
-let inspectIdx = 0, shownSkin = null;
-const previewInspects = () => MELEE[skinWeapon]?.inspects || MODEL_INSPECTS[designFor(shownSkin, skinWeapon)];
+let inspectIdx = 0, shownSkin = null, shownWeapon = null;
+const previewInspects = () => MELEE[shownWeapon]?.inspects || MODEL_INSPECTS[designFor(shownSkin, shownWeapon)];
 $('skin-inspect').onclick = () => {
   const list = previewInspects();
   if (!list) return;
@@ -1313,9 +1339,9 @@ try {
 let inspectKey = '';
 function inspectHint() {
   const i = renderer.inspectInfo();
-  const key = i ? `${i.name}|${i.idx}|${i.examine}` : '';
-  if (key === inspectKey) return;
-  inspectKey = key;
+  const sig = i ? `${i.name}|${i.idx}|${i.examine}` : ''; // not `key`: that would hide key() used below
+  if (sig === inspectKey) return;
+  inspectKey = sig;
   const el = $('inspecthint');
   el.hidden = !i;
   if (!i) return;

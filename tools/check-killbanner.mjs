@@ -87,9 +87,10 @@ await check('Your kills light one pip each and escalate the tier, in the vandal 
   };
 });
 
-await check('Knife kills use your melee\'s skin; ability kills use your agent colour', () => page.evaluate(async () => {
+await check('Knife kills use your melee type\'s theme; ability kills use your agent colour', () => page.evaluate(async () => {
   const h = window.__game, g = await __start({});
-  h.settings.skins = { [h.renderer.modelOf(g.player, 'knife')]: 'ember', vandal: 'glacier' };
+  h.settings.melee = 'karambit'; // Nightglass: violet
+  h.settings.skins = { vandal: 'glacier' };
   g.kill(g.bots[0], g.player, { def: __W.knife, part: 'body' });
   const knife = __banner().accent;
   g.kill(g.bots[1], g.player, { def: __W.vandal, part: 'body' });
