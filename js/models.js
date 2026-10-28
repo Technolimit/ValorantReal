@@ -213,26 +213,21 @@ function wrap(k, n, y0, z0, y1, z1, w, d, slot, tilt = 0) {
   }
 }
 
-// Orbital's reactor spire, built into the gun at z: a hollow cone that rises out of the receiver (top surface
-// y0, width w) and flares to a wide reactor ring, open at the top and lit inside. Its lower half is sunk into
-// the receiver, and the receiver itself sweeps up in front of and behind it to meet the ring, so the cone is
-// part of the gun's body. Gold fins run up its exposed sides. The orb (part `orb`) sits in the mouth with its
-// top just showing over the rim: the inspect floats it out and the reload pops it and seats a fresh one.
-// `s` scales the whole spire. Returns the height of the top of the ring.
-function orbSpire(k, z, y0, w, s = 1) {
-  const yb = y0 - 0.022 * s, top = y0 + 0.054 * s, rb = 0.02 * s, rt = 0.05 * s;
-  const r = (y) => rb + ((rt - rb) * (y - yb)) / (top - yb), slope = Math.atan((rb - rt) / (top - yb));
+// Orbital's reactor spire, set into the gun at z: the middle of the receiver is cut away and a hollow cone fills
+// the gap, standing on its point at the bottom of the gun (yb) on a slim bar that ties the two halves together
+// and flaring to a wide reactor ring at `top`, just over the top of the gun. It is open at the top and lit from
+// the floor, with gold fins up its sides. The orb (part `orb`) sits in the mouth with its top just showing over
+// the rim: the inspect floats it out and the reload pops it and seats a fresh one. The gap is 2 * 0.05 * s
+// long. `s` scales the cone's width. Returns the height of the top of the ring.
+function orbSpire(k, z, yb, top, w, s = 1) {
+  const rb = 0.018 * s, rt = 0.05 * s, slope = Math.atan((rb - rt) / (top - yb));
+  const r = (y) => rb + ((rt - rb) * (y - yb)) / (top - yb);
   k.cyl(rt, top - yb, 'tubeBody', 0, (top + yb) / 2, z, 24, 0, 0, 0, rb, true);
-  k.cyl(r(y0) * 0.95, 0.003, 'glow', 0, y0 + 0.004, z, 24, 0);
-  // The receiver sweeping up into the ring, front and back, its inner edge following the cone.
-  const L = 0.085 * s, ys = [y0, y0 + 0.018 * s, y0 + 0.036 * s, top - 0.004 * s];
-  for (const d of [-1, 1]) {
-    const pts = [[z + d * L, y0 - 0.002], [z + d * (rt + 0.006 * s), top - 0.006 * s], ...ys.slice().reverse().map(y => [z + d * r(y) * 0.985, y]), [z + d * r(y0) * 0.985, y0 - 0.002]];
-    k.prof(pts, w, 'body', 0, 0.002);
-    k.prof([[z + d * L * 0.7, y0 + 0.003], [z + d * (rt + 0.004 * s), top - 0.012 * s], [z + d * (rt + 0.004 * s), top - 0.017 * s], [z + d * L * 0.7, y0 - 0.002]], w + 0.002, 'accent', 0, 0.0005);
-  }
-  k.tor((r(y0 + 0.027 * s) + 0.0012), 0.0018 * s, 'accent', 0, y0 + 0.027 * s, z, PI / 2);
-  const fl = (top - y0) * 0.75, fy = top - fl / 2, rm = r(fy) + 0.0045 * s;
+  k.cyl(rb * 0.95, 0.003, 'glow', 0, yb + 0.004, z, 16, 0);
+  k.box(w * 0.7, 0.01, 2 * rt + 0.004, 'trim', 0, yb + 0.003, z);
+  k.box(w * 0.7 + 0.002, 0.003, 2 * rt + 0.004, 'accent', 0, yb + 0.005, z);
+  k.tor(r((yb + top) / 2) + 0.0012, 0.0018 * s, 'accent', 0, (yb + top) / 2, z, PI / 2);
+  const fl = (top - yb) * 0.7, fy = top - fl / 2, rm = r(fy) + 0.0045 * s;
   for (const a of [0, PI]) {
     k.box(0.006 * s, fl, 0.014 * s, 'metal', Math.cos(a) * rm, fy, z, 0, -a, slope);
     k.box(0.0065 * s, fl * 0.6, 0.005 * s, 'glow', Math.cos(a) * (rm + 0.001), fy, z, 0, -a, slope);
@@ -248,7 +243,7 @@ function orbSpire(k, z, y0, w, s = 1) {
   k.part(null);
   return top + 0.0075 * s;
 }
-// Orbital sights, raised so the line of sight clears the spire: a gold ring to look through on a post at the
+// Orbital sights, raised so the line of sight clears the spire's ring: a gold ring to look through on a post at the
 // back (zr, standing on yr) and a post with a lit tip at the front (zf, on yf), both at height sy.
 function orbSights(k, zf, yf, zr, yr, sy) {
   k.box(0.01, sy - 0.0105 - yr, 0.012, 'metal', 0, (sy - 0.0105 + yr) / 2, zr);
@@ -726,18 +721,15 @@ const DESIGNS = {
   },
 
   // ---- Orbital collection (model skins, see skins.js): violet enamel, gunmetal, gold, a live orb ----
-  // Each gun carries the reactor spire (orbSpire) on top, so they all inspect and reload the same way
-  // (`orb` in reloadanim.js), and raised sights (orbSights) to aim over it.
+  // Each gun has the reactor spire (orbSpire) set into the middle of its receiver, so they all inspect and reload
+  // the same way (`orb` in reloadanim.js), and raised sights (orbSights) to aim over it.
   // Vandal: a heavier receiver split around the spire, a chunky vented handguard and a glowing muzzle shroud.
   vandalOrb(k) {
-    // Receiver, rear and front halves with the reactor bay between them (z -0.115 to -0.185), the spire on top.
-    k.prof([[0.06, -0.026], [0.06, 0.048], [-0.02, 0.054], [-0.115, 0.054], [-0.115, -0.026]], 0.058, 'body');
-    k.prof([[-0.185, -0.026], [-0.185, 0.054], [-0.3, 0.05], [-0.32, 0.028], [-0.32, -0.026]], 0.058, 'body');
-    k.box(0.058, 0.08, 0.07, 'trim', 0, 0.014, -0.15);
+    // Receiver, rear and front halves with the reactor spire set in the gap between them (z -0.1 to -0.2).
+    k.prof([[0.06, -0.026], [0.06, 0.048], [-0.02, 0.054], [-0.1, 0.054], [-0.1, -0.026]], 0.058, 'body');
+    k.prof([[-0.2, -0.026], [-0.2, 0.054], [-0.3, 0.05], [-0.32, 0.028], [-0.32, -0.026]], 0.058, 'body');
     k.box(0.06, 0.004, 0.16, 'accent', 0, 0.002, -0.02);
-    k.box(0.06, 0.004, 0.12, 'accent', 0, 0.002, -0.25);
-    k.box(0.06, 0.004, 0.07, 'accent', 0, 0.002, -0.15);
-    for (const x of [-0.0295, 0.0295]) k.box(0.002, 0.03, 0.05, 'metal', x, 0.03, -0.15);
+    k.box(0.06, 0.004, 0.1, 'accent', 0, 0.002, -0.255);
     // Top spine either side of the spire, gold clamps on it.
     k.box(0.034, 0.012, 0.105, 'trim', 0, 0.06, -0.0075);
     k.box(0.034, 0.012, 0.07, 'trim', 0, 0.06, -0.275);
@@ -745,7 +737,7 @@ const DESIGNS = {
       k.box(0.008, 0.03, 0.014, 'metal', x, 0.074, z);
       k.box(0.008, 0.008, 0.024, 'metal', x, 0.09, z - 0.005);
     }
-    const top = orbSpire(k, -0.15, 0.054, 0.058);
+    const top = orbSpire(k, -0.15, -0.024, 0.064, 0.058);
     // Handguard: chunky shroud with neon vents and a gold name plate on each side.
     k.prof([[-0.32, -0.026], [-0.32, 0.05], [-0.49, 0.04], [-0.5, 0.018], [-0.49, -0.014]], 0.054, 'trim');
     k.teeth(5, -0.34, -0.46, 0.056, 0.018, 0.008, 'accent', 0, 0.026);
@@ -778,12 +770,14 @@ const DESIGNS = {
   // Stinger: a short, sharp SMG: a slim receiver with the spire just ahead of the grip, a stubby shroud with a
   // lit face and gold vents, and a skeleton stock of gold rails around a neon strip.
   stingerOrb(k) {
-    k.prof([[0.08, -0.008], [0.08, 0.05], [-0.02, 0.054], [-0.2, 0.05], [-0.225, 0.03], [-0.225, -0.008], [-0.05, -0.02]], 0.05, 'body');
-    k.box(0.052, 0.004, 0.2, 'accent', 0, 0.018, -0.09);
+    k.prof([[0.08, -0.008], [0.08, 0.05], [-0.02, 0.054], [-0.039, 0.054], [-0.039, -0.019]], 0.05, 'body');
+    k.prof([[-0.121, -0.015], [-0.121, 0.0525], [-0.2, 0.05], [-0.225, 0.03], [-0.225, -0.008]], 0.05, 'body');
+    k.box(0.052, 0.004, 0.11, 'accent', 0, 0.018, 0.02);
+    k.box(0.052, 0.004, 0.09, 'accent', 0, 0.018, -0.165);
     k.box(0.052, 0.003, 0.06, 'glow', 0, 0.004, 0.03);
     k.box(0.03, 0.01, 0.07, 'trim', 0, 0.058, 0.035);
     k.box(0.03, 0.01, 0.06, 'trim', 0, 0.057, -0.17);
-    const top = orbSpire(k, -0.08, 0.0525, 0.05, 0.82);
+    const top = orbSpire(k, -0.08, -0.018, 0.06, 0.05, 0.82);
     // Shroud: lit face ring, gold vents down each side.
     k.cyl(0.021, 0.07, 'trim', 0, 0.022, -0.255, 16);
     k.cyl(0.023, 0.01, 'body', 0, 0.022, -0.235, 16);
@@ -811,12 +805,15 @@ const DESIGNS = {
   // Phantom: a long, smooth receiver with the spire in its middle, a twin accent line down each side and a long
   // suppressor banded in gold with neon rings, lit at the face.
   phantomOrb(k) {
-    k.prof([[0.05, -0.024], [0.05, 0.05], [-0.06, 0.058], [-0.33, 0.05], [-0.35, 0.012], [-0.35, -0.024]], 0.056, 'body');
-    k.box(0.058, 0.003, 0.3, 'accent', 0, 0.01, -0.16);
-    k.box(0.058, 0.003, 0.26, 'glow', 0, -0.004, -0.17);
+    k.prof([[0.05, -0.024], [0.05, 0.05], [-0.06, 0.058], [-0.12, 0.0562], [-0.12, -0.024]], 0.056, 'body');
+    k.prof([[-0.22, -0.024], [-0.22, 0.0533], [-0.33, 0.05], [-0.35, 0.012], [-0.35, -0.024]], 0.056, 'body');
+    k.box(0.058, 0.003, 0.11, 'accent', 0, 0.01, -0.065);
+    k.box(0.058, 0.003, 0.09, 'accent', 0, 0.01, -0.265);
+    k.box(0.058, 0.003, 0.08, 'glow', 0, -0.004, -0.08);
+    k.box(0.058, 0.003, 0.08, 'glow', 0, -0.004, -0.26);
     k.box(0.036, 0.01, 0.07, 'trim', 0, 0.062, -0.07);
     k.box(0.036, 0.01, 0.08, 'trim', 0, 0.058, -0.28);
-    const top = orbSpire(k, -0.17, 0.0545, 0.056);
+    const top = orbSpire(k, -0.17, -0.022, 0.066, 0.056);
     // Suppressor: gold bands, neon rings between them, lit face.
     k.cyl(0.022, 0.22, 'trim', 0, 0.018, -0.46, 18);
     for (const z of [-0.37, -0.45, -0.53]) k.cyl(0.024, 0.012, 'metal', 0, 0.018, z, 18);
@@ -844,13 +841,14 @@ const DESIGNS = {
   // Bulldog: a blocky, heavy receiver with a bigger spire, a vented handguard and a squared gold muzzle brake
   // with neon slots.
   bulldogOrb(k) {
-    k.prof([[0.04, -0.026], [0.04, 0.054], [-0.3, 0.054], [-0.32, 0.032], [-0.32, -0.026]], 0.06, 'body');
-    k.box(0.062, 0.004, 0.3, 'accent', 0, 0.02, -0.14);
-    k.box(0.062, 0.004, 0.1, 'glow', 0, -0.006, -0.07);
+    k.prof([[0.04, -0.026], [0.04, 0.054], [-0.086, 0.054], [-0.086, -0.026]], 0.06, 'body');
+    k.prof([[-0.194, -0.026], [-0.194, 0.054], [-0.3, 0.054], [-0.32, 0.032], [-0.32, -0.026]], 0.06, 'body');
+    k.box(0.062, 0.004, 0.096, 'accent', 0, 0.02, -0.038);
+    k.box(0.062, 0.004, 0.096, 'accent', 0, 0.02, -0.242);
+    k.box(0.062, 0.004, 0.066, 'glow', 0, -0.006, -0.045);
     k.box(0.04, 0.012, 0.08, 'trim', 0, 0.06, 0.0);
     k.box(0.04, 0.012, 0.08, 'trim', 0, 0.06, -0.265);
-    for (const x of [-0.031, 0.031]) k.box(0.002, 0.034, 0.06, 'metal', x, 0.026, -0.14);
-    const top = orbSpire(k, -0.14, 0.054, 0.06, 1.08);
+    const top = orbSpire(k, -0.14, -0.024, 0.066, 0.06, 1.08);
     // Handguard: gunmetal with neon vent teeth; barrel and the squared muzzle brake.
     k.prof([[-0.32, -0.022], [-0.32, 0.048], [-0.46, 0.042], [-0.46, -0.014]], 0.054, 'trim');
     k.teeth(5, -0.34, -0.44, 0.056, 0.012, 0.01, 'accent', 0, 0.006);
