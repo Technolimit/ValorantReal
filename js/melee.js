@@ -28,9 +28,21 @@ export const GUN_INSPECT = {
   ],
 };
 
+// The Orbital orb's path round a gun, as keyframes from t0 to t1: from `lift` above its seat, once round an
+// ellipse in the side (y-z) plane centred `drop` below the seat and `rz` long, over the muzzle side first and
+// back under the stock, spinning as it goes.
+function orbit(t0, t1, lift, rz, drop, n = 16) {
+  const ry = lift + drop, out = [];
+  for (let i = 0; i <= n; i++) {
+    const a = (i / n) * TAU;
+    out.push(L(t0 + (t1 - t0) * (i / n), 0, -drop + ry * Math.cos(a), -Math.sin(a) * rz, 0, TAU * (1 + (3 * i) / n), 0, 1));
+  }
+  return out;
+}
+
 // Inspects that come with a gun model (model skins, see `models` in skins.js), by design id.
 export const MODEL_INSPECTS = {
-  // Orbital Vandal: the orb floats straight up out of the reactor ring and hovers, turning, while the gun is brought
+  // Orbital Vandal: the orb floats straight up out of the reactor spire and hovers, turning, while the gun is brought
   // round side-on and level in front of you so you see all of it; then the orb settles back in.
   vandalOrb: [{
     name: 'Orbit', dur: 4.2,
@@ -56,6 +68,82 @@ export const MODEL_INSPECTS = {
       ],
     },
     glow: [[0, 1], [1.0, 1.9], [2.8, 2.1], S(3.8, 2.8), [4.2, 1]],
+  }],
+
+  // Orbital Stinger: a quick roll to show the top while the orb hops out and spins, then a flick side-on as
+  // it drops back in with a flare.
+  stingerOrb: [{
+    name: 'Flicker', dur: 3.4,
+    track: [
+      [0, ...Z],
+      [0.4, -0.04, 0.04, -0.05, 0.25, 0.3, 0.9],
+      [1.6, -0.05, 0.05, -0.06, 0.3, 0.35, 0.95],
+      S(2.05, -0.08, 0.05, -0.2, 0.05, 1.45, 0.3),
+      [2.8, -0.08, 0.055, -0.2, 0.06, 1.5, 0.32],
+      [3.4, ...Z],
+    ],
+    parts: {
+      orb: [
+        [0, ...Z, 1],
+        [0.3, ...Z, 1],
+        S(0.55, 0, 0.045, 0, 0, TAU * 0.5, 0, 1),
+        L(1.0, 0, 0.038, 0, 0.4, TAU * 1.5, 0, 1),
+        L(1.5, 0, 0.05, 0, -0.4, TAU * 2.5, 0, 1),
+        S(1.9, 0, 0, 0, 0, TAU * 3, 0, 1),
+        [3.4, 0, 0, 0, 0, TAU * 3, 0, 1],
+      ],
+    },
+    glow: [[0, 1], [0.55, 2.2], [1.5, 1.6], S(1.95, 2.8), [2.8, 1.3], [3.4, 1]],
+  }],
+
+  // Orbital Phantom: brought round side-on and level, and the orb leaves the spire to circle the whole gun,
+  // over the top and under the mag, before it drops back in.
+  phantomOrb: [{
+    name: 'Orbit', dur: 4.6,
+    track: [
+      [0, ...Z],
+      [0.6, -0.05, 0.03, -0.02, 0.06, 0.4, 0.2],
+      [1.3, -0.08, 0.06, -0.3, 0.02, 1.5, 0.4],
+      [3.5, -0.08, 0.065, -0.3, 0.04, 1.53, 0.42],
+      [4.0, -0.06, 0.03, -0.03, 0.05, 0.4, 0.15],
+      [4.6, ...Z],
+    ],
+    parts: {
+      orb: [
+        [0, ...Z, 1],
+        [0.4, ...Z, 1],
+        [1.0, 0, 0.04, 0, 0, TAU * 0.5, 0, 1],
+        ...orbit(1.2, 3.4, 0.04, 0.17, 0.072),
+        S(3.85, 0, 0, 0, 0, TAU * 4, 0, 1),
+        [4.6, 0, 0, 0, 0, TAU * 4, 0, 1],
+      ],
+    },
+    glow: [[0, 1], [1.0, 1.8], [2.3, 2.2], [3.4, 1.8], S(3.9, 2.8), [4.6, 1]],
+  }],
+
+  // Orbital Bulldog: heaved up so you look down into the spire; the orb kicks three times like a burst, each
+  // with a flare, then spins up high and slams back home.
+  bulldogOrb: [{
+    name: 'Burst', dur: 3.9,
+    track: [
+      [0, ...Z],
+      [0.5, -0.04, 0.05, -0.08, 0.55, 0.25, 0.6],
+      [2.6, -0.045, 0.055, -0.08, 0.58, 0.28, 0.62],
+      [3.15, -0.06, 0.03, -0.12, 0.1, 1.0, 0.2],
+      [3.9, ...Z],
+    ],
+    parts: {
+      orb: [
+        [0, ...Z, 1],
+        [0.6, ...Z, 1],
+        ...[0.7, 1.0, 1.3].flatMap((t, i) => [S(t, 0, 0.028, 0, 0, TAU * (i + 0.5) / 3, 0, 1), [t + 0.15, 0, 0, 0, 0, TAU * (i + 1) / 3, 0, 1]]),
+        L(2.0, 0, 0.085, 0, 0.3, TAU * 2.5, 0, 1),
+        L(2.4, 0, 0.09, 0, -0.3, TAU * 4, 0, 1),
+        S(2.6, 0, 0, 0, 0, TAU * 4.5, 0, 1),
+        [3.9, 0, 0, 0, 0, TAU * 4.5, 0, 1],
+      ],
+    },
+    glow: [[0, 1], S(0.72, 2.4), [0.85, 1.4], S(1.02, 2.6), [1.15, 1.5], S(1.32, 2.8), [1.6, 1.6], [2.4, 2.0], S(2.65, 3.0), [3.9, 1]],
   }],
 
   // Starspur Sheriff: twirled twice round the trigger finger and caught, then shown side-on, the spur rowel

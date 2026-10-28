@@ -10,7 +10,7 @@
 //   boltRound Marshal (round by round): bolt up and back, round pressed in, bolt forward, can fire
 //   boltMag   Operator: bolt open, mag swapped, bolt closed
 //   box       Ares / Odin: feed cover opened, ammo box swapped, cover slammed, charging handle racked
-//   orb       Orbital Vandal: the spent orb pops out of the reactor ring, the off-hand seats a fresh one
+//   orb       Orbital guns: the spent orb pops out of the reactor ring, the off-hand seats a fresh one
 //   oathMag   Oathblade Vandal: the edge goes dark, the mag is flicked out and a fresh one snapped in, then the
 //             off-hand runs along the blade and the edge relights behind it
 //   oathCyl   Oathblade Sheriff: the edge goes dark, the drum is flicked out, loaded and flicked shut, then a
@@ -23,7 +23,7 @@ export const RELOAD_STYLE = {
   classic: 'pistol', ghost: 'pistol', frenzy: 'pistol', sheriff: 'revolver', shorty: 'break',
   stinger: 'mag', spectre: 'mag', bulldog: 'mag', guardian: 'mag', phantom: 'mag', vandal: 'mag', warden: 'mag',
   bucky: 'tube', judge: 'feed', marshal: 'boltRound', outlaw: 'rear', operator: 'boltMag', ares: 'box', odin: 'box',
-  vandalOrb: 'orb', vandalOath: 'oathMag', sheriffOath: 'oathCyl',
+  vandalOrb: 'orb', phantomOrb: 'orb', bulldogOrb: 'orb', stingerOrb: 'orb', vandalOath: 'oathMag', sheriffOath: 'oathCyl',
 };
 // What happens after each shot, and how much of the shot interval it takes.
 export const CYCLE_STYLE = { marshal: 'bolt', operator: 'bolt', bucky: 'pump' };
@@ -195,7 +195,7 @@ const STYLES = {
     return { rz: -0.3 * tilt, rx: 0.16 * tilt + 0.1 * clunk, ry: 0.1 * tilt, py: -0.035 * tilt + 0.015 * clunk };
   },
 
-  // Orbital Vandal: thumb the latch and the spent orb pops up out of the ring, spinning, and is flicked away
+  // Orbital: thumb the latch and the spent orb pops up out of the spire, spinning, and is flicked away
   // (shrinking out); the off-hand brings a fresh one down from above and presses it in until it seats.
   orb(t, P) {
     const o = P.orb;
@@ -324,6 +324,13 @@ export const RELOAD_TRACK = {
   // Orbital Vandal: tipped up and rolled so the top of the gun, and the reactor ring on it, faces you through
   // the swap; a little nod as the old orb pops and as the new one seats.
   vandalOrb: [[0, Z], [0.12, { rx: 0.3, ry: 0.2, rz: 0.75, px: -0.03, py: 0.03 }], [0.4, { rx: 0.35, ry: 0.25, rz: 0.8, px: -0.04, py: 0.035 }], [0.7, { rx: 0.3, ry: 0.25, rz: 0.8, px: -0.04, py: 0.03 }], [0.84, { rx: 0.35, ry: 0.1, rz: 0.2, py: 0.02 }], [1, Z]],
+  // Orbital Phantom: rolled further and turned toward you so you look down into the spire, the suppressor
+  // swinging out left; a dip as the fresh orb seats.
+  phantomOrb: [[0, Z], [0.12, { rx: 0.4, ry: 0.3, rz: 0.7, px: -0.04, py: 0.035 }], [0.4, { rx: 0.45, ry: 0.32, rz: 0.75, px: -0.045, py: 0.04 }], [0.7, { rx: 0.4, ry: 0.3, rz: 0.75, px: -0.045, py: 0.032 }], [0.84, { rx: 0.3, ry: 0.1, rz: 0.15, py: 0.02 }], [1, Z]],
+  // Orbital Bulldog: heaved up and rolled hard so the big spire faces you, held steady, then dropped back level.
+  bulldogOrb: [[0, Z], [0.12, { rx: 0.5, ry: 0.1, rz: 0.9, px: -0.02, py: 0.045 }], [0.4, { rx: 0.55, ry: 0.12, rz: 0.95, px: -0.025, py: 0.05 }], [0.7, { rx: 0.5, ry: 0.12, rz: 0.92, px: -0.025, py: 0.045 }], [0.85, { rx: 0.4, rz: 0.25, py: 0.04 }], [1, Z]],
+  // Orbital Stinger: a quick wrist roll to show the top, a snappier swap, and a flick back.
+  stingerOrb: [[0, Z], [0.1, { rx: 0.35, ry: 0.15, rz: 0.9, px: -0.03, py: 0.03 }], [0.4, { rx: 0.38, ry: 0.18, rz: 0.95, px: -0.035, py: 0.035 }], [0.7, { rx: 0.35, ry: 0.15, rz: 0.92, px: -0.035, py: 0.03 }], [0.82, { rx: 0.2, rz: -0.15, py: 0.02 }], [1, Z]],
   // Oathblade Vandal: the edge turned out to the right as the mag is flicked away, rolled back to take the fresh
   // one, then swung side-on so you watch the hand relight the blade; a crisp snap back to the hip.
   vandalOath: [[0, Z], [0.08, { rx: 0.35, rz: -0.55, ry: -0.1, py: 0.02 }], [0.2, { rx: 0.4, rz: -0.6, py: 0.025 }], [0.3, { rx: 0.55, rz: 0.5, ry: 0.15, px: -0.02, py: 0.03 }], [0.54, { rx: 0.6, rz: 0.55, ry: 0.18, px: -0.02, py: 0.035 }], [0.6, { rx: 0.5, rz: 0.5, ry: 0.15, py: 0.025 }], [0.67, { rx: 0.12, ry: 0.6, rz: 0.12, px: -0.05, py: 0.03, pz: -0.02 }], [0.8, { rx: 0.1, ry: 0.62, rz: 0.1, px: -0.05, py: 0.03, pz: -0.02 }], [0.88, { rx: -0.05, rz: -0.12 }], [1, Z]],
