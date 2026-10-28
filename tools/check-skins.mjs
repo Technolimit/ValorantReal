@@ -1,5 +1,5 @@
 // Headless checks for skins: the preset list, the single Melee entry (one theme per melee type), the Starspur and Oathblade
-// models with their inspects and reloads, and finishers (only the kill that ends the round in 5v5, or the match in deathmatch), and pullouts.
+// models with their inspects and reloads, and finishers (the final kill of the round in 5v5, played when the round ends, or the match-winning kill in deathmatch), and pullouts.
 //   node tools/check-skins.mjs [shots-dir]     (needs playwright; with a dir, saves the skin menu and finishers)
 // Exits with code 1 if any check fails.
 import { createServer } from 'node:http';
@@ -160,12 +160,12 @@ await check('Starspur models build with their moving parts, and their inspects a
     const gun = new Gun(__W[w]);
     gun.reloading = true; gun.reloadStart = 0; gun.reloadDur = gun.def.reload || 2; gun.reloadEnd = gun.reloadDur; gun.roundStart = 0;
     for (let t = 0; t < gun.reloadDur; t += 0.1) { const p = reloadPose(m, gun.def, gun, t, null); if (Object.values(p).some(Number.isNaN)) ok = false; }
-    out[w] = { d, inspects: ins.map(i => i.name).join('/') };
-    if (!parts.every(p => have.includes(p)) || ins.length !== 2) ok = false;
+    out[w] = { d, inspects: ins.map(i => i.moves?.join('/') || i.name).join('/') };
+    if (!parts.every(p => have.includes(p)) || ins.length !== 1 || ins[0].moves?.length !== 2) ok = false;
   }
   const b = gunModel('bowie', 'melee-bowie');
-  out.bowie = { rowel: !!b.userData.parts.rowel, inspects: MELEE.bowie.inspects.length };
-  if (!b.userData.parts.rowel || MELEE.bowie.inspects.length !== 3) ok = false;
+  out.bowie = { rowel: !!b.userData.parts.rowel, inspects: MELEE.bowie.inspects[0].moves.join('/') };
+  if (!b.userData.parts.rowel || MELEE.bowie.inspects.length !== 1 || MELEE.bowie.inspects[0].moves.length !== 3) ok = false;
   return { pass: ok, ...out };
 }));
 
@@ -204,13 +204,13 @@ await check('Oathblade models build with their moving parts; inspects run; reloa
       return { edge: +m.userData.parts.edge.scale.z.toFixed(2), swipe: hand('swipe') && m.userData.parts.swipe.visible, glow: +(p.glow ?? 1).toFixed(2) };
     };
     const r = { start: at(0.02), dark: at(0.4), swiping: at(w === 'vandal' ? 0.72 : 0.78), flash: at(w === 'vandal' ? 0.86 : 0.88), end: at(0.99) };
-    out[w] = { d, inspects: ins.map(i => i.name).join('/'), ...r };
-    if (!parts.every(p => have.includes(p)) || ins.length !== 2 || r.start.edge < 0.9 || r.dark.edge > 0.05 || !r.swiping.swipe
+    out[w] = { d, inspects: ins.map(i => i.moves?.join('/') || i.name).join('/'), ...r };
+    if (!parts.every(p => have.includes(p)) || ins.length !== 1 || ins[0].moves?.length !== 2 || r.start.edge < 0.9 || r.dark.edge > 0.05 || !r.swiping.swipe
       || r.swiping.edge <= 0.05 || r.swiping.edge >= 0.95 || r.start.swipe || r.flash.glow < 2 || r.end.edge < 0.99) ok = false;
   }
   const b = gunModel('tanto', 'melee-tanto');
-  out.tanto = { edge: !!b.userData.parts.edge, cord: !!b.userData.parts.cord, inspects: MELEE.tanto.inspects.map(i => i.name).join('/') };
-  if (!b.userData.parts.edge || !b.userData.parts.cord || MELEE.tanto.inspects.length !== 3) ok = false;
+  out.tanto = { edge: !!b.userData.parts.edge, cord: !!b.userData.parts.cord, inspects: MELEE.tanto.inspects[0].moves.join('/') };
+  if (!b.userData.parts.edge || !b.userData.parts.cord || MELEE.tanto.inspects.length !== 1 || MELEE.tanto.inspects[0].moves.length !== 3) ok = false;
   return { pass: ok, ...out };
 }));
 
@@ -248,6 +248,31 @@ await page.evaluate(() => {
     return { mid, end: h.renderer.lastFinisher?.kind || null, over: g.state === 'ended' };
   };
 });
+
+await check('Each weapon has one inspect that flows from move to move without stopping at rest', () => page.evaluate(async () => {
+  const { MELEE, MODEL_INSPECTS, inspectPose } = await import('./js/melee.js');
+  const out = {};
+  let ok = true;
+  for (const [id, set] of [...Object.entries(MELEE).map(([k, m]) => [k, m.inspects]), ...Object.entries(MODEL_INSPECTS)]) {
+    const ins = set[0];
+    // Where one move hands over to the next, the weapon is still out of its resting pose, and merging adds no
+    // jumps: no frame moves further than the moves' own fastest flicks do.
+    const fastest = (i, rest) => {
+      let jump = 0, prev = null, still = 0;
+      for (let t = 0; t <= i.dur; t += 1 / 60) {
+        const p = inspectPose(i, t).pose;
+        if (prev) jump = Math.max(jump, ...p.slice(0, 6).map((v, j) => Math.abs(v - prev[j])));
+        if (rest && t > 0.6 && t < i.dur - 0.6 && p.every(v => Math.abs(v) < 0.01)) still++;
+        prev = p;
+      }
+      return [jump, still];
+    };
+    const [jump, restMid] = fastest(ins, true), own = Math.max(0, ...(ins.from || [ins]).map(i => fastest(i)[0]));
+    out[id] = { moves: ins.moves?.length || 1, dur: +ins.dur.toFixed(1), jump: +jump.toFixed(2), own: +own.toFixed(2), restMid };
+    if (set.length !== 1 || jump > own + 0.05 || restMid > 3) ok = false;
+  }
+  return { pass: ok, ...out };
+}));
 
 await check('Deathmatch: only the match-winning kill plays a finisher, and only if that kill used the skin', async () => {
   const r = await page.evaluate(async () => ({
@@ -292,7 +317,7 @@ if (SHOTS) {
   }
 }
 
-await check('5v5: a finisher waits for the round-ending kill, and needs that kill to be with the skin', () => page.evaluate(async () => {
+await check('5v5: a finisher waits for the round to end (however it ends), and needs its final kill to be with the skin', () => page.evaluate(async () => {
   const h = window.__game, g = await __start({ mode: 'rounds', map: 'divide', botCount: 9 });
   h.settings.skins = { vandal: 'orbital' };
   __tick(g, Math.max(0, g.mode.phaseEnd - g.time) + 1); // through the buy phase
@@ -313,7 +338,17 @@ await check('5v5: a finisher waits for the round-ending kill, and needs that kil
   g.kill(foes2.at(-1), g.player, { def: __W.ghost, part: 'body' });
   __tick(g, 0.5);
   const ghost = h.renderer.lastFinisher?.kind || null;
-  return { pass: early === null && last === 'collapse' && foes2.length === 5 && ghost === null, early, last, ghost, phase: g.mode.phase };
+  // Next round: two Orbital kills, then the round ends on time. The final kill still gets its finisher.
+  __tick(g, Math.max(0, g.mode.phaseEnd - g.time) + 1);
+  __tick(g, Math.max(0, g.mode.phaseEnd - g.time) + 1);
+  h.renderer.lastFinisher = null;
+  const foes3 = g.combatants.filter(c => g.isEnemy(g.player, c) && c.alive);
+  for (const f of foes3.slice(0, 2)) g.kill(f, g.player, { def: __W.vandal, part: 'body' });
+  __tick(g, 1);
+  const beforeEnd = h.renderer.lastFinisher?.kind || null;
+  g.mode.endRound(g.mode.side(g.player) === 'atk' ? 'def' : 'atk', 'time'); // (left to run, the bots would trade kills)
+  const timeout = h.renderer.lastFinisher?.kind || null, reason = g.mode.lastResult?.reason;
+  return { pass: early === null && last === 'collapse' && foes2.length === 5 && ghost === null && beforeEnd === null && timeout === 'collapse', early, last, ghost, beforeEnd, timeout, reason };
 }));
 
 await check('Finishers leave nothing behind once they end', async () => {
@@ -323,6 +358,7 @@ await check('Finishers leave nothing behind once they end', async () => {
       const h = window.__game, g = await __start({});
       __tick(g, 0.1); h.renderer.updateFx2();
       const before = h.renderer.fx2?.length || 0;
+      window.__sceneBefore = h.renderer.scene.children.length;
       g.killLimit = g.player.stats.kills + 1; h.settings.skins = skins;
       g.kill(g.bots[0], g.player, { def: __W[weapon], part: 'body' });
       return { before, during: h.renderer.fx2.length };
@@ -330,11 +366,14 @@ await check('Finishers leave nothing behind once they end', async () => {
     await page.waitForTimeout(3400); // the body's vanish runs on the clock
     out[Object.values(skins)[0]] = { ...r, ...await page.evaluate(() => {
       const h = window.__game, g = h.game;
-      __tick(g, 4); h.renderer.updateFx2();
-      return { after: h.renderer.fx2.length - g.drops.length, body: h.renderer.characters.get(g.bots[0]).group.visible, light: h.renderer.finLight.intensity };
+      // Step through the finisher frame by frame, as the game does, so effects started mid-finisher are counted.
+      for (let i = 0; i < 4 * 30; i++) { __tick(g, 1 / 30); h.renderer.updateFx2(); }
+      return { after: h.renderer.fx2.length - g.drops.length, body: h.renderer.characters.get(g.bots[0]).group.visible, light: h.renderer.finLight.intensity,
+        // Nothing new left in the scene but the victim's dropped gun.
+        left: h.renderer.scene.children.length - window.__sceneBefore - g.drops.length };
     }) };
   }
-  return { pass: Object.values(out).every(o => o.during > o.before && o.after <= o.before && !o.body && o.light === 0), ...out };
+  return { pass: Object.values(out).every(o => o.during > o.before && o.after <= o.before && !o.body && o.light === 0 && o.left <= 0), ...out };
 });
 
 await check('No page errors', () => ({ pass: errors.length === 0, errors: errors.slice(0, 3) }));

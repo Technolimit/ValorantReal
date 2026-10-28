@@ -143,15 +143,16 @@ procedural patterns with their own colours, and glow. Custom skins are saved in 
 *Last Light* (a star rises spinning out of the body and flares out), and Oathblade's *Last Stroke* (a beat of
 stillness, one stroke of light cuts across the body, and it comes apart into petals that drift up and fade). All
 of them leave nothing behind. As in Valorant, a
-finisher plays only on the kill that ends the round in 5v5 (in deathmatch, the kill that wins the match, with the
-scoreboard held back until it's done), and only if that kill was made with the skin, in the colours of the variant
+finisher plays on the final kill of the round in 5v5, when the round ends, however it ends (the last enemy down,
+the spike, a defuse or the clock; in deathmatch, the kill that wins the match, with the scoreboard held back until
+it's done), and only if that kill was made with the skin, in the colours of the variant
 that got the kill. Everyone in the match sees them.
 
 **Melee types** (the Melee card): Tactical Knife, Hatchet, Katana, Karambit, Balisong, Kunai, Arc Blade and the
 Starspur Bowie and the Oathblade Tanto. Each comes in one theme of its own (Standard Issue, Heirloom, Damascus,
 Nightglass, Tiger Stripe, Hexcore, Nebula, Starspur, Oathblade); equipping one puts it in your knife slot (they all hit like the knife). Each has its
-own inspects (`js/melee.js`): press **Y** to inspect, press it again mid-inspect to chain into the next one, and
-hold it to examine the weapon with the mouse. The skin screen's *Play inspect* button previews them. Bots carry
+own inspect (`js/melee.js`), its moves flowing into one another as one smooth animation: press **Y** to inspect,
+and hold it to examine the weapon with the mouse. Model skins' guns likewise have one inspect each. The skin screen's *Play inspect* button previews them. Bots carry
 random melee types, and other online players see yours.
 
 `node tools/check-skins.mjs [shots-dir]` checks the skin list, the collection and weapon screens, variants, the
