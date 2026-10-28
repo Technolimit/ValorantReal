@@ -268,12 +268,12 @@ await check('Deathmatch: only the match-winning kill plays a finisher, and only 
 });
 
 if (SHOTS) {
-  for (const [kind, weapon, skins, times] of [['collapse', 'vandal', { vandal: 'orbital' }, [0.4, 1.2, 1.7]], ['lastLight', 'sheriff', { sheriff: 'starspur' }, [0.5, 1.2, 1.8]], ['lastStroke', 'vandal', { vandal: 'oathblade' }, [0.36, 0.5, 0.8, 1.3, 2.3]]]) {
+  for (const [kind, weapon, skins, times] of [['collapse', 'vandal', { vandal: 'orbital' }, [0.8, 1.8, 2.15, 2.5]], ['lastLight', 'sheriff', { sheriff: 'starspur' }, [0.8, 1.8, 2.15, 2.5]], ['lastStroke', 'vandal', { vandal: 'oathblade' }, [0.3, 0.5, 0.72, 0.9, 1.6]]]) {
     await page.evaluate(async () => {
       const g = await __start({ map: 'arena' });
-      // Stand the victim 3.5 m in front of you (your spawn is open ground) and look at it.
+      // Face the middle of the map (a spawn can face a wall), stand the victim 3.5 m in front of you and look at it.
       const bot = g.bots[0], p = g.player;
-      p.pitch = -0.12;
+      p.yaw = Math.atan2(p.pos[0], p.pos[2]); p.pitch = -0.12;
       bot.pos = [p.pos[0] - Math.sin(p.yaw) * 3.5, p.pos[1], p.pos[2] - Math.cos(p.yaw) * 3.5]; bot.prevPos = [...bot.pos];
     });
     await page.evaluate(([weapon, skins]) => {
@@ -286,6 +286,7 @@ if (SHOTS) {
     for (const t of times) {
       await page.evaluate((dt) => { __tick(window.__game.game, dt); document.getElementById('pause').hidden = true; document.getElementById('end').hidden = true; }, t - done); done = t;
       await page.waitForTimeout(150);
+      await page.evaluate(() => { for (const id of ['pause', 'end']) document.getElementById(id).hidden = true; });
       await shot(`finisher-${kind}-${t}`);
     }
   }
@@ -326,14 +327,14 @@ await check('Finishers leave nothing behind once they end', async () => {
       g.kill(g.bots[0], g.player, { def: __W[weapon], part: 'body' });
       return { before, during: h.renderer.fx2.length };
     }, [weapon, skins]);
-    await page.waitForTimeout(1800); // the body's vanish runs on the clock
+    await page.waitForTimeout(3400); // the body's vanish runs on the clock
     out[Object.values(skins)[0]] = { ...r, ...await page.evaluate(() => {
       const h = window.__game, g = h.game;
-      __tick(g, 3); h.renderer.updateFx2();
-      return { after: h.renderer.fx2.length - g.drops.length, body: h.renderer.characters.get(g.bots[0]).group.visible };
+      __tick(g, 4); h.renderer.updateFx2();
+      return { after: h.renderer.fx2.length - g.drops.length, body: h.renderer.characters.get(g.bots[0]).group.visible, light: h.renderer.finLight.intensity };
     }) };
   }
-  return { pass: Object.values(out).every(o => o.during > o.before && o.after <= o.before && !o.body), ...out };
+  return { pass: Object.values(out).every(o => o.during > o.before && o.after <= o.before && !o.body && o.light === 0), ...out };
 });
 
 await check('No page errors', () => ({ pass: errors.length === 0, errors: errors.slice(0, 3) }));

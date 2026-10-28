@@ -473,6 +473,9 @@ export class Renderer {
     this.flashTex = ftex;
     this.flashMat = new THREE.SpriteMaterial({ map: ftex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
     this.flashPool = Array.from({ length: 16 }, () => { const s = new THREE.Sprite(this.flashMat); s.visible = false; this.scene.add(s); return { s, until: 0 }; });
+    // One light for finishers, always in the scene at zero (adding a light mid-game would recompile every material).
+    this.finLight = new THREE.PointLight(0xffffff, 0, 16, 1.6);
+    this.scene.add(this.finLight);
     this.vmFlash = new THREE.Sprite(new THREE.SpriteMaterial({ map: ftex, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true }));
     this.vmFlash.visible = false;
 
@@ -704,8 +707,9 @@ export class Renderer {
     });
   }
 
-  fxAdd(obj, until, update) {
-    (this.fx2 ||= []).push({ obj, until, update });
+  // done: called once when the effect ends or is cleared (to reset anything it borrowed, like the finisher light).
+  fxAdd(obj, until, update, done = null) {
+    (this.fx2 ||= []).push({ obj, until, update, done });
     this.scene.add(obj);
   }
 
@@ -714,14 +718,14 @@ export class Renderer {
     const now = this.game.time;
     this.fx2 = this.fx2.filter(f => {
       const until = typeof f.until === 'function' ? f.until() : f.until;
-      if (now >= until) { this.scene.remove(f.obj); return false; }
+      if (now >= until) { this.scene.remove(f.obj); f.done?.(); return false; }
       if (f.update) f.update(now);
       return true;
     });
   }
 
   clearFx2() {
-    for (const f of this.fx2 || []) this.scene.remove(f.obj);
+    for (const f of this.fx2 || []) { this.scene.remove(f.obj); f.done?.(); }
     this.fx2 = [];
   }
 
@@ -823,59 +827,117 @@ export class Renderer {
     else if (kind === 'lastStroke') this.fxLastStroke(pos, ch, col);
   }
 
-  // The body shrinks away to nothing over `dur` seconds, starting `delay` seconds from now.
-  vanishBody(ch, delay, dur) {
-    if (ch) ch.vanish = { start: performance.now() + delay * 1000, dur: dur * 1000 };
+  // The body shrinks away to nothing over `dur` seconds, starting `delay` seconds from now, rising `lift` metres.
+  vanishBody(ch, delay, dur, lift = 0) {
+    if (ch) ch.vanish = { start: performance.now() + delay * 1000, dur: dur * 1000, lift, y: ch.group.position.y };
   }
 
-  // Orbital: "Collapse". An orb in the accent colour swells at the body's chest with two rings in the glow colour orbiting it, the body is
-  // drawn into it, the rings close in, and the orb implodes to a point and pops in a flat shockwave that fades
-  // out, leaving nothing behind.
+  // The finisher light: placed at `pos` in `color`, its brightness following env(t) for `life` seconds, then
+  // back to zero.
+  fxFinLight(pos, color, life, env) {
+    const L = this.finLight, t0 = this.game.time, o = new THREE.Object3D();
+    L.color.set(color);
+    L.position.set(...pos);
+    this.fxAdd(o, t0 + life, (now) => { L.position.set(...pos); L.intensity = Math.max(0, env(now - t0)); }, () => { L.intensity = 0; });
+  }
+
+  // A jolt of the camera that dies away over `dur` seconds, weaker the further you are from `pos`.
+  shakeCamera(pos, amp, dur) {
+    const c = this.camera.position, d = Math.hypot(c.x - pos[0], c.y - pos[1], c.z - pos[2]);
+    const a = amp / (1 + d / 12);
+    if (!this.finShake || a > this.finShake.amp * (1 - (this.game.time - this.finShake.t0) / this.finShake.dur)) this.finShake = { t0: this.game.time, amp: a, dur };
+  }
+
+  applyShake() {
+    const sh = this.finShake;
+    if (!sh) return;
+    const k = 1 - (this.game.time - sh.t0) / sh.dur;
+    if (k <= 0) { this.finShake = null; return; }
+    const t = performance.now() / 1000, a = sh.amp * k * k;
+    this.camera.rotation.x += Math.sin(t * 61) * a;
+    this.camera.rotation.y += Math.sin(t * 47 + 1.3) * a;
+    this.camera.rotation.z += Math.sin(t * 37 + 2.1) * a * 0.6;
+  }
+
+  // Orbital: "Collapse". The body is lifted off the floor into a swelling orb in the accent colour while three
+  // rings in the glow colour circle it and a column of light climbs out of it; sparks and debris are sucked in
+  // from all round, the light in the area builds and the rings close in, then it implodes to a point and
+  // detonates: a blinding flash, a ground shockwave and an upright one, and a hard shake. It leaves nothing
+  // behind.
   fxCollapse(pos, ch, col) {
-    const c = [pos[0], pos[1] + 1.0, pos[2]], t0 = this.game.time, life = 2.4, implode = 1.6;
+    const c = [pos[0], pos[1] + 1.2, pos[2]], t0 = this.game.time, life = 3.1, implode = 2.1;
     const add = (col, o = 0.85) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
     const g = new THREE.Group();
     g.position.set(...c);
     const shell = new THREE.Color(col.accent).multiplyScalar(0.75), hot = new THREE.Color(col.accent).lerp(new THREE.Color(0xffffff), 0.7);
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: shell, transparent: true, opacity: 0.85, depthWrite: false }));
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), new THREE.MeshBasicMaterial({ color: shell, transparent: true, opacity: 0.85, depthWrite: false }));
     const core = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12), add(hot, 0.9));
     core.material.depthTest = false; // the hot core shows through the shell
     orb.add(core);
-    const rings = [0, 1].map(i => {
-      const r = new THREE.Mesh(new THREE.TorusGeometry(1, 0.025, 8, 48), add(col.glow, 0.9));
-      r.rotation.set(Math.PI / 2 + (i ? 0.7 : -0.5), i ? 0.4 : -0.3, 0);
+    const aura = new THREE.Mesh(new THREE.SphereGeometry(1.5, 24, 16), add(col.accent, 0.18));
+    const rings = [0, 1, 2].map(i => {
+      const r = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 8, 64), add(col.glow, 0.9));
+      r.rotation.set(Math.PI / 2 + [-0.5, 0.7, 0.1][i], [-0.3, 0.4, 1.2][i], 0);
       g.add(r);
       return r;
     });
-    g.add(orb);
-    this.vanishBody(ch, 0.35, 1.0);
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.6, 1, 20, 1, true), add(col.glow, 0.35));
+    column.geometry.translate(0, 0.5, 0);
+    g.add(orb, aura, column);
+    // Debris drawn in from a wide sphere.
+    const bits = [], bitGeo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
+    for (let i = 0; i < 48; i++) {
+      const m = new THREE.Mesh(bitGeo, add(i % 3 ? col.accent : col.glow, 0.9));
+      const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 3, s = Math.sqrt(1 - u * u);
+      m.userData = { from: [Math.cos(a) * s * r, u * r * 0.6, Math.sin(a) * s * r], at: Math.random() * 1.2 };
+      g.add(m);
+      bits.push(m);
+    }
+    this.vanishBody(ch, 0.3, 1.6, 0.7);
+    this.fxFinLight(c, col.accent, life, (t) => (t < implode ? 2 + 6 * (t / implode) ** 2 : 40 * Math.max(0, 1 - (t - implode) / 0.8) ** 2));
     let popped = false;
     this.fxAdd(g, t0 + life, (now) => {
       const t = now - t0;
-      const grow = Math.min(1, t / 0.6), shut = Math.max(0, Math.min(1, (t - implode + 0.25) / 0.25));
-      orb.scale.setScalar(Math.max(0.001, (0.18 + 0.3 * grow + 0.04 * Math.sin(t * 22)) * (1 - shut)));
+      const grow = Math.min(1, t / 0.9), shut = Math.max(0, Math.min(1, (t - implode + 0.3) / 0.3));
+      const throb = 0.06 * Math.sin(t * (20 + 30 * grow));
+      orb.scale.setScalar(Math.max(0.001, (0.25 + 0.65 * grow + throb) * (1 - shut)));
+      aura.scale.setScalar(Math.max(0.001, (0.4 + 0.8 * grow) * (1 - shut)));
+      aura.material.opacity = 0.18 + 0.12 * Math.sin(t * 9);
       rings.forEach((r, i) => {
-        const rad = Math.max(0.001, (1.0 - 0.35 * grow) * (1 - shut));
-        r.scale.setScalar(rad);
-        r.rotation.z += (i ? 0.12 : -0.15);
+        r.scale.setScalar(Math.max(0.001, (2.2 - 1.0 * grow) * (1 - shut)));
+        r.rotation.z += [-0.15, 0.12, 0.2][i] * (1 + grow);
         r.material.opacity = 0.9 * (1 - shut);
       });
+      column.scale.set(1 - shut, Math.max(0.001, 6 * grow), 1 - shut);
+      column.material.opacity = 0.35 * grow * (1 - shut);
+      for (const b of bits) {
+        const k = Math.min(1, Math.max(0, (t - b.userData.at) / 0.8)), f = b.userData.from;
+        b.position.set(f[0] * (1 - k * k), f[1] * (1 - k * k), f[2] * (1 - k * k));
+        b.rotation.x += 0.3; b.rotation.y += 0.2;
+        b.visible = k > 0 && k < 1 && !popped;
+      }
       if (!popped && t >= implode) {
         popped = true;
-        this.fxBurst(c, col.accent, 3.2, 0.45);
-        this.fxBurst(c, col.glow, 1.6, 0.3, true);
-        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], col.glow, 3.5, 0.7);
-        this.burst(c, null, new THREE.Color(col.accent).toArray(), 24, 4);
+        this.fxBurst(c, col.accent, 9, 0.6);
+        this.fxBurst(c, 0xffffff, 4, 0.25, true);
+        this.fxBurst(c, col.glow, 5, 0.45, true);
+        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], col.glow, 10, 0.9);
+        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], col.accent, 6, 0.7);
+        this.fxRingUp(c, col.accent, 5, 0.6);
+        this.burst(c, null, new THREE.Color(col.accent).toArray(), 60, 9);
+        this.burst(c, null, new THREE.Color(col.glow).toArray(), 40, 6);
+        this.shakeCamera(c, 0.035, 0.7);
       }
       g.visible = !popped;
     });
   }
 
-  // Starspur: "Last Light". A star in the accent colour rises spinning out of the body while a dust ring in the glow colour rolls out
-  // along the ground and the body burns away; the star flares like a low sun and is gone. It leaves nothing
-  // behind: the body, the star and the dust all vanish when it ends.
+  // Starspur: "Last Light". The body is raised and burns away while a big star in the accent colour climbs
+  // spinning out of it, a sunburst of rays turning behind it, and a dust ring in the glow colour rolls out wide
+  // across the ground; at the top the star flares like a low sun: a blinding flash, the area lit up, a shower of
+  // sparks and a shockwave, and it's gone. It leaves nothing behind.
   fxLastLight(pos, ch, col) {
-    const t0 = this.game.time, life = 2.3, flare = 1.7;
+    const t0 = this.game.time, life = 3.1, flare = 2.1, top = 3.4;
     const add = (col, o) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
     const starGeo = (R, r = R * 0.45) => {
       const sh = new THREE.Shape();
@@ -887,101 +949,161 @@ export class Renderer {
     };
     const g = new THREE.Group();
     g.position.set(pos[0], pos[1], pos[2]);
-    const star = new THREE.Mesh(starGeo(0.42), new THREE.MeshBasicMaterial({ color: col.accent, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }));
-    const halo = new THREE.Mesh(starGeo(0.62, 0.2), add(col.glow, 0.55));
+    const star = new THREE.Mesh(starGeo(0.9), new THREE.MeshBasicMaterial({ color: col.accent, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }));
+    const halo = new THREE.Mesh(starGeo(1.35, 0.4), add(col.glow, 0.55));
     halo.position.z = -0.01;
     star.add(halo);
+    // Sunburst: long thin rays fanned round the star, facing the same way it does.
+    const rays = new THREE.Group();
+    for (let i = 0; i < 12; i++) {
+      const r = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 3.2), add(i % 2 ? col.accent : col.glow, 0.4));
+      r.geometry.translate(0, 1.9, 0);
+      r.rotation.z = (i / 12) * Math.PI * 2;
+      rays.add(r);
+    }
+    rays.position.z = -0.02;
+    star.add(rays);
     g.add(star);
-    const dust = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 48), add(col.glow, 0.6));
+    const dust = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 64), add(col.glow, 0.7));
     dust.rotation.x = -Math.PI / 2;
     dust.position.y = 0.04;
-    g.add(dust);
-    this.vanishBody(ch, 0.3, 1.1);
-    this.burst([pos[0], pos[1] + 0.9, pos[2]], null, new THREE.Color(col.accent).toArray(), 16, 2.5);
+    const dust2 = new THREE.Mesh(new THREE.RingGeometry(0.7, 1, 64), add(col.accent, 0.35));
+    dust2.rotation.x = -Math.PI / 2;
+    dust2.position.y = 0.05;
+    g.add(dust, dust2);
+    this.vanishBody(ch, 0.3, 1.6, 0.6);
+    this.burst([pos[0], pos[1] + 0.9, pos[2]], null, new THREE.Color(col.accent).toArray(), 30, 4);
+    this.fxFinLight([pos[0], pos[1] + 2, pos[2]], col.accent, life, (t) => (t < flare ? 1.5 + 4 * (t / flare) : 45 * Math.max(0, 1 - (t - flare) / 0.9) ** 2));
     let flared = false;
     this.fxAdd(g, t0 + life, (now) => {
       const t = now - t0;
       const rise = Math.min(1, t / flare);
-      star.position.y = 0.4 + 1.4 * (1 - (1 - rise) * (1 - rise));
-      star.rotation.y = t * (4 + 6 * rise);
+      star.position.y = 0.6 + (top - 0.6) * (1 - (1 - rise) * (1 - rise));
+      star.lookAt(this.camera.position.x, g.position.y + star.position.y, this.camera.position.z); // faces you
+      star.rotateZ(t * (2 + 5 * rise));
       const pop = Math.max(0, t - flare);
-      star.scale.setScalar(Math.max(0.001, Math.min(1, t / 0.3) + pop * 3));
-      star.material.opacity = 0.95 * Math.max(0, 1 - pop / 0.35);
-      halo.material.opacity = 0.5 * Math.max(0, 1 - pop / 0.35);
-      const roll = Math.min(1, t / 1.4);
-      dust.scale.setScalar(0.3 + 2.2 * roll);
-      dust.material.opacity = 0.6 * (1 - roll);
+      star.scale.setScalar(Math.max(0.001, Math.min(1, t / 0.4) + pop * 5));
+      star.material.opacity = 0.95 * Math.max(0, 1 - pop / 0.3);
+      halo.material.opacity = 0.55 * Math.max(0, 1 - pop / 0.3);
+      rays.scale.setScalar(Math.max(0.001, 0.3 + 0.9 * rise));
+      rays.rotation.z = -t * 1.5;
+      for (const r of rays.children) r.material.opacity = 0.4 * rise * Math.max(0, 1 - pop / 0.3);
+      const roll = Math.min(1, t / 1.8), roll2 = Math.min(1, Math.max(0, (t - 0.4) / 1.8));
+      dust.scale.setScalar(0.3 + 5.5 * roll);
+      dust.material.opacity = 0.7 * (1 - roll);
       dust.rotation.z = t * 2;
+      dust2.scale.setScalar(0.3 + 4 * roll2);
+      dust2.material.opacity = 0.35 * (1 - roll2);
       if (!flared && t >= flare) {
         flared = true;
-        const p = [pos[0], pos[1] + 1.8, pos[2]];
-        this.fxBurst(p, col.accent, 3, 0.5);
-        this.burst(p, null, new THREE.Color(col.glow).toArray(), 22, 3.5);
+        const p = [pos[0], pos[1] + top, pos[2]];
+        this.fxBurst(p, col.accent, 10, 0.7);
+        this.fxBurst(p, 0xffffff, 4.5, 0.3, true);
+        this.fxBurst(p, col.glow, 6, 0.5, true);
+        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], col.accent, 9, 0.9);
+        this.burst(p, null, new THREE.Color(col.glow).toArray(), 60, 8);
+        this.burst(p, null, new THREE.Color(col.accent).toArray(), 40, 5);
+        this.shakeCamera(p, 0.03, 0.6);
       }
     });
   }
 
-  // Oathblade: "Last Stroke". A beat of stillness, then one diagonal stroke of light in the glow colour cuts
-  // across the body with a thin accent line trailing it; the body comes apart into petals in the accent colour
-  // that drift up and fade. When it ends nothing is left: no body, no mark, no glow.
+  // Oathblade: "Last Stroke". A beat of stillness while the light drains out of the area, then a huge diagonal
+  // stroke of light in the glow colour cuts clean across the body and far past it, a second cut in the accent
+  // colour crosses it, the world flashes and shakes, and the body comes apart into a storm of petals that whirl
+  // up and fade. When it ends nothing is left: no body, no mark, no glow.
   fxLastStroke(pos, ch, col) {
-    const t0 = this.game.time, life = 2.2, cut = 0.3, part = 0.55;
+    const t0 = this.game.time, life = 2.9, cut = 0.45, cross = 0.68, part = 0.8;
     const add = (c, o) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
     const g = new THREE.Group();
     g.position.set(pos[0], pos[1] + 1.0, pos[2]);
-    // Turn the stroke to face the camera, so it reads as a cut across the body.
+    // Turn the strokes to face the camera, so they read as cuts across the body.
     const cam = this.camera.position;
     g.rotation.y = Math.atan2(cam.x - pos[0], cam.z - pos[2]);
-    const line = (w, h, c, o, y) => {
-      const geo = new THREE.BoxGeometry(1.6, 1, 1);
-      geo.translate(0.8, 0, 0); // grows from its left end
+    const line = (len, w, h, c, o, ang) => {
+      const geo = new THREE.BoxGeometry(len, 1, 1);
+      geo.translate(len / 2, 0, 0); // grows from its start
       const m = new THREE.Mesh(geo, add(c, o));
-      m.position.set(-0.8 * Math.cos(0.38), y + 0.8 * Math.sin(0.38), 0.05);
-      m.rotation.z = -0.38;
+      m.position.set(-(len / 2) * Math.cos(ang), (len / 2) * Math.sin(ang), 0.05);
+      m.rotation.z = -ang;
       m.scale.set(0.001, h, w);
+      m.userData.h = h;
       g.add(m);
       return m;
     };
-    const stroke = line(0.03, 0.035, col.glow, 1, 0.05), trail = line(0.01, 0.012, col.accent, 0.9, -0.02);
+    // The cut runs well past the body on both sides; a soft wide glow under the hard core line.
+    const stroke = line(7, 0.05, 0.06, col.glow, 1, 0.38), glow = line(7, 0.05, 0.3, col.glow, 0.25, 0.38);
+    const trail = line(7, 0.02, 0.02, col.accent, 0.9, 0.4);
+    const second = line(3.4, 0.04, 0.045, col.accent, 1, -0.9);
     const petals = [];
-    const petalGeo = new THREE.PlaneGeometry(0.07, 0.13);
-    for (let i = 0; i < 28; i++) {
-      const m = new THREE.Mesh(petalGeo, add(col.accent, 0));
-      const along = (Math.random() - 0.5) * 1.1;
-      m.position.set(along * Math.cos(0.38), -along * Math.sin(0.38) + (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.3);
-      m.userData.v = [(Math.random() - 0.5) * 0.9, 0.5 + Math.random() * 0.9, (Math.random() - 0.5) * 0.9];
-      m.userData.spin = [(Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9];
+    const petalGeo = new THREE.PlaneGeometry(0.1, 0.18);
+    for (let i = 0; i < 80; i++) {
+      const m = new THREE.Mesh(petalGeo, add(i % 4 ? col.accent : col.glow, 0));
+      const along = (Math.random() - 0.5) * 1.6;
+      m.position.set(along * Math.cos(0.38), -along * Math.sin(0.38) + (Math.random() - 0.5) * 0.9, (Math.random() - 0.5) * 0.5);
+      const out = 0.6 + Math.random() * 2.2, a = Math.random() * Math.PI * 2;
+      m.userData.v = [Math.cos(a) * out, 0.6 + Math.random() * 2.2, Math.sin(a) * out];
+      m.userData.spin = [(Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12];
       m.visible = false;
       g.add(m);
       petals.push(m);
     }
-    this.vanishBody(ch, part, 0.45);
-    let split = false, last = 0;
+    this.vanishBody(ch, part, 0.35);
+    // The light dims on the held breath, then the cut lights the whole area.
+    this.fxFinLight([pos[0], pos[1] + 1, pos[2]], col.glow, life, (t) => (t < cut ? 0 : 38 * Math.max(0, 1 - (t - cut) / 1.0) ** 2));
+    let cutDone = false, crossed = false, split = false, last = 0;
     this.fxAdd(g, t0 + life, (now) => {
       const t = now - t0, dt = Math.max(0, t - last);
       last = t;
-      const draw = Math.min(1, Math.max(0, (t - cut) / 0.1)), lag = Math.min(1, Math.max(0, (t - cut - 0.04) / 0.12));
-      const thin = Math.max(0, 1 - Math.max(0, t - part) / 0.4);
-      stroke.scale.x = Math.max(0.001, draw);
+      const draw = Math.min(1, Math.max(0, (t - cut) / 0.08)), lag = Math.min(1, Math.max(0, (t - cut - 0.04) / 0.12));
+      const draw2 = Math.min(1, Math.max(0, (t - cross) / 0.07));
+      const thin = Math.max(0, 1 - Math.max(0, t - part) / 0.5);
+      stroke.scale.x = glow.scale.x = Math.max(0.001, draw);
       trail.scale.x = Math.max(0.001, lag);
-      stroke.scale.y = Math.max(0.001, 0.035 * thin);
-      trail.scale.y = Math.max(0.001, 0.012 * thin);
-      stroke.visible = trail.visible = t >= cut && thin > 0;
+      second.scale.x = Math.max(0.001, draw2);
+      for (const m of [stroke, glow, trail, second]) m.scale.y = Math.max(0.001, m.userData.h * thin);
+      stroke.visible = glow.visible = trail.visible = t >= cut && thin > 0;
+      second.visible = t >= cross && thin > 0;
+      if (!cutDone && t >= cut) {
+        cutDone = true;
+        this.fxBurst([pos[0], pos[1] + 1.0, pos[2]], 0xffffff, 3.5, 0.18, true);
+        this.shakeCamera(pos, 0.025, 0.4);
+      }
+      if (!crossed && t >= cross) {
+        crossed = true;
+        this.fxBurst([pos[0], pos[1] + 1.0, pos[2]], col.accent, 3, 0.2, true);
+        this.shakeCamera(pos, 0.02, 0.35);
+      }
       if (!split && t >= part) {
         split = true;
         for (const m of petals) m.visible = true;
-        this.fxBurst([pos[0], pos[1] + 1.0, pos[2]], col.glow, 1.4, 0.25, true);
+        this.fxBurst([pos[0], pos[1] + 1.0, pos[2]], col.glow, 6, 0.4, true);
+        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], col.accent, 6, 0.6);
+        this.burst([pos[0], pos[1] + 1.0, pos[2]], null, new THREE.Color(col.glow).toArray(), 40, 6);
       }
       if (split) {
         const k = (t - part) / (life - part);
         for (const m of petals) {
           const v = m.userData.v;
           m.position.x += v[0] * dt; m.position.y += v[1] * dt; m.position.z += v[2] * dt;
-          v[0] *= 1 - 1.2 * dt; v[2] *= 1 - 1.2 * dt;
+          v[0] *= 1 - 1.5 * dt; v[2] *= 1 - 1.5 * dt; v[1] -= 0.3 * dt;
           m.rotation.x += m.userData.spin[0] * dt; m.rotation.y += m.userData.spin[1] * dt;
-          m.material.opacity = 0.85 * Math.min(1, k * 8) * (1 - k);
+          m.material.opacity = 0.9 * Math.min(1, k * 10) * (1 - k);
         }
       }
+    });
+  }
+
+  // An upright ring bursting outward (finisher detonations), turned to face you.
+  fxRingUp(pos, color, r, life) {
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 64), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    m.position.set(...pos);
+    m.lookAt(this.camera.position);
+    const t0 = this.game.time;
+    this.fxAdd(m, t0 + life, (now) => {
+      const k = (now - t0) / life;
+      m.scale.setScalar(Math.max(0.01, r * Math.sqrt(k)));
+      m.material.opacity = 0.8 * (1 - k);
     });
   }
 
@@ -1344,7 +1466,7 @@ export class Renderer {
   clearSmokes() {
     for (const sm of this.smokes || []) this.scene.remove(sm.group);
     if (this.smokes) this.smokes.length = 0;
-    this.clearFx2();
+    this.clearFx2(); this.finShake = null;
   }
 
   updateSmokes() {
@@ -1602,6 +1724,7 @@ export class Renderer {
     const now = performance.now();
     this.autoScale(dt, now);
     if (p) this.updateCamera(p, alpha, dt, look);
+    this.applyShake();
     this.updateCharacters(alpha, now);
     this.updateFx(dt, now);
     this.updateLasers();
@@ -2113,6 +2236,7 @@ export class Renderer {
           if (ch.vanish) { // a finisher takes the body
             const k = Math.min(1, Math.max(0, (now - ch.vanish.start) / ch.vanish.dur));
             ch.group.scale.setScalar(Math.max(0.001, 1 - k * k));
+            if (ch.vanish.lift) ch.group.position.y = ch.vanish.y + ch.vanish.lift * Math.sin(k * Math.PI / 2);
             if (k >= 1) ch.group.visible = false;
           }
         } else ch.group.visible = false;
