@@ -64,7 +64,7 @@ await check('The shop lays out four gun columns, shields, abilities and the team
   rhud.toggleShop(true);
   const cols = document.querySelectorAll('#shop-grid .scol').length;
   const guns = document.querySelectorAll('#shop-grid .scard.gun').length;
-  const imgs = [...document.querySelectorAll('#shop-grid .scard.gun img')].filter(i => i.src.startsWith('data:image/png')).length;
+  const imgs = [...document.querySelectorAll('#shop-grid .scard.gun img')].filter(i => i.src.startsWith('blob:')).length;
   const gear = document.querySelectorAll('#shop-gear .scard').length;
   const mates = document.querySelectorAll('#shop-team .tmate').length;
   const total = g.combatants.filter(c => c.team === p.team).reduce((a, c) => a + c.credits, 0);
