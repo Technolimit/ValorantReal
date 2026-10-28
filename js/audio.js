@@ -179,6 +179,7 @@ const FALLOFF = {
   suppressed: { model: 'inverse', ref: 3, roll: 1.8, max: 80 },
   step: { model: 'linear', ref: 2, max: 35 },
   other: { model: 'inverse', ref: 4, roll: 1.1, max: 120 },
+  spike: { model: 'inverse', ref: 3, roll: 1.4, max: 60 },
 };
 GUN_SOUNDS.headhunter = GUN_SOUNDS.sheriff;
 GUN_SOUNDS.tourdeforce = GUN_SOUNDS.operator;
@@ -654,6 +655,55 @@ export class Sound {
     if (!this.ctx) return;
     this.tone({ dest: pos ? this.out(pos) : this.master, freq: urgent ? 1900 : 1500, decay: 0.09, gain: 0.16, type: 'square' });
   }
+  // Planting and defusing, heard from where it happens (pos null: you, or whoever you're spectating, are doing it).
+  // All synthesized: the plant is the spike unfolding with a clunk, then keypad taps that climb in pitch as it arms,
+  // then a clamp and a rising arming whine. The defuse is a tool clink and a crackle, then a ratchet over a buzz
+  // that climbs as it goes, a double chirp at the halfway mark, and a power-down sweep when it's done. Letting go
+  // early gives a short falling blip.
+  //   kind: 'plantStart' | 'plantTick' | 'plantDone' | 'defuseStart' | 'defuseTick' | 'defuseHalf' | 'defuseDone' | 'cancel'
+  //   frac: how far along the plant or defuse is (0..1), for the ticks
+  spikeCue(kind, pos, frac = 0) {
+    if (!this.ctx) return;
+    const d = this.out(pos, 'spike'), k = pos ? 1 : 0.5;
+    const N = (o) => this.noiseHit({ dest: d, ...o, gain: o.gain * k });
+    const T = (o) => this.tone({ dest: d, ...o, gain: o.gain * k });
+    if (kind === 'plantStart') {
+      N({ bp: 900, q: 1.5, attack: 0.09, decay: 0.16, gain: 0.35 });
+      N({ at: 0.14, lp: 800, hp: 60, decay: 0.1, gain: 0.5 });
+      T({ at: 0.14, freq: 130, end: 60, decay: 0.12, gain: 0.35 });
+      T({ at: 0.2, freq: 1200, decay: 0.06, gain: 0.06, type: 'square' });
+      T({ at: 0.27, freq: 1600, decay: 0.06, gain: 0.06, type: 'square' });
+    } else if (kind === 'plantTick') {
+      N({ bp: 2600, q: 3, decay: 0.03, gain: 0.3 });
+      T({ freq: 880 + 700 * frac, decay: 0.07, gain: 0.07, type: 'square' });
+    } else if (kind === 'plantDone') {
+      N({ lp: 700, hp: 50, decay: 0.3, gain: 0.7, attack: 0.004 });
+      T({ freq: 170, end: 45, decay: 0.25, gain: 0.45 });
+      T({ at: 0.1, freq: 420, end: 1900, decay: 0.55, gain: 0.09, type: 'triangle' });
+      T({ at: 0.62, freq: 2100, decay: 0.25, gain: 0.08, type: 'triangle' });
+    } else if (kind === 'defuseStart') {
+      T({ freq: 3300, end: 3150, decay: 0.18, gain: 0.07, type: 'triangle' });
+      N({ hp: 3500, lp: 9000, decay: 0.05, gain: 0.3 });
+      N({ at: 0.06, bp: 1800, q: 6, decay: 0.2, gain: 0.25, attack: 0.01 });
+      T({ at: 0.06, freq: 110, end: 140, decay: 0.2, gain: 0.08, type: 'sawtooth' });
+    } else if (kind === 'defuseTick') {
+      N({ hp: 3000, lp: 8000, decay: 0.02, gain: 0.25 });
+      N({ at: 0.05, hp: 3000, lp: 8000, decay: 0.02, gain: 0.2 });
+      T({ freq: 150 + 250 * frac, end: (150 + 250 * frac) * 1.03, decay: 0.16, gain: 0.07, type: 'sawtooth' });
+    } else if (kind === 'defuseHalf') {
+      T({ freq: 1100, decay: 0.09, gain: 0.12, type: 'triangle' });
+      T({ at: 0.1, freq: 1650, decay: 0.14, gain: 0.12, type: 'triangle' });
+    } else if (kind === 'defuseDone') {
+      T({ freq: 1500, end: 110, decay: 0.7, gain: 0.14, type: 'sawtooth' });
+      N({ hp: 2000, lp: 7000, decay: 0.45, gain: 0.25, attack: 0.01 });
+      N({ at: 0.72, lp: 900, hp: 80, decay: 0.09, gain: 0.45 });
+      T({ at: 0.72, freq: 140, end: 70, decay: 0.08, gain: 0.3 });
+    } else if (kind === 'cancel') {
+      T({ freq: 700, end: 380, decay: 0.12, gain: 0.08 });
+      N({ hp: 2500, lp: 8000, decay: 0.025, gain: 0.2 });
+    }
+  }
+
   sting(kind) {
     if (!this.ctx) return;
     const d = this.master;
