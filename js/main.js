@@ -76,7 +76,10 @@ const ears = () => renderer.specTarget || game.player;
 const isEars = (who) => who === ears();
 
 // ---- sound hooks ----
-game.on('shot', ({ who, gun }) => { if (isPlayer(who)) sound.stopAction(); sound.gunshot(gun.def, isEars(who) ? null : who.eye(), gun); });
+game.on('shot', ({ who, gun }) => {
+  if (isPlayer(who)) sound.stopAction();
+  sound.gunshot(gun.def, isEars(who) ? null : who.eye(), gun, SKINS[renderer.skinOf(who, gun.def.id)]?.sounds); // a skin's sound set colours the shot
+});
 game.on('footstep', ({ who }) => sound.footstep(isEars(who) ? null : who.pos, isEars(who)));
 game.on('land', ({ who }) => sound.land(isEars(who) ? null : who.pos, isEars(who)));
 game.on('hit', ({ attacker, target, part, killed, dot }) => {

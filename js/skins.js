@@ -64,6 +64,7 @@ export const SKINS = {
     glow: { color: 0x3cf0d2, intensity: 2.2 },
     accent: { color: 0xffae42, intensity: 2.0 },
     finisher: 'lastLight',
+    sounds: 'starspur', // its sound set: a thunkier shot (FIRE_TONE in audio.js)
     variant: 'Frontier',
     variants: [
       { variant: 'Dusk Rider', body: { color: 0x2b2445, rough: 0.4, metal: 0.15 }, glow: { color: 0xff7ad9, intensity: 2.2 }, accent: { color: 0xffae42, intensity: 2.0 } },
@@ -81,7 +82,7 @@ export const SKINS = {
     glow: { color: 0xbfe4ff, intensity: 2.4 },
     accent: { color: 0xff3b4a, intensity: 2.0 },
     finisher: 'lastStroke',
-    sounds: 'oathblade', // the id its own sound files go under in sounds/index.json (the Tanto shares them)
+    sounds: 'oathblade', // its sound set: a crisper shot (FIRE_TONE in audio.js) and the pullout file in sounds/index.json
     variant: 'Ink',
     variants: [
       { variant: 'Crimson Oath', body: { color: 0x5a0b12, rough: 0.14, metal: 0.35 }, grip: { color: 0x15100e, rough: 0.85, metal: 0 }, glow: { color: 0xffd27a, intensity: 2.4 }, accent: { color: 0xff7a2e, intensity: 2.0 } },
