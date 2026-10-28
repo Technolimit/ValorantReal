@@ -1,6 +1,6 @@
 // Melee types: cosmetic models for the knife slot (they all hit like the knife), each with its own set of
-// inspect animations. Press inspect (Y) to play the first one, press it again mid-animation to chain into the
-// next, and hold it to take the weapon in hand and turn it with the mouse.
+// inspect moves, merged into one smooth inspect (chainInspects, at the end). Press inspect (Y) to play it, and
+// hold it to take the weapon in hand and turn it with the mouse.
 //
 // An inspect is a set of keyframe tracks, sampled with sample():
 //   track  the whole viewmodel: [t, px, py, pz, rx, ry, rz], offsets added to the resting pose (camera space)
@@ -476,3 +476,49 @@ export function inspectPose(ins, t) {
   }
   return { pose, parts, glow };
 }
+
+// One smooth inspect per weapon: a weapon's inspects play back to back as a single animation. Each one is an
+// offset from the resting pose that starts and ends at rest, so where one settles and the next sets off they
+// overlap and add together: the weapon flows from one move into the next without stopping at rest. The result
+// is baked into linear keyframes, so it plays like any other inspect.
+const CHAIN_OVERLAP = 0.45, CHAIN_FPS = 40;
+export function chainInspects(list, name = 'Inspect') {
+  if (list.length < 2) return list[0];
+  // Clamp each overlap to the first inspect's settle and the next one's set-off, so moves aren't cut short.
+  const starts = [0];
+  for (let i = 1; i < list.length; i++) {
+    const a = list[i - 1], b = list[i];
+    const o = Math.min(CHAIN_OVERLAP, (a.dur - a.track.at(-2)[0]) * 0.9, b.track[1][0] * 0.9);
+    starts.push(starts[i - 1] + a.dur - o);
+  }
+  const dur = starts.at(-1) + list.at(-1).dur;
+  const names = [...new Set(list.flatMap(ins => Object.keys(ins.parts || {})))];
+  const track = [], glow = [], parts = Object.fromEntries(names.map(n => [n, []]));
+  const n = Math.ceil(dur * CHAIN_FPS);
+  for (let f = 0; f <= n; f++) {
+    const t = Math.min(dur, f / CHAIN_FPS), pose = [0, 0, 0, 0, 0, 0], pp = Object.fromEntries(names.map(k => [k, [0, 0, 0, 0, 0, 0, 1]]));
+    let g = 1;
+    list.forEach((ins, i) => {
+      const lt = t - starts[i];
+      // An inspect not yet started is at rest; one that's over holds its last frame (a part may end a full turn round).
+      const p = inspectPose({ ...ins, jitter: false }, Math.max(0, Math.min(ins.dur, lt)));
+      for (let j = 0; j < 6; j++) pose[j] += p.pose[j];
+      for (const k of names) {
+        const v = p.parts[k];
+        if (!v) continue;
+        for (let j = 0; j < 6; j++) pp[k][j] += v[j] ?? 0;
+        pp[k][6] *= v[6] ?? 1;
+      }
+      g += p.glow - 1;
+    });
+    track.push(L(t, ...pose));
+    glow.push(L(t, g));
+    for (const k of names) parts[k].push(L(t, ...pp[k]));
+  }
+  const out = { name, dur, track, glow, jitter: list.some(ins => ins.jitter), moves: list.map(ins => ins.name), from: list };
+  if (names.length) out.parts = parts;
+  return out;
+}
+
+for (const m of Object.values(MELEE)) m.inspects = [chainInspects(m.inspects)];
+for (const [id, set] of Object.entries(MODEL_INSPECTS)) MODEL_INSPECTS[id] = [chainInspects(set)];

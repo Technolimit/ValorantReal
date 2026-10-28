@@ -736,7 +736,7 @@ $('skin-inspect').onclick = () => {
   if (!list) return;
   const ins = list[inspectIdx++ % list.length];
   preview.inspect(ins);
-  $('skin-inspect').textContent = `Inspect: ${ins.name} (${(inspectIdx - 1) % list.length + 1}/${list.length})`;
+  $('skin-inspect').textContent = list.length > 1 ? `Inspect: ${ins.name} (${(inspectIdx - 1) % list.length + 1}/${list.length})` : 'Play inspect';
 };
 
 // ---- agent select ----

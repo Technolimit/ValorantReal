@@ -552,10 +552,12 @@ export class Renderer {
       if (victim === g.player) this.deathCam = { killer, yaw: g.player.yaw, pitch: g.player.pitch, t: performance.now() };
       this.queueFinisher(killer, victim, def);
     });
-    // A finisher plays on the kill that ends the round (5v5) or the match (deathmatch), called just after it.
-    g.on('roundEnd', ({ reason }) => { if (reason === 'eliminated') this.endFinisher(); else this.pendingFinisher = null; });
+    // A finisher plays when the round ends (5v5), however it ends, for that round's final kill; in deathmatch, on
+    // the kill that ends the match.
+    g.on('roundEnd', () => this.endFinisher());
     g.on('end', () => { if (!g.mode) this.endFinisher(); });
     g.on('start', () => { this.pendingFinisher = null; });
+    g.on('round', () => { this.pendingFinisher = null; }); // kills after a round ends don't carry into the next
     g.on('respawn', ({ who }) => {
       const ch = this.characters.get(who);
       if (ch) { ch.deathT = 0; ch.vanish = null; ch.group.visible = true; ch.group.rotation.set(0, 0, 0); ch.group.scale.setScalar(1); }
@@ -715,13 +717,17 @@ export class Renderer {
 
   updateFx2() {
     if (!this.fx2?.length) return;
-    const now = this.game.time;
-    this.fx2 = this.fx2.filter(f => {
+    const now = this.game.time, list = this.fx2;
+    // An update can start new effects (a finisher's bursts and rings at its climax): they go on a fresh list,
+    // so they are kept, faded and removed like the rest instead of being left in the scene.
+    this.fx2 = [];
+    const kept = list.filter(f => {
       const until = typeof f.until === 'function' ? f.until() : f.until;
       if (now >= until) { this.scene.remove(f.obj); f.done?.(); return false; }
       if (f.update) f.update(now);
       return true;
     });
+    this.fx2 = kept.concat(this.fx2);
   }
 
   clearFx2() {
@@ -799,8 +805,8 @@ export class Renderer {
   }
 
   // ---------- finishers ----------
-  // A kill with a finisher skin (`finisher` in skins.js) waits to see whether it ends the round (5v5) or the
-  // match (deathmatch); as in Valorant, only that final kill plays the finisher.
+  // A kill with a finisher skin (`finisher` in skins.js) waits to see whether it is the round's final kill (5v5) or
+  // ends the match (deathmatch); as in Valorant, only that final kill plays the finisher, when the round ends.
   queueFinisher(killer, victim, def) {
     if (!killer || !victim || killer === victim || !def) return;
     const skin = this.skinOf(killer, this.modelOf(killer, def.id)), kind = SKINS[skin]?.finisher;
@@ -808,11 +814,12 @@ export class Renderer {
     this.pendingFinisher = FINISHERS.includes(kind) ? { kind, skin, victim, at: this.game.time } : null;
   }
 
-  // The round (or, in deathmatch, the match) just ended: play the finisher if the kill that ended it earned one.
+  // The round (or, in deathmatch, the match) just ended: play the finisher if its final kill earned one. In 5v5
+  // the round may end long after that kill (a spike, a defuse, the clock), so the kill can be from any time.
   endFinisher() {
     const f = this.pendingFinisher;
     this.pendingFinisher = null;
-    if (f && this.game.time - f.at < 2) this.playFinisher(f.kind, f.victim, f.skin);
+    if (f && (this.game.mode || this.game.time - f.at < 2)) this.playFinisher(f.kind, f.victim, f.skin);
   }
 
   // Finishers take their colours from the skin (variant) that got the kill: its glow and its accent.
@@ -1980,6 +1987,8 @@ export class Renderer {
     const p = this.game.player;
     if (!p?.alive || p.gun.reloading) return;
     const now = performance.now(), set = this.inspectSet(p.gun), cur = this.inspecting;
+    // Each weapon has one inspect (see chainInspects): pressed again mid-inspect, it carries on (held, it examines).
+    if (cur && cur.gun === p.gun && !cur.back && set.length === 1) { cur.held = true; cur.heldAt = now; return; }
     const idx = cur && cur.gun === p.gun && !cur.back ? (cur.idx + 1) % set.length : 0;
     this.inspecting = { start: now, gun: p.gun, idx, ins: set[idx], count: set.length, held: true, heldAt: now, ex: 0, exOn: false, yaw: 0, pitch: 0 };
   }
