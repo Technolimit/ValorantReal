@@ -643,24 +643,27 @@ const DESIGNS = {
     return { muzzle: [0, 0.024, -0.41], sightY: sy };
   },
 
+  // Bulldog: a bullpup. The grip and trigger sit forward and the action and magazine behind them, in the
+  // stock; every Bulldog skin keeps this layout.
   bulldog(k) {
-    k.prof([[0.04, -0.022], [0.04, 0.05], [-0.3, 0.05], [-0.32, 0.03], [-0.32, -0.022]], 0.054, 'body');
-    k.box(0.055, 0.004, 0.3, 'glow', 0, 0.02, -0.14);
-    k.prof([[-0.32, -0.02], [-0.32, 0.044], [-0.46, 0.038], [-0.46, -0.012]], 0.05, 'trim');
-    k.teeth(5, -0.34, -0.44, 0.052, 0.012, 0.01, 'metal', 0, 0.0);
-    k.cyl(0.011, 0.1, 'metal', 0, 0.014, -0.5);
-    k.box(0.026, 0.026, 0.04, 'metal', 0, 0.014, -0.565);
+    k.prof([[-0.22, -0.022], [-0.22, 0.05], [0.26, 0.046], [0.28, 0.026], [0.28, -0.075], [0.24, -0.078], [0.19, -0.036], [0.05, -0.03], [0.04, -0.022]], 0.054, 'body');
+    k.box(0.055, 0.004, 0.36, 'glow', 0, 0.02, 0.0);
+    k.prof([[-0.22, -0.02], [-0.22, 0.044], [-0.42, 0.038], [-0.42, -0.012]], 0.05, 'trim');
+    k.teeth(5, -0.24, -0.4, 0.052, 0.012, 0.01, 'metal', 0, 0.0);
+    k.cyl(0.011, 0.1, 'metal', 0, 0.014, -0.47);
+    k.box(0.026, 0.026, 0.04, 'metal', 0, 0.014, -0.535);
+    // Magazine behind the grip.
     k.part('mag');
-    k.box(0.028, 0.115, 0.042, 'trim', 0, -0.075, -0.13, 0.12);
+    k.box(0.028, 0.115, 0.042, 'trim', 0, -0.075, 0.11, 0.12);
     k.part(null);
-    charger(k, -0.06, 0.03, -0.031);
+    charger(k, -0.14, 0.03, -0.031);
     k.box(0.034, 0.1, 0.044, 'grip', 0, -0.06, 0.0, -0.26);
     k.box(0.024, 0.005, 0.05, 'metal', 0, -0.028, -0.04);
-    k.prof([[0.04, 0.045], [0.26, 0.04], [0.28, 0.0], [0.28, -0.075], [0.24, -0.075], [0.08, -0.012], [0.04, -0.012]], 0.046, 'trim');
-    k.box(0.05, 0.095, 0.018, 'grip', 0, -0.018, 0.285);
-    rail(k, -0.3, 0.02, 0.05);
-    const sy = holo(k, -0.12, 0.058);
-    return { muzzle: [0, 0.014, -0.585], sightY: sy };
+    k.prof([[0.15, 0.05], [0.15, 0.06], [0.25, 0.058], [0.26, 0.046]], 0.04, 'trim', 0, 0.001);
+    k.box(0.05, 0.095, 0.018, 'grip', 0, -0.022, 0.288);
+    rail(k, -0.2, 0.05, 0.05);
+    const sy = holo(k, -0.06, 0.058);
+    return { muzzle: [0, 0.014, -0.555], sightY: sy };
   },
 
   guardian(k) {
@@ -840,38 +843,38 @@ const DESIGNS = {
     return { muzzle: [0, 0.018, -0.58], sightY: sy };
   },
 
-  // Bulldog: a blocky, heavy receiver with a bigger spire, a vented handguard and a squared gold muzzle brake
-  // with neon slots.
+  // Bulldog: a bullpup. The grip and trigger sit forward, the action and magazine behind them in the stock, with
+  // the spire set into the receiver right over the magazine. Out front, a long vented handguard and a squared
+  // gold muzzle brake with neon slots.
   bulldogOrb(k) {
-    k.prof([[0.04, -0.026], [0.04, 0.054], [-0.086, 0.054], [-0.086, -0.026]], 0.06, 'body');
-    k.prof([[-0.194, -0.026], [-0.194, 0.054], [-0.3, 0.054], [-0.32, 0.032], [-0.32, -0.026]], 0.06, 'body');
-    k.box(0.062, 0.004, 0.096, 'accent', 0, 0.02, -0.038);
-    k.box(0.062, 0.004, 0.096, 'accent', 0, 0.02, -0.242);
-    k.box(0.062, 0.004, 0.066, 'glow', 0, -0.006, -0.045);
-    k.box(0.04, 0.012, 0.08, 'trim', 0, 0.06, 0.0);
-    k.box(0.04, 0.012, 0.08, 'trim', 0, 0.06, -0.265);
-    const top = orbSpire(k, -0.14, -0.024, 0.066, 0.06, 1.08);
+    // Receiver: the front half over the grip, the rear half running back into the stock, the spire between.
+    k.prof([[-0.24, -0.026], [-0.24, 0.054], [0.054, 0.054], [0.054, -0.026]], 0.06, 'body');
+    k.prof([[0.146, -0.026], [0.146, 0.054], [0.27, 0.05], [0.29, 0.03], [0.29, -0.075], [0.25, -0.08], [0.2, -0.04], [0.146, -0.04]], 0.06, 'body');
+    k.box(0.062, 0.004, 0.27, 'accent', 0, 0.02, -0.095);
+    k.box(0.062, 0.004, 0.11, 'glow', 0, -0.006, -0.16);
+    k.box(0.062, 0.004, 0.1, 'accent', 0, 0.02, 0.215);
+    k.box(0.04, 0.012, 0.13, 'trim', 0, 0.06, -0.135);
+    // Cheek rest on the stock, gold butt plate.
+    k.prof([[0.17, 0.054], [0.17, 0.064], [0.26, 0.062], [0.27, 0.05]], 0.044, 'trim', 0, 0.001);
+    k.box(0.062, 0.1, 0.018, 'grip', 0, -0.024, 0.3);
+    k.box(0.064, 0.012, 0.02, 'metal', 0, 0.038, 0.3);
+    const top = orbSpire(k, 0.1, -0.024, 0.066, 0.06, 0.92);
+    // Magazine behind the grip, under the spire (fixed: this gun reloads its orb), gold base plate.
+    k.box(0.03, 0.11, 0.044, 'trim', 0, -0.08, 0.1, 0.12);
+    k.box(0.034, 0.008, 0.05, 'metal', 0, -0.136, 0.107, 0.12);
+    // Grip and trigger guard forward, the charging handle further up the left side.
+    k.box(0.036, 0.1, 0.046, 'grip', 0, -0.06, 0.0, -0.26);
+    k.box(0.024, 0.005, 0.05, 'metal', 0, -0.03, -0.04);
+    charger(k, -0.15, 0.03, -0.033);
     // Handguard: gunmetal with neon vent teeth; barrel and the squared muzzle brake.
-    k.prof([[-0.32, -0.022], [-0.32, 0.048], [-0.46, 0.042], [-0.46, -0.014]], 0.054, 'trim');
-    k.teeth(5, -0.34, -0.44, 0.056, 0.012, 0.01, 'accent', 0, 0.006);
-    k.box(0.058, 0.006, 0.12, 'body', 0, 0.046, -0.39);
+    k.prof([[-0.24, -0.024], [-0.24, 0.05], [-0.46, 0.042], [-0.46, -0.016]], 0.054, 'trim');
+    k.teeth(6, -0.27, -0.44, 0.056, 0.012, 0.01, 'accent', 0, 0.006);
+    k.box(0.058, 0.006, 0.18, 'body', 0, 0.046, -0.36);
     k.cyl(0.012, 0.1, 'trim', 0, 0.014, -0.5);
     k.box(0.034, 0.034, 0.05, 'metal', 0, 0.014, -0.57);
     for (const x of [-0.0175, 0.0175]) k.teeth(3, -0.555, -0.585, 0.002, 0.02, 0.006, 'glow', x, 0.014);
     k.tor(0.012, 0.003, 'glow', 0, 0.014, -0.596);
-    // Magazine (fixed: this gun reloads its orb), gold base plate.
-    k.box(0.03, 0.115, 0.044, 'trim', 0, -0.077, -0.13, 0.12);
-    k.box(0.034, 0.008, 0.05, 'metal', 0, -0.135, -0.123, 0.12);
-    charger(k, -0.06, 0.03, -0.033);
-    k.box(0.036, 0.1, 0.046, 'grip', 0, -0.06, 0.0, -0.26);
-    k.box(0.024, 0.005, 0.05, 'metal', 0, -0.03, -0.04);
-    // Stock: heavy gunmetal frame, violet inset with a neon line, gold butt plate.
-    k.prof([[0.04, 0.048], [0.26, 0.042], [0.28, 0.0], [0.28, -0.075], [0.24, -0.075], [0.08, -0.014], [0.04, -0.014]], 0.048, 'trim');
-    k.prof([[0.1, 0.03], [0.22, 0.027], [0.235, -0.03], [0.12, -0.004]], 0.05, 'body', 0, 0.001);
-    k.box(0.051, 0.003, 0.1, 'accent', 0, 0.006, 0.17);
-    k.box(0.052, 0.1, 0.018, 'grip', 0, -0.018, 0.288);
-    k.box(0.054, 0.012, 0.02, 'metal', 0, 0.036, 0.288);
-    const sy = orbSights(k, -0.44, 0.048, 0.03, 0.066, top + 0.009);
+    const sy = orbSights(k, -0.42, 0.049, 0.025, 0.054, top + 0.009);
     return { muzzle: [0, 0.014, -0.6], sightY: sy };
   },
 
