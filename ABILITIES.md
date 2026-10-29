@@ -107,8 +107,8 @@ Passive: **Soul Harvest**: Enemies you kill drop a soul orb for 3 s.
 | Key | Ability | 5v5 charges · price | 5v5 recharge | Deathmatch cooldown | What it does |
 |---|---|---|---|---|---|
 | C | **Glare** (Leer) | 2 × 250 | bought only | 20 s | Hold the eye: a marker shows where it will go, 12 m straight ahead, through walls. Left click to cast it. Every enemy who looks at it is nearsighted. The eye lasts 2 s. |
-| Q | **Feast** (Devour) | 2 × 200 (1 free) | bought only | — | Press Q to consume the nearest soul orb within 15 m: heal 50 over 3 s (2.5 s in Ravenous). You can go above 100 HP; the extra stays 10 s, then fades (it stays for good in Ravenous). Shares its 2 charges with Vanish. |
-| E | **Vanish** (Dismiss) | 2 free | — | — | Press E to consume the nearest soul orb within 15 m: it pulls you along at high speed for 1.5 s, intangible (and invisible in Ravenous). Uses Feast’s charges. You steer with the mouse but can’t stop or slow down, and can’t shoot. |
+| Q | **Feast** (Devour) | 2 × 200 (1 free) | bought only | — | Press Q to consume your nearest soul orb, at any distance: heal 50 over 3 s (2.5 s in Ravenous). You can go above 100 HP; the extra stays 10 s, then fades (it stays for good in Ravenous). Shares its 2 charges with Vanish. |
+| E | **Vanish** (Dismiss) | 2 free | — | — | Press E to consume your nearest soul orb, at any distance: for 1.5 s you’re intangible (and invisible in Ravenous) and move much faster in any direction, but can’t use your gun. Uses Feast’s charges. |
 | X | **Ravenous** (Empress) | 7 points | | | Enter a frenzy for 30 s: 15% faster fire rate, equip and reload, and every kill heals you 100 and resets the timer. |
 
 ## Quake (Breach) · Initiator

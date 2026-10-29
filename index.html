@@ -24,7 +24,8 @@ button { font: inherit; }
 #hud { position: fixed; inset: 0; pointer-events: none; user-select: none; }
 #crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); image-rendering: pixelated; }
 
-#scope { position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, transparent 0 34vh, rgba(0, 0, 0, 0.96) 34.3vh); }
+/* Sniper scope (not ADS): a lens nearly as tall as the screen, as in Valorant, with a dark rim. */
+#scope { position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, transparent 0 45.5vh, rgba(0, 0, 0, 0.55) 46.5vh, rgba(0, 0, 0, 0.97) 47.5vh); }
 #scope i { position: absolute; background: rgba(0, 0, 0, 0.9); }
 #scope .h { left: 0; right: 0; top: 50%; height: 1px; }
 #scope .v { top: 0; bottom: 0; left: 50%; width: 1px; }

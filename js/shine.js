@@ -196,6 +196,10 @@ export class ViewmodelPost {
   screenRect(obj, camera) {
     if (!obj) return null;
     camera.updateMatrixWorld();
+    // The parts' world matrices are otherwise only brought up to date when the scene is drawn. A gun being pulled
+    // out starts below the screen, so measuring it from last frame's matrices returns "off screen", the scene is
+    // skipped, the matrices never move on, and the gun stays invisible until something else updates them (a shot).
+    obj.updateMatrixWorld();
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, behind = false;
     obj.traverseVisible((o) => {
       if (behind || !(o.isMesh || o.isSprite || o.isPoints || o.isLine)) return;
