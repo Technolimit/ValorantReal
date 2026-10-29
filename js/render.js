@@ -255,10 +255,30 @@ function bulbTexture() {
 
 // First-person gun models, built from boxes. The muzzle object marks where flashes and tracers start.
 const VM_SCALE = 0.8;
-// Aiming down sights puts the eye just behind the sight's opening, close enough that it fills this share of the
-// screen height: the same as a sniper scope's lens (#scope in index.html).
-const ADS_FILL = 0.93;
 const VM_FOV = 60; // the viewmodel camera's vertical field of view
+// Aiming down sights, as in Valorant: the gun comes to the middle and sits low, the top of it this far below the
+// centre (a share of half the screen height), while the sight's reticle floats over the view (hud.js).
+const ADS_DROP = { revolver: 0.36, default: 0.2 }; // Sovereign sits lower, under its wide frame
+const ADS_NEAR = 0.07; // and comes this much closer than its hip pose's aimed-in depth (VM_POSE ads), so it looks big
+
+// Height to put a model at, `z` in front of the camera, so the top of its outline sits `drop` (a share of half the
+// screen height) below the centre of the view.
+function adsHeight(model, z, drop) {
+  const k = drop * Math.tan((VM_FOV / 2) * DEG), v = new THREE.Vector3(), m = new THREE.Matrix4();
+  let y = Infinity;
+  model.traverse((o) => {
+    if (!o.isMesh || !o.visible) return;
+    m.identity();
+    for (let q = o; q && q !== model; q = q.parent) { q.updateMatrix(); m.premultiply(q.matrix); }
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(m).multiplyScalar(VM_SCALE);
+      const d = -(z + v.z);
+      if (d > 0.05) y = Math.min(y, -k * d - v.y);
+    }
+  });
+  return Number.isFinite(y) ? y : -0.08;
+}
 const EXAMINE_HOLD = 280; // ms the inspect key is held before examine mode takes the mouse
 // Hip and aim-down-sights positions (camera space) by weapon class. ADS height is worked out per gun from its
 // model's sight line (see updateCamera); the shotgun and knife keep the fixed pose here.
@@ -2156,15 +2176,14 @@ export class Renderer {
     if (blades) for (let i = 0; i < BLADES.count; i++) { const b = vm.model.userData.parts['b' + i]; if (b) b.visible = i < blades.left; }
     const pose = VM_POSE[kind];
     const a = def.alt && (def.alt.type === 'zoom' || def.alt.type === 'zoomBurst' || def.alt.type === 'scope') ? gun.adsT : 0;
-    // Line the model's sight up with the crosshair when aiming. A gun with a sight to look through (ring, holo
-    // window, scope) puts the eye right behind it, so the opening fills the screen like a sniper scope's lens and
-    // the rest of the gun is behind the camera or below the edge of the view.
-    const eyeAt = kind === 'sniper' ? null : vm.model.userData.sight;
-    const relief = eyeAt ? (eyeAt.r * VM_SCALE) / (ADS_FILL * Math.tan((VM_FOV / 2) * DEG)) : 0;
-    const adsY = kind === 'shotgun' || kind === 'knife' || kind === 'blades' ? pose.ads[1] : eyeAt ? -eyeAt.y * VM_SCALE : -(vm.model.userData.sightY * VM_SCALE) - 0.003;
-    const adsZ = kind === 'shotgun' || kind === 'knife' || kind === 'sniper' || kind === 'blades' ? pose.ads[2] : eyeAt ? -eyeAt.z * VM_SCALE - relief : pose.ads[2] - 0.05;
+    // Aiming down sights brings the gun to the middle, low (ADS_DROP); a sniper lines its scope up with the centre
+    // on the way into the scope view.
+    const low = kind !== 'shotgun' && kind !== 'knife' && kind !== 'blades' && kind !== 'sniper';
+    const adsZ = kind === 'shotgun' || kind === 'knife' || kind === 'sniper' || kind === 'blades' ? pose.ads[2] : pose.ads[2] + ADS_NEAR;
+    const ud = vm.model.userData;
+    if (low && ud.adsAt?.z !== adsZ) ud.adsAt = { z: adsZ, y: adsHeight(vm.model, adsZ, ADS_DROP[kind] ?? ADS_DROP.default) };
+    const adsY = low ? ud.adsAt.y : kind === 'sniper' ? -(ud.sightY * VM_SCALE) - 0.003 : pose.ads[1];
     let px = lerp(pose.hip[0], pose.ads[0], a), py = lerp(pose.hip[1], adsY, a), pz = lerp(pose.hip[2], adsZ, a);
-    const aimed = [px, py, pz];
     let rx = 0, ry = 0, rz = 0;
 
     // Movement bob: a figure eight, with the wrist rolling into each step.
@@ -2302,20 +2321,8 @@ export class Renderer {
     } else if (drawPose) {
       poseMeleeParts(vm.model, draw, drawPose.t, vm.glow); // the pullout's twirl
     } else if (vm.glow) vm.glow.mat.emissiveIntensity = vm.glow.base * (reloadGlow ?? 1); // its parts are left to the reload pose (and its flash, Oathblade's)
-    // Aimed in, the eye looks through the sight: no glass tint over the view, and a scope shows its eyepiece ring
-    // and reticle, not the inside of the tube.
-    const aimHidden = vm.model.userData.aimHidden ||= (() => { const l = []; vm.model.traverse((o) => { if (o.userData.aimHide) l.push(o); }); return l; })();
-    for (const o of aimHidden) o.visible = !(eyeAt && a > 0.3);
-    if (eyeAt && a > 0) {
-      // With the eye a couple of centimetres behind the sight, sway, bob and recoil would throw the sight across
-      // the screen: aimed in, the gun stays nearly still.
-      const k = 1 - 0.95 * a, kr = 1 - 0.85 * a;
-      px = aimed[0] + (px - aimed[0]) * k; py = aimed[1] + (py - aimed[1]) * k; pz = aimed[2] + (pz - aimed[2]) * k;
-      rx *= kr; ry *= kr; rz *= kr;
-    }
     vm.group.position.set(px, py, pz);
     vm.group.rotation.set(rx, ry, rz);
-    this.vmNear = lerp(0.01, 0.003, eyeAt ? a : 0); // so a sight this close isn't cut off
     // Shine: a sheen sweeps down the gun on the draw (and on inspect, see inspect()); the glow breathes and
     // flares as it's drawn and with each shot. (sweepFixed: a frozen sweep, for testing.)
     const nowMs = performance.now();
@@ -2324,7 +2331,6 @@ export class Renderer {
     const drawFlare = et < 1 && !def.hands ? Math.sin(et * Math.PI) * 0.6 : 0;
     updateShine(vm.model, VM_SHINE, nowMs / 1000, def.hands ? null : vm.sweepFixed ?? sweepAt((nowMs - (vm.sweepStart ?? -1e9)) / 650), vm.flare + drawFlare);
     this.vmCamera.fov = VM_FOV;
-    this.vmCamera.near = this.vmNear ?? 0.01;
     this.vmCamera.updateProjectionMatrix();
     this.trails.setVisible(this.vmVisible);
     this.trails.update(this.renderer.domElement.height);
