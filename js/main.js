@@ -232,7 +232,7 @@ addEventListener('keydown', (e) => {
   const p = game.player, inp = p.input;
   if (act === 'buy') { toggleBuy(); return; }
   if (act === 'map') { minimap.big = !minimap.big; return; }
-  if (act === 'inspect') { // press again to chain the next inspect, hold to examine
+  if (act === 'inspect') { // pressed again mid-inspect, the inspect and its sound start over
     const before = renderer.inspecting;
     renderer.inspect();
     if (renderer.inspecting && renderer.inspecting !== before) sound.inspect(renderer.inspecting.gun.def.id);
@@ -260,7 +260,6 @@ addEventListener('keyup', (e) => {
   keys.delete(e.code);
   const act = actionFor(settings.binds, e.code);
   if (act === 'scores') $('scoreboard').hidden = true;
-  if (act === 'inspect') renderer.inspectRelease();
 });
 
 addEventListener('blur', releaseInputs);
@@ -299,8 +298,6 @@ document.addEventListener('mousemove', (e) => {
   }
   const p = game.player;
   if (!p || !p.alive) return;
-  // Examining a weapon (inspect held): the mouse turns the weapon, not you.
-  if (renderer.examining()) { renderer.examineLook(e.movementX, e.movementY * (settings.invertY ? -1 : 1)); return; }
   const gun = p.gun;
   const zoom = gun.adsT > 0.5 ? gun.targetZoom() : 1;
   // Same scale as Valorant: 0.07 degrees per count times sensitivity; zoomed views scale by 1/zoom.
@@ -1425,14 +1422,13 @@ try {
 let inspectKey = '';
 function inspectHint() {
   const i = renderer.inspectInfo();
-  const sig = i ? `${i.name}|${i.idx}|${i.examine}` : ''; // not `key`: that would hide key() used below
+  const sig = i ? i.name : ''; // not `key`: that would hide key() used below
   if (sig === inspectKey) return;
   inspectKey = sig;
   const el = $('inspecthint');
   el.hidden = !i;
   if (!i) return;
-  el.innerHTML = i.examine ? `<b>Examine</b>move the mouse to turn it · release <kbd>${key('inspect')}</kbd> to put it back`
-    : `<b>${escHtml(i.name)}</b>${i.count > 1 ? `${i.idx + 1}/${i.count}<kbd>${key('inspect')}</kbd>next` : ''}<kbd>hold ${key('inspect')}</kbd>examine`;
+  el.innerHTML = `<b>${escHtml(i.name)}</b><kbd>${key('inspect')}</kbd>restart`;
 }
 
 // FPS counter (top right): frames counted over half a second, so the number is steady enough to read.

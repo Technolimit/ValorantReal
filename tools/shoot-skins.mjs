@@ -70,7 +70,7 @@ for (const [name, weapon, skin, melee, insIdx, insT, sweep] of SHOTS) {
     r.vm.key = null; r.vm.equipStart = -1e9; r.vm.sweepStart = -1e9; // drawn already, no pullout or sheen
     r.inspecting = null;
     r.vm.sweepFixed = sweep;
-    if (insIdx !== null) { r.inspect(); r.inspecting.fixedT = insT; r.inspecting.held = false; }
+    if (insIdx !== null) { r.inspect(); r.inspecting.fixedT = insT; }
   }, [weapon, skin, melee, insIdx, insT ?? 0, YAW, sweep ?? null]);
   await page.waitForTimeout(700);
   await page.screenshot({ path: join(OUT, name + '.png') });
