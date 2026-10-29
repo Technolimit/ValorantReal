@@ -544,12 +544,13 @@ export class Sound {
     this.action = { src, g };
   }
 
-  // Inspect sound for a gun, if it has a file (inspects are quiet, so it plays a little louder). Shooting or
-  // swapping cuts it off.
+  // Inspect sound for a gun, if it has a file (inspects are quiet, so it plays a little louder). Shooting,
+  // swapping or inspecting again cuts it off.
   inspect(id) {
-    const clip = this.ctx && this.clip(`${id}:inspect`);
-    if (!clip) return;
+    if (!this.ctx) return;
     this.stopAction();
+    const clip = this.clip(`${id}:inspect`);
+    if (!clip) return;
     const g = this.ctx.createGain();
     g.gain.value = 1.1;
     g.connect(this.master);

@@ -153,7 +153,7 @@ that got the kill. Everyone in the match sees them.
 Starspur Bowie and the Oathblade Tanto. Each comes in one theme of its own (Standard Issue, Heirloom, Damascus,
 Nightglass, Tiger Stripe, Hexcore, Nebula, Starspur, Oathblade); equipping one puts it in your knife slot (they all hit like the knife). Each has its
 own inspect (`js/melee.js`), its moves flowing into one another as one smooth animation: press **Y** to inspect,
-and hold it to examine the weapon with the mouse. Model skins' guns likewise have one inspect each. The skin screen's *Play inspect* button previews them. Bots carry
+and press it again to start it over (sound too). Model skins' guns likewise have one inspect each. The skin screen's *Play inspect* button previews them. Bots carry
 random melee types, and other online players see yours.
 
 Each melee type also swings its own way (`SWINGS` in `js/melee.js`), leaving a trail of light across the screen in

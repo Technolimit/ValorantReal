@@ -279,7 +279,6 @@ function adsHeight(model, z, drop) {
   });
   return Number.isFinite(y) ? y : -0.08;
 }
-const EXAMINE_HOLD = 280; // ms the inspect key is held before examine mode takes the mouse
 // Hip and aim-down-sights positions (camera space) by weapon class. ADS height is worked out per gun from its
 // model's sight line (see updateCamera); the shotgun and knife keep the fixed pose here.
 const VM_POSE = {
@@ -2043,39 +2042,20 @@ export class Renderer {
     return MODEL_INSPECTS[this.vm.model?.userData.design] || [GUN_INSPECT];
   }
 
-  // Inspect key pressed: start inspecting, or (mid-inspect) chain into the next one. Held down, it turns into
-  // examine mode once `EXAMINE_HOLD` passes: the weapon is brought up and the mouse turns it.
+  // Inspect key pressed: play the weapon's inspect (each has one, see chainInspects). Pressed again mid-inspect,
+  // it starts over from the beginning.
   inspect() {
     const p = this.game.player;
     if (!p?.alive || p.gun.reloading) return;
-    const now = performance.now(), set = this.inspectSet(p.gun), cur = this.inspecting;
-    // Each weapon has one inspect (see chainInspects): pressed again mid-inspect, it carries on (held, it examines).
-    if (cur && cur.gun === p.gun && !cur.back && set.length === 1) { cur.held = true; cur.heldAt = now; return; }
-    const idx = cur && cur.gun === p.gun && !cur.back ? (cur.idx + 1) % set.length : 0;
-    this.inspecting = { start: now, gun: p.gun, idx, ins: set[idx], count: set.length, held: true, heldAt: now, ex: 0, exOn: false, yaw: 0, pitch: 0 };
+    const now = performance.now();
+    this.inspecting = { start: now, gun: p.gun, ins: this.inspectSet(p.gun)[0] };
     this.vm.sweepStart = now + 250; // a sheen runs down the gun as it turns to the light
-  }
-
-  // Inspect key released: leave examine mode (the weapon eases back to rest).
-  inspectRelease() {
-    const ins = this.inspecting;
-    if (!ins) return;
-    ins.held = false;
-    if (ins.exOn) { ins.exOn = false; ins.back = true; }
-  }
-
-  // Examine mode takes the mouse: it turns the weapon instead of your view.
-  examining() { return !!this.inspecting?.exOn; }
-  examineLook(dx, dy) {
-    const ins = this.inspecting;
-    ins.yaw = Math.max(-2.6, Math.min(2.6, ins.yaw + dx * 0.006));
-    ins.pitch = Math.max(-1.3, Math.min(1.3, ins.pitch + dy * 0.006));
   }
 
   // For the HUD: the inspect playing now, if any.
   inspectInfo() {
     const ins = this.inspecting;
-    return ins ? { name: ins.ins.name, idx: ins.idx, count: ins.count, examine: ins.exOn, melee: ins.gun.def.id === 'knife' } : null;
+    return ins ? { name: ins.ins.name, melee: ins.gun.def.id === 'knife' } : null;
   }
 
   updateCamera(p, alpha, dt, look) {
@@ -2288,23 +2268,16 @@ export class Renderer {
       if (vm.swingHeavy) { px -= k * 0.14; rx += k * 0.4; ry += k * 0.9; }
       else { px -= k * 0.12; rz += k * 0.6; ry += k * 0.6; }
     }
-    // Inspect (Y): play the inspect; hold Y to examine (the weapon comes up and the mouse turns it).
+    // Inspect (Y): play the inspect (Y again restarts it).
     const ins = this.inspecting;
     let insPose = null;
     if (ins) {
-      const now = performance.now();
-      if (ins.held && !ins.exOn && !ins.back && now - ins.heldAt > EXAMINE_HOLD) { ins.exOn = true; ins.frozenT = (now - ins.start) / 1000; }
-      ins.ex = Math.min(1, Math.max(0, ins.ex + (ins.exOn ? dt : -dt) / 0.25));
-      const t = ins.fixedT ?? ins.frozenT ?? (now - ins.start) / 1000; // fixedT: a frozen pose (testing)
-      const done = ins.back ? ins.ex === 0 : t > ins.ins.dur && !ins.exOn;
-      if (done || ins.gun !== gun || !p.alive || p.input.fire || p.input.alt || gun.reloading || gun.adsT > 0.05 || handsDef || blades || spec) this.inspecting = null;
+      const t = ins.fixedT ?? (performance.now() - ins.start) / 1000; // fixedT: a frozen pose (testing)
+      if (t > ins.ins.dur || ins.gun !== gun || !p.alive || p.input.fire || p.input.alt || gun.reloading || gun.adsT > 0.05 || handsDef || blades || spec) this.inspecting = null;
       else {
         insPose = inspectPose(ins.ins, t);
-        const v = insPose.pose, e = ins.ex * ins.ex * (3 - 2 * ins.ex);
-        // Examine pose: held up near the middle of the screen, side on, turned by the mouse.
-        const E = [-0.12, 0.07, -0.02, 0.1 + ins.pitch, 1.25 + ins.yaw, 0];
-        const k = (j) => v[j] + (E[j] - v[j]) * e;
-        px += k(0); py += k(1); pz += k(2); rx += k(3); ry += k(4); rz += k(5);
+        const v = insPose.pose;
+        px += v[0]; py += v[1]; pz += v[2]; rx += v[3]; ry += v[4]; rz += v[5];
         insPose.t = t;
       }
     }

@@ -16,7 +16,7 @@ export const ACTIONS = [
     ['primary', 'Primary weapon', 'Digit1'],
     ['secondary', 'Sidearm', 'Digit2'],
     ['melee', 'Melee', 'Digit3'],
-    ['inspect', 'Inspect (again: next, hold: examine)', 'KeyY'],
+    ['inspect', 'Inspect (again: restart)', 'KeyY'],
     ['drop', 'Drop weapon', 'KeyG'],
     ['use', 'Pick up / plant / defuse', 'KeyF'],
   ]],

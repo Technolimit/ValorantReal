@@ -1,6 +1,6 @@
 // Melee types: cosmetic models for the knife slot (they all hit like the knife), each with its own set of
 // inspect moves, merged into one smooth inspect (chainInspects, at the end). Press inspect (Y) to play it, and
-// hold it to take the weapon in hand and turn it with the mouse.
+// press it again to start it over.
 //
 // An inspect is a set of keyframe tracks, sampled with sample():
 //   track  the whole viewmodel: [t, px, py, pz, rx, ry, rz], offsets added to the resting pose (camera space)
