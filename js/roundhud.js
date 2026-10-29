@@ -28,6 +28,7 @@ export class RoundHud {
     this.cache = {};
     this.bannerUntil = 0;
     this.shopOpen = false;
+    this.shopHtml = {};
     this.spectating = null;
     const g = game;
     g.on('round', ({ mode }) => this.banner(`<b>ROUND ${mode.round}</b><small>${mode.round === ROUND.half + 1 ? 'SIDES SWAPPED · ' : ''}${SIDE[mode.sideOf(0)]} · BUY PHASE</small>`, 3));
@@ -156,6 +157,7 @@ export class RoundHud {
     this.shopOpen = open;
     $('shop').hidden = !open;
     this.shopKey = '';
+    this.shopHtml = {};
     this.hovered = null;
     if (open) { this.icons = gunIcons(Object.keys(WEAPONS).filter(id => WEAPONS[id].cost !== undefined && !WEAPONS[id].melee && !WEAPONS[id].ability)); this.renderShop(); }
   }
@@ -168,7 +170,9 @@ export class RoundHud {
     const team = g.combatants.filter(c => c.team === p.team);
     const myReq = m.requests?.get(p)?.id || null;
     const teamKey = team.map(c => [c.credits, this.primaryOf(c), this.shieldOf(c), m.requests?.get(c)?.id || ''].join(':')).join(',');
-    const key = [p.credits, p.inv.primary?.def.id, p.inv.secondary?.def.id, p.armor > 0 && p.armorKind, p.kit && JSON.stringify(p.kit.charges), p.kit?.ultPoints, canBuy, bought.length, Math.ceil(m.phaseEnd - g.time), teamKey, m.lossStreak?.join()].join('|');
+    // The clock ticks on its own: rebuilding the cards every second just for it made the menu stutter.
+    this.put('shop-time', canBuy ? clock(m.phaseEnd - g.time) : '', true);
+    const key = [p.credits, p.inv.primary?.def.id, p.inv.secondary?.def.id, p.armor > 0 && p.armorKind, p.kit && JSON.stringify(p.kit.charges), p.kit?.ultPoints, canBuy, bought.length, teamKey, m.lossStreak?.join()].join('|');
     if (key === this.shopKey) return;
     this.shopKey = key;
     const owned = (id) => p.inv.primary?.def.id === id || p.inv.secondary?.def.id === id;
@@ -202,15 +206,14 @@ export class RoundHud {
     }
     // Economy strip: credits, the least you'll have next round, and the loss bonus ladder.
     const streak = m.lossStreak?.[p.team] || 0, min = m.minNextRound?.(p);
-    $('shop-credits').innerHTML = `${CR}${p.credits.toLocaleString()}`;
-    $('shop-min').innerHTML = min == null ? '—' : `${CR}${min.toLocaleString()}`;
-    $('shop-loss').innerHTML = ECON.loss.map((v, i) => `<i class="${i < streak ? 'on' : ''}${i === Math.min(2, streak) ? ' next' : ''}" title="${v}"><span>${(v / 1000).toFixed(1)}k</span></i>`).join('');
-    $('shop-time').textContent = canBuy ? clock(m.phaseEnd - g.time) : '';
-    $('shop-phase').textContent = canBuy ? 'BUY PHASE' : 'BUY PHASE OVER';
-    $('shop-note').textContent = canBuy ? 'Left click to buy · right click to sell back · click a gun you can\'t afford to request it · click a teammate\'s request to buy it for them' : 'The buy phase is over';
+    this.put('shop-credits', `${CR}${p.credits.toLocaleString()}`);
+    this.put('shop-min', min == null ? '—' : `${CR}${min.toLocaleString()}`);
+    this.put('shop-loss', ECON.loss.map((v, i) => `<i class="${i < streak ? 'on' : ''}${i === Math.min(2, streak) ? ' next' : ''}" title="${v}"><span>${(v / 1000).toFixed(1)}k</span></i>`).join(''));
+    this.put('shop-phase', canBuy ? 'BUY PHASE' : 'BUY PHASE OVER', true);
+    this.put('shop-note', canBuy ? 'Left click to buy · right click to sell back · click a gun you can\'t afford to request it · click a teammate\'s request to buy it for them' : 'The buy phase is over', true);
     if (p.kit) $('shop').style.setProperty('--agent', p.kit.agent.color);
-    $('shop-grid').innerHTML = grid;
-    $('shop-gear').innerHTML = shields + abil;
+    // Only the parts whose markup changed are rebuilt: a bot spending credits redraws the team list, not the guns.
+    const rebuilt = this.put('shop-grid', grid) | this.put('shop-gear', shields + abil);
     // Team: you first, then teammates by credits.
     const total = team.reduce((a, c) => a + (c.credits || 0), 0);
     const rows = [p, ...team.filter(c => c !== p).sort((a, b) => b.credits - a.credits)].map(c => {
@@ -229,8 +232,17 @@ export class RoundHud {
         <div class="tload">${w ? icon(w) : `<span class="none">${c.inv.secondary ? esc(c.inv.secondary.def.name) : ''}</span>`}${sh ? `<span class="tsh">${SHIELD_ICON[sh]}</span>` : ''}</div>
         <div class="tcr">${CR}${(c.credits || 0).toLocaleString()}</div>${req}</div>`;
     }).join('');
-    $('shop-team').innerHTML = `<h3>Team <span>${CR}${total.toLocaleString()}</span></h3>${rows}`;
-    if (this.hovered) this.hover(this.hovered.dataset.item, true);
+    const teamRebuilt = this.put('shop-team', `<h3>Team <span>${CR}${total.toLocaleString()}</span></h3>${rows}`);
+    if (this.hovered && (rebuilt || teamRebuilt)) this.hover(this.hovered.dataset.item, true);
+  }
+
+  // Sets an element's markup (or text) only when it differs from what this shop last put there. Returns
+  // whether it changed. toggleShop clears the record, so opening the shop always draws everything.
+  put(id, html, text = false) {
+    if (this.shopHtml[id] === html) return false;
+    this.shopHtml[id] = html;
+    if (text) $(id).textContent = html; else $(id).innerHTML = html;
+    return true;
   }
 
   // A teammate's primary and shield, from their inventory (the host and offline) or the host's buy-phase

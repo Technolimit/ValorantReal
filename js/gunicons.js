@@ -1,5 +1,5 @@
 // Flat white side-on silhouettes of the guns for the buy menu, rendered once from the game's own models
-// (models.js) into PNG data URLs. Muzzle to the right, trimmed to the gun, on a transparent background.
+// (models.js) into PNG blob URLs. Muzzle to the right, trimmed to the gun, on a transparent background.
 import * as THREE from '../vendor/three.module.min.js';
 import { gunModel } from './models.js';
 
@@ -36,10 +36,19 @@ export function gunIcons(ids) {
     cam.updateProjectionMatrix();
     r.clear();
     r.render(scene, cam);
-    cache[id] = r.domElement.toDataURL('image/png');
+    cache[id] = blobUrl(r.domElement.toDataURL('image/png'));
     scene.remove(pivot);
   }
   r.dispose();
   r.forceContextLoss?.();
   return cache;
+}
+
+// A short blob: URL for the PNG instead of the long data: URL, so the shop's markup stays small to parse
+// and every card showing the same gun shares one decoded image.
+function blobUrl(dataUrl) {
+  const bin = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
 }
