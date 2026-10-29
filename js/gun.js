@@ -56,7 +56,8 @@ export class Gun {
     return 1;
   }
 
-  scoped() { return this.alt.type === 'scope' && this.zoomLevel > 0 && this.adsT > 0.85; }
+  // Looking through a full-screen scope: a sniper's scope, or a gun whose aim-down-sights is one (the Warden).
+  scoped() { return (this.alt.type === 'scope' ? this.zoomLevel > 0 : !!this.alt.scopeView) && this.adsT > 0.85; }
 
   rate() {
     const d = this.def, a = this.alt;

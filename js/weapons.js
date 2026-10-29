@@ -173,7 +173,7 @@ export const WEAPONS = {
     spread: { hip: 0.15, ads: 0.04, run: 5.0, walk: 2.2, air: 8.0, deadzone: 0.27 },
     fe: { max: 0.8, start: 2, end: 6 }, recovery: 0.35,
     recoil: { v: [0.9, 1.0, 1.0, 0.9, 0.8, 0.6, 0.4], tail: 0.1, h: [[0,0],[3,0.2],[6,-0.6],[10,-1.1],[14,0.5],[18,1.0]], hJit: 0.05, vJit: 0.05 },
-    alt: { type: 'zoom', zoom: 2.0, time: 0.25, rateMult: 1, moveMult: 0.76 },
+    alt: { type: 'zoom', zoom: 2.0, time: 0.25, rateMult: 1, moveMult: 0.76, scopeView: true }, // aims through a scope, like a sniper
   },
 
   // Snipers

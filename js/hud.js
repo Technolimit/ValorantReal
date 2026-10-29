@@ -1,4 +1,5 @@
 import { priceOf } from './prices.js';
+import { SKINS } from './skins.js';
 // DOM HUD: crosshair, vitals, ammo, kill feed, damage feedback, scoreboard, death report, buy menu.
 import { WEAPONS, BUY_GROUPS } from './weapons.js';
 import { PLAYER, TICK_RATE } from './config.js';
@@ -13,6 +14,13 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // Neon's slide while it isn't ready: seconds left (deathmatch) or the kills it needs (5v5).
 const slideWait = (kit, now) => (kit.slideAt === Infinity ? ' (2 KILLS)' : now < kit.slideAt ? ` (${(kit.slideAt - now).toFixed(0)}s)` : '');
+
+// Aim-down-sights reticles (fractions of the screen height). Sovereign's is a little wider than tall.
+const RETICLES = { default: { shape: 'brackets', w: 0.23, h: 0.23 }, headhunter: { shape: 'frame', w: 0.31, h: 0.25 } };
+const RETICLE_COLOR = { headhunter: 0xffa83a, tourdeforce: 0xffc232 }; // Regent's guns are gold whatever the skin
+const SCOPES = { warden: 'ticks', tourdeforce: 'frame' }; // scope view styles (drawScope); the rest are 'cross'
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+const mix = (a, b, t) => hex(((a >> 16 & 255) * (1 - t) + (b >> 16 & 255) * t) << 16 | ((a >> 8 & 255) * (1 - t) + (b >> 8 & 255) * t) << 8 | ((a & 255) * (1 - t) + (b & 255) * t));
 
 export class Hud {
   constructor(game, renderer, settings) {
@@ -236,9 +244,14 @@ export class Hud {
     const leader = [...g.combatants].sort((a, b) => b.stats.kills - a.stats.kills)[0];
     this.set('score', `You ${p.stats.kills} · ${leader === p ? 'leading' : `${leader.name} ${leader.stats.kills}`} · first to ${g.killLimit}`);
 
-    // Crosshair and scope
+    // Crosshair, the aim-down-sights reticle and the scope view
     const scoped = gun.scoped();
     $('scope').hidden = !scoped || !sv.alive;
+    if (scoped && sv.alive) this.drawScope(def, this.reticleColor(sv, def));
+    const aims = (def.alt?.type === 'zoom' || def.alt?.type === 'zoomBurst') && !def.alt.scopeView;
+    const ret = aims && sv.alive && !scoped ? Math.min(1, Math.max(0, (gun.adsT - 0.4) / 0.6)) : 0;
+    $('ads-reticle').style.opacity = ret;
+    if (ret > 0) this.drawAdsReticle(def, this.reticleColor(sv, def));
     this.ch.style.display = scoped || !sv.alive ? 'none' : '';
     let errPx = 0;
     if (s.chError === 'firing' && !def.melee) {
@@ -574,6 +587,138 @@ export class Hud {
     const done = ref.slice(0, pts.length);
     if (done.length) path(done, q => P(q.y, q.p), 'rgba(236,232,225,0.5)', 3, 'rgba(236,232,225,0.8)', 1.6);
     if (pts.length) path(pts, q => P(q.ay, q.ap), 'rgba(255,70,85,0.5)', 1, '#ff4655', 2.2);
+  }
+
+  // The sight's colour: the skin's glow, or the gun's own (Regent's gold guns).
+  reticleColor(holder, def) {
+    return RETICLE_COLOR[def.id] ?? SKINS[this.renderer.skinOf(holder, def.id)]?.glow?.color ?? SKINS.standard.glow.color;
+  }
+
+  // Aiming down sights (not a scope): the sight's reticle floats in the middle of the view while the gun sits low
+  // (render.js), as in Valorant. Most guns show four brackets with a diamond at each point; Sovereign a wide frame
+  // with cut corners.
+  drawAdsReticle(def, color) {
+    const st = RETICLES[def.id] || RETICLES.default;
+    const dpr = devicePixelRatio || 1, H = innerHeight;
+    const key = [H, dpr, def.id, color].join('|');
+    if (key === this.retKey) return;
+    this.retKey = key;
+    const w = st.w * H, h = st.h * H, pad = H * 0.03;
+    const cv = $('ads-reticle'), c = cv.getContext('2d');
+    cv.width = Math.round((w + pad * 2) * dpr); cv.height = Math.round((h + pad * 2) * dpr);
+    cv.style.width = `${w + pad * 2}px`; cv.style.height = `${h + pad * 2}px`;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w + pad * 2, h + pad * 2);
+    c.translate(pad + w / 2, pad + h / 2);
+    const col = hex(color), lw = Math.max(1.5, H * 0.0024);
+    c.lineJoin = 'round'; c.lineCap = 'round';
+    const path = () => {
+      c.beginPath();
+      if (st.shape === 'frame') {
+        // A wide frame with its corners cut off and a short step in each side.
+        const a = w / 2, b = h / 2, k = b * 0.32, n = b * 0.22, d = a * 0.05;
+        c.moveTo(-a + k, -b); c.lineTo(a - k, -b); c.lineTo(a, -b + k);
+        c.lineTo(a, -n); c.lineTo(a - d, -n + d); c.lineTo(a - d, n - d); c.lineTo(a, n);
+        c.lineTo(a, b - k); c.lineTo(a - k, b); c.lineTo(-a + k, b); c.lineTo(-a, b - k);
+        c.lineTo(-a, n); c.lineTo(-a + d, n - d); c.lineTo(-a + d, -n + d); c.lineTo(-a, -n);
+        c.lineTo(-a, -b + k); c.closePath();
+      } else {
+        // Four corner brackets bowing out, broken at the points, and a diamond at each point.
+        const R = w / 2 * 0.86, g = R * 0.42, q = R * 0.97, L = R * 0.14, W = R * 0.075;
+        for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+          c.moveTo(sx * g, sy * q);
+          c.quadraticCurveTo(sx * R * 0.98, sy * R * 0.98, sx * q, sy * g);
+        }
+        for (const [x, y] of [[0, -R], [R, 0], [0, R], [-R, 0]]) {
+          const ux = x / R, uy = y / R; // along the radius
+          c.moveTo(x - ux * L, y - uy * L); c.lineTo(x + uy * W, y - ux * W);
+          c.lineTo(x + ux * L, y + uy * L); c.lineTo(x - uy * W, y + ux * W); c.closePath();
+        }
+      }
+    };
+    // A soft glow, then a brighter core.
+    c.strokeStyle = col; c.shadowColor = col; c.shadowBlur = H * 0.012; c.lineWidth = lw * 1.6; path(); c.stroke();
+    c.shadowBlur = H * 0.004; c.lineWidth = lw; c.strokeStyle = mix(color, 0xffffff, 0.35); path(); c.stroke();
+  }
+
+  // The scope view (snipers, and the Warden's aim-down-sights). Most are a lens a little taller than the screen, so
+  // its rim only shows in the corners, black beyond it, and a reticle of thin black lines with thick posts in from
+  // the rim, a lit centre dot and the gun's emblem below the centre; the Warden's has range ticks instead of lines
+  // all the way across. Regent's Coup de Grace (Tour De Force) is a wide letterbox between two glowing gold bars.
+  drawScope(def, color) {
+    const dpr = devicePixelRatio || 1, W = innerWidth, H = innerHeight;
+    const key = [W, H, dpr, def.id, color].join('|');
+    if (key === this.scopeKey) return;
+    this.scopeKey = key;
+    const cv = $('scope'), c = cv.getContext('2d');
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, W, H);
+    const cx = W / 2, cy = H / 2, style = SCOPES[def.id] || 'cross', col = hex(color);
+    const thin = Math.max(1, H / 900), thick = Math.max(3, H * 0.008);
+    const line = (x0, y0, x1, y1, t, ink) => { c.fillStyle = ink; c.fillRect(Math.min(x0, x1) - (x0 === x1 ? t / 2 : 0), Math.min(y0, y1) - (y0 === y1 ? t / 2 : 0), Math.abs(x1 - x0) || t, Math.abs(y1 - y0) || t); };
+    if (style === 'frame') {
+      const B = H * 0.385, k = H * 0.045, x0 = W * 0.012, x1 = W - x0;
+      c.fillStyle = 'rgba(0,0,0,0.82)'; // dark above and below the window
+      c.fillRect(0, 0, W, cy - B); c.fillRect(0, cy + B, W, H - cy - B);
+      c.beginPath();
+      c.moveTo(x0 + k, cy - B); c.lineTo(x1 - k, cy - B); c.lineTo(x1, cy - B + k); c.lineTo(x1, cy + B - k);
+      c.lineTo(x1 - k, cy + B); c.lineTo(x0 + k, cy + B); c.lineTo(x0, cy + B - k); c.lineTo(x0, cy - B + k); c.closePath();
+      c.strokeStyle = col; c.shadowColor = col; c.shadowBlur = H * 0.02; c.lineWidth = H * 0.007; c.stroke();
+      c.shadowBlur = H * 0.004; c.lineWidth = H * 0.0025; c.strokeStyle = mix(color, 0xffffff, 0.5); c.stroke();
+      c.shadowBlur = 0;
+      const red = 'rgba(255,72,56,0.75)', gold = mix(color, 0x000000, 0.1);
+      line(cx - W * 0.28, cy - B + H * 0.028, cx + W * 0.28, cy - B + H * 0.028, thin, red);
+      line(cx - W * 0.28, cy + B - H * 0.028, cx + W * 0.28, cy + B - H * 0.028, thin, red);
+      c.globalAlpha = 0.85;
+      line(x0, cy, x1, cy, thin, gold);
+      line(cx, cy - B * 0.86, cx, cy + B * 0.86, thin, gold);
+      // Dot clusters above and below the centre, and two markers on the bottom bar.
+      c.fillStyle = gold;
+      const dot = H * 0.0022, gap = H * 0.012;
+      for (const sy of [-1, 1]) for (let r = 0; r < 3; r++) for (let i = 0; i < 5 - r; i++) {
+        c.beginPath(); c.arc(cx + (i - (4 - r) / 2) * gap, cy + sy * (B * 0.93 - r * gap), dot, 0, Math.PI * 2); c.fill();
+      }
+      c.globalAlpha = 1;
+      c.strokeStyle = col; c.lineWidth = Math.max(1.5, H * 0.002);
+      const my = cy + B - H * 0.012, mx = H * 0.055, m = H * 0.008;
+      line(cx - mx, my, cx + mx, my, thin, col);
+      for (const sx of [-1, 1]) { c.beginPath(); c.moveTo(cx + sx * mx, my - m); c.lineTo(cx + sx * mx + m, my); c.lineTo(cx + sx * mx, my + m); c.lineTo(cx + sx * mx - m, my); c.closePath(); c.stroke(); }
+      return;
+    }
+    const R = H * 0.56, ink = 'rgba(0,0,0,0.9)';
+    c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+    c.globalCompositeOperation = 'destination-out';
+    const lens = c.createRadialGradient(cx, cy, R * 0.84, cx, cy, R);
+    lens.addColorStop(0, 'rgba(0,0,0,1)'); lens.addColorStop(0.65, 'rgba(0,0,0,0.7)'); lens.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = lens; c.beginPath(); c.arc(cx, cy, R, 0, Math.PI * 2); c.fill();
+    c.globalCompositeOperation = 'source-over';
+    const P = R * 0.72;
+    line(cx - R, cy, cx - P, cy, thick, ink); line(cx + P, cy, cx + R, cy, thick, ink);
+    line(cx, cy - R, cx, cy - P, thick, ink); line(cx, cy + P, cx, cy + R, thick, ink);
+    if (style === 'ticks') {
+      const A = R * 0.36, T = R * 0.03;
+      line(cx - A, cy, cx - R * 0.05, cy, thin, ink); line(cx + R * 0.05, cy, cx + A, cy, thin, ink);
+      for (let i = 1; i <= 3; i++) for (const sx of [-1, 1]) line(cx + sx * A * i / 3, cy - T, cx + sx * A * i / 3, cy + T, thin, ink);
+      line(cx, cy - A, cx, cy - R * 0.12, thin, ink); line(cx, cy + R * 0.12, cx, cy + A, thin, ink);
+      line(cx - T, cy - A, cx + T, cy - A, thin, ink); line(cx - T, cy + A, cx + T, cy + A, thin, ink);
+    } else {
+      line(cx - P, cy, cx + P, cy, thin, ink); line(cx, cy - P, cx, cy + P, thin, ink);
+      line(cx - R * 0.1, cy + R * 0.32, cx + R * 0.1, cy + R * 0.32, thin, ink);
+      line(cx - R * 0.22, cy + R * 0.68, cx + R * 0.22, cy + R * 0.68, thin, ink);
+    }
+    // The lit centre dot and the emblem below it, in the sight's colour.
+    c.shadowColor = col; c.shadowBlur = H * 0.006;
+    c.fillStyle = col; c.beginPath(); c.arc(cx, cy, Math.max(1.5, H * 0.0018), 0, Math.PI * 2); c.fill();
+    const ey = cy + R * (style === 'ticks' ? 0.55 : 0.52), er = R * 0.1;
+    c.strokeStyle = col; c.lineWidth = Math.max(1.5, H * 0.002);
+    c.beginPath(); c.arc(cx, ey, er, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = Math.max(1, H * 0.0012);
+    c.beginPath(); c.arc(cx, ey, er * 0.78, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = col; c.lineWidth = Math.max(1.5, H * 0.0025);
+    c.beginPath(); c.moveTo(cx - er * 0.4, ey - er * 0.4); c.lineTo(cx + er * 0.4, ey + er * 0.4); c.moveTo(cx + er * 0.4, ey - er * 0.4); c.lineTo(cx - er * 0.4, ey + er * 0.4); c.stroke();
+    for (const sx of [-1, 1]) { c.beginPath(); c.arc(cx, ey, er * 1.25, sx > 0 ? -0.5 : Math.PI - 0.5, sx > 0 ? 0.5 : Math.PI + 0.5); c.stroke(); }
+    c.shadowBlur = 0;
   }
 
   drawCrosshair(err) {

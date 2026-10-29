@@ -24,11 +24,10 @@ button { font: inherit; }
 #hud { position: fixed; inset: 0; pointer-events: none; user-select: none; }
 #crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); image-rendering: pixelated; }
 
-/* Sniper scope (not ADS): a lens nearly as tall as the screen, as in Valorant, with a dark rim. */
-#scope { position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, transparent 0 45.5vh, rgba(0, 0, 0, 0.55) 46.5vh, rgba(0, 0, 0, 0.97) 47.5vh); }
-#scope i { position: absolute; background: rgba(0, 0, 0, 0.9); }
-#scope .h { left: 0; right: 0; top: 50%; height: 1px; }
-#scope .v { top: 0; bottom: 0; left: 50%; width: 1px; }
+/* Scope view (snipers, the Warden) and the reticle that floats over the view when aiming down sights; both drawn
+   in hud.js. */
+#scope { position: absolute; inset: 0; width: 100%; height: 100%; }
+#ads-reticle { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); opacity: 0; }
 
 #vignette { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle, transparent 55%, rgba(220, 30, 40, 0.55)); }
 .dmgdir { position: absolute; left: 50%; top: 50%; width: 260px; height: 260px; border-radius: 50%; border-top: 6px solid rgba(255, 60, 60, 0.9); clip-path: polygon(30% 0, 70% 0, 50% 50%); }
@@ -555,7 +554,8 @@ th { color: var(--muted); font-weight: 500; }
 
 <div id="hud" hidden>
   <canvas id="crosshair"></canvas>
-  <div id="scope" hidden><i class="h"></i><i class="v"></i></div>
+  <canvas id="ads-reticle"></canvas>
+  <canvas id="scope" hidden></canvas>
   <div id="vignette"></div>
   <div id="dmgdirs"></div>
   <div id="dmgnums"></div>
