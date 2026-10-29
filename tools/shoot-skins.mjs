@@ -41,7 +41,8 @@ await page.evaluate(async () => {
   document.head.appendChild(st);
 });
 
-// [file name, weapon, skin, melee type or null, inspect index or null, inspect time, sheen sweep progress 0..1]
+// [file name, weapon, skin, melee type or null, inspect index or null, inspect time, sheen sweep progress 0..1,
+//  share of the reload to freeze at]
 const SHOTS = [
   ['orbital-vandal', 'vandal', 'orbital', null, null],
   ['orbital-vandal-inspect', 'vandal', 'orbital', null, 0, 1.2],
@@ -56,10 +57,24 @@ const SHOTS = [
   ['knife-tanto', 'knife', null, 'tanto', null],
   ['knife-katana-inspect', 'knife', null, 'katana', 0, 0.9],
   ['glacier-vandal', 'vandal', 'glacier', null, null],
+  ['knife-axe', 'knife', null, 'axe', null],
+  ['apogee-vandal', 'vandal', 'apogee', null, null],
+  ['apogee-vandal-inspect', 'vandal', 'apogee', null, 0, 1.8],
+  ['apogee-vandal-reload-open', 'vandal', 'apogee', null, null, 0, null, 0.3],
+  ['apogee-vandal-reload-seat', 'vandal', 'apogee', null, null, 0, null, 0.52],
+  ['apogee-guardian', 'guardian', 'apogee', null, null],
+  ['apogee-guardian-reload', 'guardian', 'apogee', null, null, 0, null, 0.5],
+  ['apogee-spectre', 'spectre', 'apogee', null, null],
+  ['apogee-spectre-inspect', 'spectre', 'apogee', null, 0, 1.8],
+  ['apogee-classic', 'classic', 'apogee', null, null],
+  ['apogee-classic-reload', 'classic', 'apogee', null, null, 0, null, 0.5],
+  ['apogee-onyx-vandal', 'vandal', 'apogee~1', null, null],
+  ['knife-battleaxe', 'knife', null, 'battleaxe', null],
+  ['knife-battleaxe-inspect', 'knife', null, 'battleaxe', 0, 1.6],
 ];
-for (const [name, weapon, skin, melee, insIdx, insT, sweep] of SHOTS) {
+for (const [name, weapon, skin, melee, insIdx, insT, sweep, reload] of SHOTS) {
   if (ONLY && !name.includes(ONLY)) continue;
-  await page.evaluate(([weapon, skin, melee, insIdx, insT, YAW, sweep]) => {
+  await page.evaluate(([weapon, skin, melee, insIdx, insT, YAW, sweep, reload]) => {
     const h = window.__game, g = h.game, p = g.player, r = h.renderer;
     if (skin) h.settings.skins = { ...h.settings.skins, [weapon]: skin };
     if (melee) h.settings.melee = melee;
@@ -71,7 +86,11 @@ for (const [name, weapon, skin, melee, insIdx, insT, sweep] of SHOTS) {
     r.inspecting = null;
     r.vm.sweepFixed = sweep;
     if (insIdx !== null) { r.inspect(); r.inspecting.fixedT = insT; }
-  }, [weapon, skin, melee, insIdx, insT ?? 0, YAW, sweep ?? null]);
+    const gun = p.gun;
+    if (reload !== null && gun) { // frozen mid-reload (the game clock is stopped)
+      gun.reloading = true; gun.reloadDur = gun.def.reload || 2; gun.reloadStart = g.time - reload * gun.reloadDur; gun.reloadEnd = gun.reloadStart + gun.reloadDur;
+    } else if (gun) gun.reloading = false;
+  }, [weapon, skin, melee, insIdx, insT ?? 0, YAW, sweep ?? null, reload ?? null]);
   await page.waitForTimeout(700);
   await page.screenshot({ path: join(OUT, name + '.png') });
   console.log('saved', name);

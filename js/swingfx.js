@@ -77,7 +77,7 @@ export class SwingTrails {
     this.live = [];
   }
 
-  // Start a swing's strokes. `colors`: { glow, accent } (the knife theme's), which strokes name by key.
+  // Start a swing's strokes. `colors`: { glow, accent, trim } (the knife theme's), which strokes name by key.
   play(strokes, colors) {
     const start = performance.now() / 1000;
     for (const s of strokes || []) {
@@ -186,5 +186,6 @@ export class SwingTrails {
 
 function colorOf(key, colors) {
   if (typeof key === 'number') return key;
+  if (key === 'trim' && colors.trim != null) return colors.trim; // the theme's metal (Apogee's gold)
   return (key === 'accent' ? colors.accent ?? colors.glow : colors.glow) ?? 0xffffff;
 }

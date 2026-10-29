@@ -1,15 +1,20 @@
 // Renders every gun's firing sound to WAV in headless Chromium, so they can be listened to and compared
 // without playing the game. Uses the real js/audio.js through an OfflineAudioContext.
-//   node tools/render-guns.mjs [out-dir]       (default: ./gun-sounds; needs playwright)
+//   node tools/render-guns.mjs [out-dir] [--files] [--skin <id>]      (default: ./gun-sounds; needs playwright)
 // Per gun: <id>.wav (a single shot, or a short spray for automatics; Operator / Marshal / Bucky include the
 // bolt or pump), plus a printed table of peak, loudness and brightness.
+//   --files      use the game's own firing files (sounds/index.json), as the game does, instead of the synth
+//   --skin <id>  only the guns that skin has models for, fired through its sound set (FIRE_TONE in audio.js);
+//                files are named <id>-<skin>.wav
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const OUT = resolve(process.argv[2] || 'gun-sounds');
+const args = process.argv.slice(2), opt = (k) => (args.includes(k) ? args[args.indexOf(k) + 1] : null);
+const OUT = resolve(args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--skin') || 'gun-sounds');
+const FILES = args.includes('--files'), SKIN = opt('--skin');
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' };
 
 let chromium;
@@ -29,14 +34,17 @@ const browser = await chromium.launch();
 const page = await browser.newPage();
 await page.goto(`http://localhost:${server.address().port}/`);
 
-const renders = await page.evaluate(async () => {
+const renders = await page.evaluate(async ([FILES, SKIN]) => {
   const { Sound } = await import('/js/audio.js');
   const { WEAPONS } = await import('/js/weapons.js');
+  const { SKINS } = await import('/js/skins.js');
+  const skin = SKIN && SKINS[SKIN], index = FILES ? await (await fetch('/sounds/index.json')).json() : {};
+  const fileOf = async (id) => index[id]?.fire && (await fetch('/sounds/' + index[id].fire)).arrayBuffer();
   // The master compressor starts out fully clamped and takes a moment to settle, as it has long before the
   // first shot in a real match, so render after a silent lead-in and cut it off.
   const rate = 44100, out = {}, LEAD = 0.6;
   for (const [id, def] of Object.entries(WEAPONS)) {
-    if (def.melee || def.ability) continue;
+    if (def.melee || def.ability || (skin && !skin.models?.[id])) continue;
     // Automatics: a 1.2 s spray (heavies get 1.6 s so the spin-up is audible). Others: one shot.
     const spray = def.auto ? (def.spin ? 1.6 : 1.2) : 0;
     const secs = LEAD + spray + (def.model === 'sniper' ? 2.4 : 1.6);
@@ -44,6 +52,11 @@ const renders = await page.evaluate(async () => {
     const s = new Sound();
     s.init(ctx);
     const gun = {};
+    // The game's files for this gun and for the Vandal (Apogee builds every gun's shot on it), decoded first.
+    if (FILES) for (const g of new Set([id, 'vandal'])) {
+      const data = await fileOf(g);
+      if (data) await s.setClip(`${g}:fire@game`, data);
+    }
     // Shot times; heavies speed up along their spin-up like the real gun.
     const times = [];
     for (let t = 0; t < (spray || 0.01);) {
@@ -53,14 +66,14 @@ const renders = await page.evaluate(async () => {
     }
     for (const t of times) {
       const q = Math.round((LEAD + t) * rate / 128) * 128 / rate; // suspend() lands on 128-frame blocks
-      ctx.suspend(q).then(() => { s.gunshot(def, null, gun); ctx.resume(); });
+      ctx.suspend(q).then(() => { s.gunshot(def, null, gun, skin?.sounds); ctx.resume(); });
     }
     const buf = await ctx.startRendering();
     const skip = Math.round(LEAD * rate) - 64;
-    out[id] = { shots: times.length, l: Array.from(buf.getChannelData(0).subarray(skip)), r: Array.from(buf.getChannelData(1).subarray(skip)) };
+    out[skin ? `${id}-${SKIN}` : id] = { shots: times.length, l: Array.from(buf.getChannelData(0).subarray(skip)), r: Array.from(buf.getChannelData(1).subarray(skip)) };
   }
   return out;
-});
+}, [FILES, SKIN]);
 await browser.close();
 server.close();
 

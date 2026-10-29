@@ -75,7 +75,7 @@ async function shot(weapon, skin, k, fx, hide = false) {
 }
 
 let failed = 0;
-for (const [weapon, skin] of [['vandal', null], ['vandal', 'orbital'], ['bulldog', null], ['bulldog', 'orbital'], ['sheriff', 'starspur'], ['phantom', null]]) {
+for (const [weapon, skin] of [['vandal', null], ['vandal', 'orbital'], ['bulldog', null], ['bulldog', 'orbital'], ['sheriff', 'starspur'], ['phantom', null], ['vandal', 'apogee'], ['guardian', 'apogee'], ['spectre', 'apogee'], ['classic', 'apogee']]) {
   for (const k of [0.15, 1.2]) {
     const on = await shot(weapon, skin, k, true);
     const off = await shot(weapon, skin, k, false);

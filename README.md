@@ -29,7 +29,7 @@ the cost of a tick and a frame, draw calls and garbage (`--gpu` waits for each f
 on your screen online, with a jittery connection simulated.
 `node tools/check-spike-sound.mjs [--offline]` checks the plant and defuse sounds (start, progress, halfway, finished and cancel),
 for bots, for you, and for a client hearing a bot on the host. `node tools/check-spectate-sound.mjs` checks that a dead player spectating in 5v5 hears from the spectated
-teammate's position. `node tools/shoot-skins.mjs <out-dir> [--only <text>]` saves first-person pictures of the model skins and knives (at rest, mid-inspect and mid-sheen) for comparing how they look. `node tools/render-guns.mjs [out-dir]` renders every gun's firing sound to WAV (through the game's own synth) so
+teammate's position. `node tools/shoot-skins.mjs <out-dir> [--only <text>]` saves first-person pictures of the model skins and knives (at rest, mid-inspect, mid-sheen and mid-reload) for comparing how they look. `node tools/render-guns.mjs [out-dir] [--files] [--skin <id>]` renders every gun's firing sound to WAV (through the game's own synth, or with `--files` the game's sound files; `--skin apogee` fires that skin's guns through its sound set) so
 you can listen to and compare them outside the game.
 
 Offline 5v5 uses the same pick screen: you lock in, then the nine bots pick.

@@ -91,6 +91,25 @@ export const SKINS = {
       { variant: 'First Snow', body: { color: 0xece6da, rough: 0.2, metal: 0.1 }, trim: { color: 0xb8bec6, rough: 0.2, metal: 1 }, grip: { color: 0x1d2a44, rough: 0.85, metal: 0 }, glow: { color: 0x8fc8ff, intensity: 2.4 }, accent: { color: 0xff5a7a, intensity: 2.0 } },
     ],
   },
+  apogee: {
+    name: 'Apogee', tier: 'Ultra', blurb: 'White ceramic over black glass, a gilded skeleton and violet inlays. The top of every gun hinges open to take a live energy cell.',
+    models: { classic: 'classicApo', spectre: 'spectreApo', vandal: 'vandalApo', guardian: 'guardianApo' },
+    // Slots: body = white ceramic shell, metal = black glass panels and barrel, trim = gold, grip = violet panels.
+    body: { color: 0xeef0f3, rough: 0.18, metal: 0.08 },
+    trim: { color: 0xd9ad45, rough: 0.2, metal: 1 },
+    metal: { color: 0x141418, rough: 0.16, metal: 0.7 },
+    grip: { color: 0x3c2470, rough: 0.45, metal: 0.2 },
+    glow: { color: 0x62e6ff, intensity: 2.4 },
+    accent: { color: 0xa25cff, intensity: 2.0 },
+    finisher: 'coronation',
+    sounds: 'apogee', // its sound set: an energy pulse built on the Vandal's shot (FIRE_TONE in audio.js)
+    variant: 'Gilt',
+    variants: [
+      { variant: 'Onyx', body: { color: 0x1a1a1f, rough: 0.14, metal: 0.4 }, metal: { color: 0x2c2c33, rough: 0.2, metal: 0.8 }, grip: { color: 0x5a0f1c, rough: 0.45, metal: 0.2 }, glow: { color: 0xff4d5e, intensity: 2.4 }, accent: { color: 0xffb04a, intensity: 2.0 } },
+      { variant: 'Rosewhite', trim: { color: 0xe6a58e, rough: 0.2, metal: 1 }, grip: { color: 0x7a2a4e, rough: 0.45, metal: 0.2 }, glow: { color: 0xff8fd0, intensity: 2.4 }, accent: { color: 0xffd6e8, intensity: 1.8 } },
+      { variant: 'Glacier Crown', body: { color: 0x1d2c4a, rough: 0.16, metal: 0.3 }, trim: { color: 0xc9d2dc, rough: 0.18, metal: 1 }, grip: { color: 0x0f4a5c, rough: 0.45, metal: 0.2 }, glow: { color: 0x9ff7ff, intensity: 2.4 }, accent: { color: 0x4da3ff, intensity: 2.0 } },
+    ],
+  },
 };
 
 // Each melee type comes in exactly one theme of its own (picked with the melee type, not from the skin grid).
@@ -155,6 +174,7 @@ export const MELEE_THEMES = {
   },
   tanto: { ...SKINS.oathblade, models: undefined, variants: undefined, variant: undefined, blurb: 'The Oathblade collection\'s knife: a lacquered tanto with a gold collar and a silk cord. Its edge lights as it leaves your hand.' },
   bowie: { ...SKINS.starspur, models: undefined, variants: undefined, variant: undefined, blurb: 'The Starspur collection\'s knife: a copper-guarded bowie with a star rowel that spins at the guard.' },
+  battleaxe: { ...SKINS.apogee, models: undefined, variants: undefined, variant: undefined, blurb: 'The Apogee collection\'s melee: a white and gold battle axe on a black haft. Its edge gilds itself as it comes out.' },
 };
 
 // ---- procedural textures (256 px, tiled across the gun at roughly 8 tiles per metre) ----

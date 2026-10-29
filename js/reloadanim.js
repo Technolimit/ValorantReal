@@ -15,6 +15,8 @@
 //             off-hand runs along the blade and the edge relights behind it
 //   oathCyl   Oathblade Sheriff: the edge goes dark, the drum is flicked out, loaded and flicked shut, then a
 //             thumb along the blade relights the edge
+//   cell      Apogee guns: the top hinges open to the left, the spent energy cell pops out and is flicked away, the off-hand
+//             lays a fresh glowing one in its channel, and the top is slammed shut with a flash
 //
 // Model skins reload as their model (`design` in models.js), so these tables can key on a design id too.
 // Between shots the bolt guns cycle their bolt and the Bucky works its pump (see `cycle`).
@@ -24,11 +26,13 @@ export const RELOAD_STYLE = {
   stinger: 'mag', spectre: 'mag', bulldog: 'mag', guardian: 'mag', phantom: 'mag', vandal: 'mag', warden: 'mag',
   bucky: 'tube', judge: 'feed', marshal: 'boltRound', outlaw: 'rear', operator: 'boltMag', ares: 'box', odin: 'box',
   vandalOrb: 'orb', phantomOrb: 'orb', bulldogOrb: 'orb', stingerOrb: 'orb', vandalOath: 'oathMag', sheriffOath: 'oathCyl',
+  classicApo: 'cell', spectreApo: 'cell', vandalApo: 'cell', guardianApo: 'cell',
 };
 // What happens after each shot, and how much of the shot interval it takes.
 export const CYCLE_STYLE = { marshal: 'bolt', operator: 'bolt', bucky: 'pump' };
 
-// Sound cues as [share of the reload, kind]: click = latch/mag release, thunk = mag or cover seating.
+// Sound cues as [share of the reload, kind]: click = latch/mag release, thunk = mag or cover seating, shing = a
+// hand along a blade, charge = an energy cell powering up as it seats.
 export const RELOAD_SOUNDS = {
   pistol: [[0.2, 'click'], [0.68, 'thunk'], [0.8, 'click']],
   mag: [[0.18, 'click'], [0.66, 'thunk'], [0.79, 'click'], [0.84, 'click']],
@@ -41,6 +45,7 @@ export const RELOAD_SOUNDS = {
   orb: [[0.14, 'click'], [0.2, 'click'], [0.66, 'thunk'], [0.76, 'click']],
   oathMag: [[0.08, 'click'], [0.56, 'thunk'], [0.6, 'click'], [0.66, 'shing']],
   oathCyl: [[0.07, 'click'], [0.18, 'click'], [0.54, 'click'], [0.64, 'thunk'], [0.72, 'shing']],
+  cell: [[0.06, 'click'], [0.18, 'click'], [0.58, 'charge'], [0.71, 'thunk'], [0.74, 'click']],
   tube: [[0, 'click']],
   boltRound: [[0, 'click']],
 };
@@ -249,6 +254,36 @@ const STYLES = {
     const shut = pulse(t, 0.6, 0.68);
     return { rz: -0.15 * shut, rx: 0.05 * shut, glow: 1 + 2.4 * pulse(t, 0.82, 0.95) };
   },
+  // Apogee: thumb the latch and the top swings up and over to the left on its hinge; the spent cell jumps up out of its channel
+  // and is flicked away (shrinking out) as the gun's light dims; the off-hand lays a fresh one in from above-left,
+  // it powers up as it seats, and the top is slammed shut with a flare.
+  cell(t, P) {
+    const open = ss(t, 0.06, 0.17) * (1 - ss(t, 0.66, 0.72));
+    if (P.lid) P.lid.rotation.z += 1.9 * open;
+    const c = P.cell;
+    if (c) {
+      if (t < 0.4) {
+        const pop = ss(t, 0.18, 0.26), fly = ss(t, 0.26, 0.38);
+        c.position.x -= 0.1 * fly;
+        c.position.y += 0.05 * pop + 0.09 * fly;
+        c.position.z += 0.05 * fly;
+        c.rotation.x += 0.6 * pop + 2.5 * fly;
+        c.rotation.y += 1.5 * fly;
+        c.scale.setScalar(Math.max(0.001, 1 - 0.9 * fly));
+        c.visible = fly < 0.99;
+      } else {
+        const k = 1 - ss(t, 0.42, 0.6);
+        c.position.x -= 0.07 * k;
+        c.position.y += 0.08 * k;
+        c.position.z += 0.02 * k;
+        c.rotation.y -= 1.2 * k;
+        c.visible = t > 0.42;
+      }
+    }
+    const pop = pulse(t, 0.18, 0.26), slam = pulse(t, 0.7, 0.8);
+    const glow = 1 - 0.65 * ss(t, 0.2, 0.3) + 0.65 * ss(t, 0.56, 0.62) + 2.3 * pulse(t, 0.69, 0.9);
+    return { rx: 0.06 * pop + 0.1 * slam, py: 0.006 * pop - 0.01 * slam, rz: 0.04 * slam, glow };
+  },
 };
 
 // The Oathblade edge (part `edge`, scaled along the blade from its guard end): dark from a0..a1, relit from
@@ -337,6 +372,12 @@ export const RELOAD_TRACK = {
   // Oathblade Sheriff: a wrist flick swings the drum out, muzzle up to dump, back to load, flicked shut, then
   // turned side-on for the thumb along the blade, and snapped back.
   sheriffOath: [[0, Z], [0.07, { rx: 0.25, rz: 1.0, ry: 0.3, px: -0.05, py: 0.03 }], [0.16, { rx: 1.3, rz: 0.4, py: 0.06 }], [0.25, { rx: 1.3, rz: 0.4, py: 0.06 }], [0.33, { rx: 0.35, rz: 1.05, ry: 0.3, px: -0.05, py: 0.03 }], [0.58, { rx: 0.4, rz: 1.1, ry: 0.32, px: -0.05, py: 0.03 }], [0.65, { rx: 0.2, rz: -0.35, py: 0.02 }], [0.72, { rx: 0.12, ry: 0.6, rz: 0.1, px: -0.04, py: 0.03 }], [0.86, { rx: 0.1, ry: 0.62, rz: 0.1, px: -0.04, py: 0.03 }], [0.93, { rx: -0.04, rz: -0.06 }], [1, Z]],
+  // Apogee: tipped up and rolled so the top of the gun, and the hinged cover on it, faces you through the swap;
+  // a little dip as the fresh cell seats and a nod as the cover is slammed shut.
+  vandalApo: [[0, Z], [0.12, { rx: 0.32, ry: 0.2, rz: 0.8, px: -0.03, py: 0.03 }], [0.42, { rx: 0.36, ry: 0.24, rz: 0.85, px: -0.04, py: 0.035 }], [0.62, { rx: 0.34, ry: 0.24, rz: 0.84, px: -0.04, py: 0.028 }], [0.74, { rx: 0.42, ry: 0.12, rz: 0.4, py: 0.02 }], [0.86, { rx: 0.12, rz: 0.08 }], [1, Z]],
+  guardianApo: [[0, Z], [0.12, { rx: 0.3, ry: 0.25, rz: 0.85, px: -0.04, py: 0.03 }], [0.42, { rx: 0.34, ry: 0.28, rz: 0.9, px: -0.05, py: 0.035 }], [0.62, { rx: 0.32, ry: 0.28, rz: 0.88, px: -0.05, py: 0.028 }], [0.74, { rx: 0.4, ry: 0.12, rz: 0.35, py: 0.02 }], [0.86, { rx: 0.1, rz: 0.06 }], [1, Z]],
+  spectreApo: [[0, Z], [0.1, { rx: 0.35, ry: 0.18, rz: 0.9, px: -0.03, py: 0.03 }], [0.42, { rx: 0.38, ry: 0.2, rz: 0.95, px: -0.035, py: 0.035 }], [0.62, { rx: 0.36, ry: 0.2, rz: 0.93, px: -0.035, py: 0.028 }], [0.73, { rx: 0.45, ry: 0.08, rz: 0.3, py: 0.025 }], [0.85, { rx: 0.1, rz: -0.08 }], [1, Z]],
+  classicApo: [[0, Z], [0.1, { rx: 0.4, ry: 0.2, rz: 0.95, px: -0.04, py: 0.03 }], [0.42, { rx: 0.44, ry: 0.24, rz: 1.0, px: -0.045, py: 0.035 }], [0.62, { rx: 0.42, ry: 0.24, rz: 0.98, px: -0.045, py: 0.03 }], [0.73, { rx: 0.5, ry: 0.1, rz: 0.3, py: 0.025 }], [0.86, { rx: 0.12 }], [1, Z]],
   warden: [[0, Z], [0.12, { rx: 0.9, rz: 0.6, py: 0.05 }], [0.6, { rx: 0.9, rz: 0.6, py: 0.05 }], [0.75, { rx: 1.2, rz: 0.2, py: 0.06 }], [1, Z]],
   // Operator: bolt up, tipped muzzle-up to pull the mag, dropped low-left to seat the new one, bolt home.
   operator: [[0, Z], [0.12, { rx: 0.05, rz: 0.1 }], [0.3, { rx: 0.9, rz: -0.6, ry: -0.1, py: 0.04 }], [0.5, { rx: 0.4, rz: 0.9, ry: 0.5, px: -0.12, py: -0.08 }], [0.7, { rx: 0.3, rz: 0.6, ry: 0.4, px: -0.08, py: -0.05 }], [0.85, { rx: 0.05, rz: 0.1 }], [1, Z]],
@@ -386,6 +427,7 @@ const HANDS = {
   orb: (t) => () => t > 0.42 && t < 0.7, // the orb's hand only carries the new orb
   oathMag: (t) => (part) => (part === 'swipe' ? t > 0.6 && t < 0.86 : t > 0.26 && t < 0.6),
   oathCyl: (t) => (part) => (part === 'swipe' ? t > 0.68 && t < 0.9 : t > 0.3 && t < 0.56),
+  cell: (t) => () => t > 0.42 && t < 0.64, // the cell's hand only carries the fresh cell
 };
 
 // Pose for this frame. `now` is game time. `cycle` = { start, dur } for the post-shot bolt/pump.
