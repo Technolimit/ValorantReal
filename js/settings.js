@@ -1,5 +1,5 @@
 // Player settings, saved in localStorage.
-import { DEFAULT_BINDS } from './keybinds.js';
+import { DEFAULT_BINDS, DEFAULT_BINDS2 } from './keybinds.js';
 
 const KEY = 'tapfire-settings-v1';
 
@@ -12,6 +12,7 @@ export const DEFAULTS = {
   crouchMode: 'hold',
   wheel: 'weapons', // 'weapons' | 'jump'
   binds: DEFAULT_BINDS, // action -> KeyboardEvent.code (see keybinds.js)
+  binds2: DEFAULT_BINDS2, // action -> secondary KeyboardEvent.code ('' = none)
   volume: 0.6,
   showImpacts: true,
   impactSeconds: 6,
@@ -56,9 +57,9 @@ export const DEFAULTS = {
 export function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || '{}');
-    return { ...DEFAULTS, ...s, loadout: { ...DEFAULTS.loadout, ...(s.loadout || {}) }, skins: { ...(s.skins || {}) }, binds: { ...DEFAULT_BINDS, ...(s.binds || {}) } };
+    return { ...DEFAULTS, ...s, loadout: { ...DEFAULTS.loadout, ...(s.loadout || {}) }, skins: { ...(s.skins || {}) }, binds: { ...DEFAULT_BINDS, ...(s.binds || {}) }, binds2: { ...DEFAULT_BINDS2, ...(s.binds2 || {}) } };
   } catch {
-    return { ...DEFAULTS, loadout: { ...DEFAULTS.loadout }, skins: {}, binds: { ...DEFAULT_BINDS } };
+    return { ...DEFAULTS, loadout: { ...DEFAULTS.loadout }, skins: {}, binds: { ...DEFAULT_BINDS }, binds2: { ...DEFAULT_BINDS2 } };
   }
 }
 
