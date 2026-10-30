@@ -186,11 +186,18 @@ GUN_SOUNDS.tourdeforce = GUN_SOUNDS.operator;
 // Anything not listed sounds like the stock gun of its model.
 // Skins with their own sound set (`sounds` in skins.js) colour the gun's own shot, file or synth: Oathblade is
 // crisper and higher (sped up, brighter, a thin steel ping), Starspur thunkier and lower (slowed, warmer, a low thump).
+// Apogee fires an energy pulse on every gun: the Vandal's shot, a touch faster with its low end pulled back and its
+// top lifted, under a short falling zap (a laser-like chirp, kept in the low kHz so it stays sharp, not shrill).
 //   rate: playback speed / pitch   low, high: shelf gains in dB at 220 Hz / 3.5 kHz
 //   ping: [Hz, gain, decay] a ring on top   thunk: [from Hz, to Hz, decay, gain] a low knock under it
+//   base: another gun whose shot (file or synth) every gun in the skin fires instead of its own
+//   zap: [from Hz, to Hz, decay, gain] a falling chirp, with a fifth above it and a bandpassed snap of noise
+//   gain: loudness of a sound file, to make up for the low end the shelf takes out of it (the Vandal's file is
+//         mostly low end; the synth isn't, so it's left as it is)
 const FIRE_TONE = {
   oathblade: { rate: 1.12, low: -5, high: 6, ping: [5600, 0.04, 0.09] },
   starspur: { rate: 0.88, low: 5, high: -5, thunk: [140, 60, 0.12, 0.16] },
+  apogee: { base: 'vandal', rate: 1.08, low: -9, high: 4, zap: [1700, 520, 0.09, 0.22], gain: 1.8 },
 };
 
 const MODEL_SOUND = { pistol: 'classic', revolver: 'sheriff', smg: 'stinger', rifle: 'vandal', dmr: 'guardian', sniper: 'marshal', shotgun: 'judge', heavy: 'ares' };
@@ -379,8 +386,10 @@ export class Sound {
   // sound set, if it has one in FIRE_TONE.
   gunshot(def, pos, gun, tone = null) {
     if (!this.ctx) return;
-    const s = GUN_SOUNDS[def.id] || GUN_SOUNDS[MODEL_SOUND[def.model]];
-    const clip = this.clip(`${def.id}:fire`);
+    const T = FIRE_TONE[tone], base = T?.base;
+    const s = (base && GUN_SOUNDS[base]) || GUN_SOUNDS[def.id] || GUN_SOUNDS[MODEL_SOUND[def.model]];
+    // A skin firing another gun's shot still lets your own upload for this gun win.
+    const clip = base ? this.clips.get(`${def.id}:fire`) || this.clip(`${base}:fire`) : this.clip(`${def.id}:fire`);
     if (!s && !clip) return;
     const c = this.ctx;
     const kind = def.suppressed ? 'suppressed' : 'gun';
@@ -401,7 +410,6 @@ export class Sound {
     send.gain.value = wet;
     send.connect(verb);
     const mix = c.createGain();
-    const T = FIRE_TONE[tone];
     let out = mix;
     if (T) {
       for (const [type, freq, gain] of [['lowshelf', 220, T.low], ['highshelf', 3500, T.high]]) {
@@ -413,11 +421,17 @@ export class Sound {
       const k = pos ? 1.6 : 0.55;
       if (T.ping) this.tone({ dest: out, at: 0.002, freq: T.ping[0], decay: T.ping[2], gain: T.ping[1] * k, type: 'triangle' });
       if (T.thunk) this.tone({ dest: out, freq: T.thunk[0], end: T.thunk[1], decay: T.thunk[2], gain: T.thunk[3] * k });
+      if (T.zap) {
+        const [f0, f1, decay, gain] = T.zap, j = 1 + (Math.random() - 0.5) * 0.05;
+        this.tone({ dest: out, freq: f0 * j, end: f1 * j, decay, gain: gain * k, type: 'triangle' });
+        this.tone({ dest: out, freq: f0 * 1.5 * j, end: f1 * 1.5 * j, decay: decay * 0.6, gain: gain * 0.3 * k });
+        this.noiseHit({ dest: out, bp: f0 * 1.8, q: 3, decay: 0.03, gain: gain * 1.4 * k });
+      }
     }
     out.connect(dest);
     out.connect(send);
     if (clip) {
-      mix.gain.value = pos ? 1.2 : 0.6;
+      mix.gain.value = (pos ? 1.2 : 0.6) * (T?.gain ?? 1);
       const src = this.playClip(clip, mix);
       if (T) src.playbackRate.value = T.rate;
       return;
@@ -515,13 +529,16 @@ export class Sound {
 
   // steps: [[share of duration, 'click' | 'thunk'], ...] from reloadanim.js
   // id: the gun, for your own uploaded reload sound (played once at the start instead of the clicks).
-  reload(duration, steps = [[0.1, 'click'], [0.5, 'thunk'], [0.85, 'click']], id) {
-    const clip = this.ctx && this.clip(`${id}:reload`);
+  // own: the steps are a model skin's own reload (Apogee's cell), so the gun's stock reload file is skipped (your
+  // own upload still plays).
+  reload(duration, steps = [[0.1, 'click'], [0.5, 'thunk'], [0.85, 'click']], id, own = false) {
+    const clip = this.ctx && (own ? this.clips.get(`${id}:reload`) : this.clip(`${id}:reload`));
     if (clip) { this.reloadClip(clip, duration); return; }
     for (const [f, kind] of steps) {
       const at = duration * f;
       if (kind === 'thunk') this.thunk(at);
       else if (kind === 'shing') this.shing(at, 0.6);
+      else if (kind === 'charge') this.charge(at);
       else this.click(at, 0.28);
     }
   }
@@ -582,6 +599,26 @@ export class Sound {
     this.tone({ dest: this.master, at: at + 0.04, freq: 5150, end: 4800, decay: 0.35, gain: 0.025 * gain });
   }
 
+  // An energy cell seating and powering up: a rising hum with a bright edge over a soft electric hiss.
+  charge(at = 0, gain = 1) {
+    if (!this.ctx) return;
+    const d = this.master;
+    this.tone({ dest: d, at, freq: 260, end: 780, decay: 0.24, gain: 0.07 * gain, type: 'triangle' });
+    this.tone({ dest: d, at: at + 0.02, freq: 520, end: 1560, decay: 0.2, gain: 0.025 * gain });
+    this.noiseHit({ dest: d, at, bp: 3200, q: 1.5, decay: 0.22, gain: 0.06 * gain, attack: 0.08 });
+  }
+
+  // Apogee pullout (~0.6 s): the cell hums up as it comes out, then the cover's snap and a bright chime.
+  energyDraw() {
+    const d = this.master;
+    this.noiseHit({ dest: d, lp: 2000, hp: 300, attack: 0.15, decay: 0.22, gain: 0.1 });
+    this.charge(0.05, 0.9);
+    this.noiseHit({ dest: d, at: 0.4, bp: 2600, q: 3, decay: 0.03, gain: 0.3 });
+    this.tone({ dest: d, at: 0.4, freq: 130, end: 70, decay: 0.08, gain: 0.12 });
+    this.tone({ dest: d, at: 0.42, freq: 1568, decay: 0.3, gain: 0.03, type: 'triangle' });
+    this.tone({ dest: d, at: 0.45, freq: 2349, decay: 0.28, gain: 0.02, type: 'triangle' });
+  }
+
   // Oathblade pullout when its sound file (sounds/oathblade-draw.mp3) isn't loaded (~0.55 s): a low rush of air as it comes up, two quick bright rings of steel, the second
   // higher and crisper as it locks into place, and a soft thump.
   bladeDraw() {
@@ -597,15 +634,16 @@ export class Sound {
   }
 
   // `skin`: the skin on the weapon. A skin can ship its own pullout sound (sounds/index.json, e.g. Oathblade's), which
-  // plays instead of the gun's; your own upload for the gun still wins. `blade`: it draws like a blade (Oathblade),
-  // so with no file it gets the synthesized blade draw.
-  equip(id, skin = null, blade = false) {
+  // plays instead of the gun's; your own upload for the gun still wins. `draw`: the model draws its own way, 'blade'
+  // (Oathblade) or 'energy' (Apogee), so with no file it gets that synthesized draw instead of the gun's.
+  equip(id, skin = null, draw = null) {
     if (!this.ctx) return;
     this.stopAction(); // swapping weapons cancels the reload or inspect
     const skinClip = skin && this.clips.get(`${skin}:equip@game`);
-    const clip = this.clips.get(`${id}:equip`) || skinClip || (!blade && this.clip(`${id}:equip`));
+    const clip = this.clips.get(`${id}:equip`) || skinClip || (!draw && this.clip(`${id}:equip`));
     if (clip) { const g = this.ctx.createGain(); g.gain.value = 0.6; g.connect(this.master); this.playClip(clip, g); return; }
-    if (blade) { this.bladeDraw(); return; }
+    if (draw === 'blade') { this.bladeDraw(); return; }
+    if (draw === 'energy') { this.energyDraw(); return; }
     this.noiseHit({ dest: this.master, lp: 1500, hp: 400, decay: 0.08, gain: 0.12 });
     this.click(0.1, 0.18);
   }
@@ -714,7 +752,8 @@ export class Sound {
   }
 
   // Finishers (render.js): Collapse hums up and implodes with a thump; Last Light is a ricochet whine, a
-  // jingle of spur rowels, then a bright chord as the star flares; Last Stroke is one ringing cut, then petals.
+  // jingle of spur rowels, then a bright chord as the star flares; Last Stroke is one ringing cut, then petals;
+  // Coronation is a shimmer climbing as the crown rises, then a deep thrum and a bright major chord as it goes up.
   finisher(kind, pos) {
     if (!this.ctx) return;
     const d = this.out(pos, 'other');
@@ -734,6 +773,12 @@ export class Sound {
       this.noiseHit({ dest: d, at: 0.55, lp: 1400, hp: 200, decay: 0.9, gain: 0.3, attack: 0.12 });
       this.tone({ dest: d, at: 0.55, freq: 95, end: 48, decay: 0.6, gain: 0.35 });
       for (const [f, at] of [[1318, 0.62], [1976, 0.7]]) this.tone({ dest: d, at, freq: f, decay: 1.2, gain: 0.05, type: 'triangle' });
+    } else if (kind === 'coronation') {
+      this.noiseHit({ dest: d, hp: 2500, lp: 9000, attack: 0.9, decay: 1.8, gain: 0.12 });
+      for (const [f, at] of [[784, 0.2], [988, 0.45], [1175, 0.7], [1568, 0.95], [1976, 1.2], [2349, 1.45]]) this.tone({ dest: d, at, freq: f, decay: 0.45, gain: 0.05, type: 'triangle' });
+      this.tone({ dest: d, at: 1.9, freq: 110, end: 55, decay: 0.7, gain: 0.35 });
+      this.noiseHit({ dest: d, at: 1.9, lp: 1200, decay: 0.6, gain: 0.45, attack: 0.005 });
+      for (const f of [523, 659, 784, 1047]) this.tone({ dest: d, at: 1.92, freq: f, decay: 1.1, gain: 0.07, type: 'triangle' });
     }
   }
 

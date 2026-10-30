@@ -1,5 +1,5 @@
-// Headless checks for skins: the preset list, the single Melee entry (one theme per melee type), the Orbital, Starspur and
-// Oathblade models with their inspects and reloads, and finishers (the final kill of the round in 5v5, played when the round ends, or the match-winning kill in deathmatch), and pullouts.
+// Headless checks for skins: the preset list, the single Melee entry (one theme per melee type), the Orbital, Starspur,
+// Oathblade and Apogee models with their inspects and reloads, and finishers (the final kill of the round in 5v5, played when the round ends, or the match-winning kill in deathmatch), and pullouts.
 //   node tools/check-skins.mjs [shots-dir]     (needs playwright; with a dir, saves the skin menu and finishers)
 // Exits with code 1 if any check fails.
 import { createServer } from 'node:http';
@@ -58,9 +58,10 @@ const shot = async (name, el = null) => { if (SHOTS) await (el ? page.locator(el
 await check('Gun skins: Standard, Ember Circuit, Glacier, plus model skins only on their guns', () => page.evaluate(async () => {
   const { SKIN_ORDER, skinFits } = await import('./js/skins.js');
   const on = (w) => SKIN_ORDER.filter(id => skinFits(id, w));
-  const r = { list: SKIN_ORDER.join(), vandal: on('vandal').join(), sheriff: on('sheriff').join(), marshal: on('marshal').join(), judge: on('judge').join(), phantom: on('phantom').join(), stinger: on('stinger').join(), bulldog: on('bulldog').join(), spectre: on('spectre').join() };
+  const r = { list: SKIN_ORDER.join(), vandal: on('vandal').join(), sheriff: on('sheriff').join(), marshal: on('marshal').join(), judge: on('judge').join(), phantom: on('phantom').join(), stinger: on('stinger').join(), bulldog: on('bulldog').join(), spectre: on('spectre').join(), classic: on('classic').join(), guardian: on('guardian').join(), ghost: on('ghost').join() };
   return {
-    pass: r.list === 'standard,ember,glacier,orbital,starspur,oathblade' && r.vandal === 'standard,ember,glacier,orbital,oathblade' && r.spectre === 'standard,ember,glacier'
+    pass: r.list === 'standard,ember,glacier,orbital,starspur,oathblade,apogee' && r.vandal === 'standard,ember,glacier,orbital,oathblade,apogee'
+      && ['spectre', 'classic', 'guardian'].every(w => r[w] === 'standard,ember,glacier,apogee') && r.ghost === 'standard,ember,glacier'
       && ['phantom', 'stinger', 'bulldog'].every(w => r[w] === 'standard,ember,glacier,orbital')
       && r.sheriff === 'standard,ember,glacier,starspur,oathblade' && ['marshal', 'judge'].every(w => r[w] === 'standard,ember,glacier,starspur'),
     ...r,
@@ -104,7 +105,7 @@ await check('Weapon screen: previewing a variant changes nothing until Equip', (
   document.getElementById('skin-equip').click();
   const after = { ...__screen(), worn: h.settings.skins.vandal };
   return {
-    pass: before.list.join() === 'Standard Issue,Ember Circuit,Glacier,Orbital,Oathblade' && before.swatches === 4 && before.variant === 'Glacial' && before.worn === 'standard'
+    pass: before.list.join() === 'Standard Issue,Ember Circuit,Glacier,Orbital,Oathblade,Apogee' && before.swatches === 4 && before.variant === 'Glacial' && before.worn === 'standard'
       && before.equip === 'Equip skin' && after.worn === 'orbital~2' && after.equip === 'Equipped',
     before, after,
   };
@@ -119,7 +120,7 @@ await check('Melee screen: the melee types, each in its own theme; Equip swaps y
   });
   await page.waitForTimeout(300);
   await shot('menu-melee', '.panel.skins');
-  return { pass: r.list.length === 9 && r.title === 'Damascus Katana' && r.swatches === 1 && r.equipped === 'katana' && r.newHidden, ...r };
+  return { pass: r.list.length === 10 && r.title === 'Damascus Katana' && r.swatches === 1 && r.equipped === 'katana' && r.newHidden, ...r };
 });
 
 if (SHOTS) {
@@ -139,6 +140,14 @@ if (SHOTS) {
   await page.evaluate(() => { __open('melee'); __pick('Tanto'); });
   await page.waitForTimeout(400);
   await shot('menu-oathblade-tanto', '.panel.skins');
+  for (const [w, v] of [['vandal', 0], ['vandal', 1], ['vandal', 2], ['vandal', 3], ['guardian', 0], ['spectre', 0], ['classic', 0]]) {
+    await page.evaluate(([w, v]) => { __open(w); __pick('Apogee'); __variant(v); }, [w, v]);
+    await page.waitForTimeout(400);
+    await shot(`menu-apogee-${w}-${v}`, '.panel.skins');
+  }
+  await page.evaluate(() => { __open('melee'); __pick('Battle Axe'); });
+  await page.waitForTimeout(400);
+  await shot('menu-apogee-battleaxe', '.panel.skins');
   await page.evaluate(() => document.getElementById('skin-detail-back').click());
   await page.waitForTimeout(200);
   await shot('collection-after', '.panel.skins');
@@ -279,6 +288,72 @@ await check('Oathblade pullouts: drawn like a blade, the edge lighting from the 
   };
 }));
 
+await check('Apogee models: a hinged cover over a cell; the inspect opens it and lifts the cell; the reload swaps the cell', () => page.evaluate(async () => {
+  const { gunModel, poseMeleeParts } = await import('./js/models.js');
+  const { MODEL_INSPECTS } = await import('./js/melee.js');
+  const { reloadPose, RELOAD_STYLE } = await import('./js/reloadanim.js');
+  const { Gun } = await import('./js/gun.js');
+  const out = {};
+  let ok = true;
+  for (const w of ['vandal', 'guardian', 'spectre', 'classic']) {
+    const m = gunModel(w, 'apogee'), d = m.userData.design, P = m.userData.parts;
+    const ins = MODEL_INSPECTS[d] || [];
+    let open = 0, lift = 0;
+    for (const i of ins) for (let t = 0; t <= i.dur; t += 0.05) { const p = poseMeleeParts(m, i, t, null); if (p.pose.some(Number.isNaN)) ok = false; open = Math.max(open, p.parts.lid?.[5] || 0); lift = Math.max(lift, p.parts.cell?.[1] || 0); }
+    poseMeleeParts(m, null, 0, null);
+    const rest = P.cell.position.clone();
+    const gun = new Gun(__W[w]);
+    gun.reloading = true; gun.reloadStart = 0; gun.reloadDur = gun.def.reload || 2; gun.reloadEnd = gun.reloadDur;
+    const at = (share) => {
+      const p = reloadPose(m, gun.def, gun, share * gun.reloadDur, null);
+      if (Object.values(p).some(Number.isNaN)) ok = false;
+      return { lid: +P.lid.rotation.z.toFixed(2), cell: P.cell.visible ? +P.cell.position.distanceTo(rest).toFixed(3) : 'gone', hand: m.userData.hands.some(h => h.userData.part === 'cell' && h.visible), glow: +(p.glow ?? 1).toFixed(2) };
+    };
+    const r = { start: at(0.02), out: at(0.39), laying: at(0.5), flash: at(0.76), end: at(0.99) };
+    out[w] = { d, moves: ins[0]?.moves?.join('/'), open: +open.toFixed(2), lift: +lift.toFixed(3), ...r };
+    if (d !== w + 'Apo' || RELOAD_STYLE[d] !== 'cell' || !P.lid || !P.cell || ins.length !== 1 || ins[0].moves?.length !== 2 || open < 1.5 || lift < 0.02
+      || r.start.lid > 0.2 || r.out.lid < 1.5 || r.out.cell !== 'gone' && r.out.cell < 0.05 || !r.laying.hand || r.laying.cell === 'gone' || r.laying.cell < 0.01
+      || r.flash.glow < 2 || r.end.lid > 0.01 || r.end.cell !== 0 || r.end.hand) ok = false;
+  }
+  if (!gunModel('classic', 'apogee').userData.parts.w || !gunModel('spectre', 'apogee').userData.parts.w) ok = false;
+  return { pass: ok, ...out };
+}));
+
+await check('Apogee pullouts: the cover snaps shut as the gun settles; the Battle Axe gilds its edge', () => page.evaluate(async () => {
+  const { gunModel, poseMeleeParts } = await import('./js/models.js');
+  const { EQUIP_ANIMS, MELEE } = await import('./js/melee.js');
+  const out = {};
+  for (const [w, skin] of [['vandal', 'apogee'], ['guardian', 'apogee~1'], ['spectre', 'apogee~2'], ['classic', 'apogee~3'], ['battleaxe', 'melee-battleaxe']]) {
+    const m = gunModel(w, skin), a = EQUIP_ANIMS[m.userData.design];
+    let peak = 0, roll = 0, flip = 0;
+    for (let t = 0; a && t <= a.dur; t += 0.02) { const p = poseMeleeParts(m, a, t, null); peak = Math.max(peak, +p.glow.toFixed(2)); roll = Math.min(roll, p.parts.w?.[5] || 0); flip = Math.min(flip, p.parts.w?.[3] || 0); }
+    const part = (t, name, i) => { const p = poseMeleeParts(m, a, t, null); return +(name === 'edge' ? p.parts.edge?.[6] : p.parts[name]?.[i] ?? 0).toFixed(2); };
+    out[w] = { design: m.userData.design, peak, turns: +(-Math.min(roll, flip) / (2 * Math.PI)).toFixed(2),
+      ...(w === 'battleaxe' ? { edgeStart: part(0, 'edge'), edgeEnd: part(a.dur, 'edge') } : { lidStart: part(0, 'lid', 5), lidEnd: part(a.dur, 'lid', 5) }) };
+  }
+  const guns = ['vandal', 'guardian', 'spectre', 'classic'];
+  const b = MELEE.battleaxe.inspects;
+  out.battleaxe.inspects = b[0].moves.join('/');
+  return {
+    pass: guns.every(w => out[w].lidStart > 1 && out[w].lidEnd === 0 && out[w].peak > 2.9 && out[w].design === w + 'Apo') && out.spectre.turns >= 0.99 && out.classic.turns >= 0.99
+      && out.battleaxe.edgeStart < 0.05 && out.battleaxe.edgeEnd === 1 && out.battleaxe.turns >= 0.99 && b.length === 1 && b[0].moves.length === 3,
+    ...out,
+  };
+}));
+
+await check('The Hatchet hangs its head edge-down, the poll on top', () => page.evaluate(async () => {
+  const THREE = await import('./vendor/three.module.min.js');
+  const { gunModel } = await import('./js/models.js');
+  const m = gunModel('axe', 'melee-axe'), glow = [], trim = [];
+  m.updateMatrixWorld(true);
+  m.traverse(o => {
+    const b = o.isMesh && new THREE.Box3().setFromObject(o);
+    if (b && b.max.z < -0.2) (o.material.userData.slot === 'glow' ? glow : o.material.userData.slot === 'trim' ? trim : []).push(b); // the head
+  });
+  const edge = Math.min(...glow.map(b => b.min.y)), poll = Math.max(...trim.map(b => b.max.y));
+  return { pass: edge < -0.09 && poll > 0.04, edge: +edge.toFixed(3), poll: +poll.toFixed(3) };
+}));
+
 // Start a deathmatch that ends on your next kill, kill a bot with a weapon in a skin, and report the finisher that
 // played (if any). `before` is a kill made first, mid-match, as [weapon, skins].
 await page.evaluate(() => {
@@ -329,17 +404,20 @@ await check('Deathmatch: only the match-winning kill plays a finisher, and only 
     katana: await __finish('knife', {}, 'katana'),
     oathblade: await __finish('vandal', { vandal: 'oathblade~3' }, 'knife', ['sheriff', { sheriff: 'oathblade' }]),
     tanto: await __finish('knife', {}, 'tanto'),
+    apogee: await __finish('classic', { classic: 'apogee~2' }, 'knife', ['vandal', { vandal: 'apogee' }]),
+    battleaxe: await __finish('knife', {}, 'battleaxe'),
   }));
   return {
     pass: r.orbital.mid === null && r.orbital.end === 'collapse' && r.orbital.over && r.starspur.end === 'lastLight'
       && r.lastWithEmber.mid === null && r.lastWithEmber.end === null && r.bowie.end === 'lastLight' && r.katana.end === null
-      && r.oathblade.mid === null && r.oathblade.end === 'lastStroke' && r.tanto.end === 'lastStroke',
+      && r.oathblade.mid === null && r.oathblade.end === 'lastStroke' && r.tanto.end === 'lastStroke'
+      && r.apogee.mid === null && r.apogee.end === 'coronation' && r.battleaxe.end === 'coronation',
     ...Object.fromEntries(Object.entries(r).map(([k, v]) => [k, `${v.mid}/${v.end}`])),
   };
 });
 
 if (SHOTS) {
-  for (const [kind, weapon, skins, times] of [['collapse', 'vandal', { vandal: 'orbital' }, [0.8, 1.8, 2.15, 2.5]], ['lastLight', 'sheriff', { sheriff: 'starspur' }, [0.8, 1.8, 2.15, 2.5]], ['lastStroke', 'vandal', { vandal: 'oathblade' }, [0.3, 0.5, 0.72, 0.9, 1.6]]]) {
+  for (const [kind, weapon, skins, times] of [['collapse', 'vandal', { vandal: 'orbital' }, [0.8, 1.8, 2.15, 2.5]], ['lastLight', 'sheriff', { sheriff: 'starspur' }, [0.8, 1.8, 2.15, 2.5]], ['lastStroke', 'vandal', { vandal: 'oathblade' }, [0.3, 0.5, 0.72, 0.9, 1.6]], ['coronation', 'vandal', { vandal: 'apogee' }, [0.5, 1.2, 1.7, 1.95, 2.3]]]) {
     await page.evaluate(async () => {
       const g = await __start({ map: 'arena' });
       // Face the middle of the map (a spawn can face a wall), stand the victim 3.5 m in front of you and look at it.
@@ -399,7 +477,7 @@ await check('5v5: a finisher waits for the round to end (however it ends), and n
 
 await check('Finishers leave nothing behind once they end', async () => {
   const out = {};
-  for (const [weapon, skins] of [['vandal', { vandal: 'orbital' }], ['sheriff', { sheriff: 'starspur' }], ['vandal', { vandal: 'oathblade~2' }]]) {
+  for (const [weapon, skins] of [['vandal', { vandal: 'orbital' }], ['sheriff', { sheriff: 'starspur' }], ['vandal', { vandal: 'oathblade~2' }], ['guardian', { guardian: 'apogee~1' }]]) {
     const r = await page.evaluate(async ([weapon, skins]) => {
       const h = window.__game, g = await __start({});
       __tick(g, 0.1); h.renderer.updateFx2();

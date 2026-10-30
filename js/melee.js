@@ -239,7 +239,64 @@ export const MODEL_INSPECTS = {
       glow: [[0, 1], [0.7, 0.5], [1.9, 2.4], S(2.1, 3.4), [2.7, 1.1], [3.2, 1]],
     },
   ],
+
+  // Apogee: every gun opens up for you (unseal, below), then shows itself off its own way. Vandal: tipped to show
+  // the gilded stock, then flicked muzzle-up with a flash.
+  vandalApo: [
+    unseal([-0.08, 0.06, -0.3, 0.04, 1.5, 0.45]),
+    {
+      name: 'Flourish', dur: 2.9,
+      track: [[0, ...Z], [0.5, -0.04, 0.03, -0.05, 0.25, 0.35, 0.9], [1.5, -0.05, 0.04, -0.06, 0.28, 0.38, 0.95], S(1.8, -0.03, 0.03, -0.04, 0.55, 0.05, 0.15), [2.3, -0.03, 0.03, -0.04, 0.5, 0.05, 0.12], [2.9, ...Z]],
+      glow: [[0, 1], [1.5, 1.2], S(1.82, 3), [2.4, 1.2], [2.9, 1]],
+    },
+  ],
+  // Guardian: a long look down the gun, side-on, panning from the stock to the muzzle.
+  guardianApo: [
+    unseal([-0.1, 0.06, -0.32, 0.04, 1.5, 0.4]),
+    {
+      name: 'Long look', dur: 3.6,
+      track: [[0, ...Z], [0.7, -0.12, 0.05, -0.3, 0.04, 1.45, 0.08], L(2.4, -0.02, 0.055, -0.32, 0.05, 1.52, 0.08), [2.9, -0.05, 0.03, -0.1, 0.1, 0.6, 0.05], [3.6, ...Z]],
+      glow: [[0, 1], [0.7, 1.2], [1.6, 2.2], [2.4, 1.3], [3.6, 1]],
+    },
+  ],
+  // Spectre: rolled twice about its barrel and caught dead level, the strips flashing as it stops.
+  spectreApo: [
+    unseal([-0.07, 0.05, -0.22, 0.04, 1.45, 0.45]),
+    {
+      name: 'Barrel roll', dur: 2.9,
+      track: [[0, ...Z], [0.3, -0.03, 0.03, -0.02, 0.12, 0.05, 0], [1.4, -0.03, 0.03, -0.02, 0.12, 0.05, 0], [1.9, -0.08, 0.055, -0.08, 0.1, 1.1, -0.25], [2.4, -0.08, 0.06, -0.08, 0.12, 1.15, -0.28], [2.9, ...Z]],
+      parts: { w: [[0, ...Z, 1], [0.3, ...Z, 1], ...spin(0.3, 1.25, 2, 2), [2.9, 0, 0, 0, 0, 0, 2 * TAU, 1]] },
+      glow: [[0, 1], [1.2, 1.4], S(1.35, 3.2), [2.0, 1.2], [2.9, 1]],
+    },
+  ],
+  // Classic: twirled twice round the trigger finger and caught, then shown side-on.
+  classicApo: [
+    unseal([-0.06, 0.05, -0.12, 0.05, 1.4, 0.5], 3.4),
+    {
+      name: 'Twirl', dur: 3.1,
+      track: [[0, ...Z], [0.3, -0.02, 0.03, 0, 0.12, 0, 0], [1.3, -0.02, 0.03, 0, 0.12, 0, 0], S(1.45, -0.02, 0.01, 0, 0, 0, 0), [1.9, -0.09, 0.06, -0.05, 0.12, 1.15, -0.3], [2.6, -0.09, 0.065, -0.05, 0.14, 1.2, -0.32], [3.1, ...Z]],
+      parts: { w: [[0, ...Z, 1], [0.3, ...Z, 1], ...spin(0.3, 0.9, 0, -1), ...spin(0.9, 1.35, 0, -1, Z, -TAU), S(1.5, 0, 0, 0, -2 * TAU + 0.15, 0, 0, 1), [1.8, 0, 0, 0, -2 * TAU, 0, 0, 1], [3.1, 0, 0, 0, -2 * TAU, 0, 0, 1]] },
+      glow: [[0, 1], [1.3, 1.6], S(1.5, 3.2), [2.3, 1.2], [3.1, 1]],
+    },
+  ],
 };
+
+// Apogee "Unseal": the gun is brought round to `view` (a pose, as in a track) so you look down on its top; the
+// hinged cover (part `lid`) swings open, the energy cell (part `cell`) rises out of its channel and turns once on
+// its long axis, blazing, settles back, and the cover snaps shut with a flash.
+function unseal(view, dur = 3.6) {
+  const held = [view[0], view[1] + 0.004, view[2], view[3] + 0.02, view[4] + 0.03, view[5] + 0.02];
+  const shut = dur - 0.85;
+  return {
+    name: 'Unseal', dur,
+    track: [[0, ...Z], [0.7, ...view], [shut - 0.2, ...held], S(shut + 0.05, ...view), [dur, ...Z]],
+    parts: {
+      lid: [[0, ...Z, 1], [0.7, ...Z, 1], [1.0, 0, 0, 0, 0, 0, 1.9, 1], [shut - 0.2, 0, 0, 0, 0, 0, 1.9, 1], S(shut, ...Z, 1), [dur, ...Z, 1]],
+      cell: [[0, ...Z, 1], [1.0, ...Z, 1], [1.3, 0, 0.03, 0, 0, 0, 0, 1], ...spin(1.3, shut - 0.75, 2, 1, [0, 0.03, 0, 0, 0, 0]), [shut - 0.3, 0, 0, 0, 0, 0, TAU, 1], [dur, 0, 0, 0, 0, 0, TAU, 1]],
+    },
+    glow: [[0, 1], [1.0, 1.5], [1.6, 2.6], [shut - 0.6, 2.4], [shut - 0.25, 1.3], S(shut + 0.03, 3.4), [dur - 0.4, 1.2], [dur, 1]],
+  };
+}
 
 // Pullout (equip) animations that come with a gun model, by design id: keyframes as in an inspect, played
 // across the weapon's equip time (`dur` is stretched to fit it). They replace the plain raise-from-below.
@@ -282,6 +339,50 @@ export const EQUIP_ANIMS = {
       edge: [[0, ...Z, 0.001], [0.2, ...Z, 0.001], L(0.42, ...Z, 1), [0.9, ...Z, 1]],
     },
     glow: [[0, 1], S(0.44, 3.2), [0.8, 1.1], [0.9, 1]],
+  },
+  // Apogee: up from below with the cover hanging open, and it snaps shut as the gun settles, the strips flaring.
+  vandalApo: {
+    dur: 1.0,
+    track: [[0, 0.07, -0.2, 0.1, -0.5, -0.25, -1.0], S(0.5, -0.02, 0.015, -0.02, 0.12, 0.06, 0.15), [0.75, 0.003, 0, 0, -0.03, 0, -0.02], [1.0, ...Z]],
+    parts: { lid: [[0, 0, 0, 0, 0, 0, 1.6, 1], [0.45, 0, 0, 0, 0, 0, 1.6, 1], S(0.62, ...Z, 1), [1.0, ...Z, 1]] },
+    glow: [[0, 0.3], [0.5, 1.2], S(0.64, 3.2), [0.9, 1.1], [1.0, 1]],
+  },
+  // The Guardian is heaved up from the hip, the cover slamming shut at the top of the swing.
+  guardianApo: {
+    dur: 1.2,
+    track: [[0, 0.06, -0.22, 0.1, -0.55, -0.1, -0.6], S(0.62, -0.02, 0.012, -0.02, 0.1, 0.04, 0.1), [0.9, 0.002, 0, 0, -0.02, 0, -0.01], [1.2, ...Z]],
+    parts: { lid: [[0, 0, 0, 0, 0, 0, 1.8, 1], [0.6, 0, 0, 0, 0, 0, 1.8, 1], S(0.78, ...Z, 1), [1.2, ...Z, 1]] },
+    glow: [[0, 0.3], [0.6, 1.2], S(0.8, 3.2), [1.05, 1.1], [1.2, 1]],
+  },
+  // The Spectre rolls once about its barrel on the way up; the cover shuts as it stops.
+  spectreApo: {
+    dur: 0.95,
+    track: [[0, 0.03, -0.17, 0.05, -0.4, 0, 0.2], S(0.48, 0, 0.012, -0.01, 0.08, 0, 0), [0.7, 0, 0.002, 0, 0.02, 0, 0], [0.95, ...Z]],
+    parts: {
+      w: [[0, 0, 0, 0, 0, 0, -TAU, 1], L(0.25, 0, 0, 0, 0, 0, -Math.PI * 0.7, 1), S(0.45, ...Z, 1), [0.95, ...Z, 1]],
+      lid: [[0, 0, 0, 0, 0, 0, 1.44, 1], [0.48, 0, 0, 0, 0, 0, 1.44, 1], S(0.66, ...Z, 1), [0.95, ...Z, 1]],
+    },
+    glow: [[0, 0.3], [0.5, 1.2], S(0.68, 3), [0.95, 1]],
+  },
+  // The Classic comes up spinning once round the trigger finger, caught level; the cover snaps shut.
+  classicApo: {
+    dur: 0.9,
+    track: [[0, 0.02, -0.15, 0.04, -0.4, 0, 0.1], [0.42, 0, -0.02, 0, 0.1, 0, 0], S(0.62, 0, 0.004, 0, -0.03, 0, 0), [0.9, ...Z]],
+    parts: {
+      w: [[0, ...Z, 1], ...spin(0.04, 0.5, 0, -1), S(0.6, 0, 0, 0, -TAU + 0.1, 0, 0, 1), [0.9, 0, 0, 0, -TAU, 0, 0, 1]],
+      lid: [[0, 0, 0, 0, 0, 0, 1.44, 1], [0.55, 0, 0, 0, 0, 0, 1.44, 1], S(0.72, ...Z, 1), [0.9, ...Z, 1]],
+    },
+    glow: [[0, 0.3], [0.55, 1.2], S(0.74, 3), [0.9, 1]],
+  },
+  // The Apogee Battle Axe comes up spinning once about its haft, its edge gilding from the beard to the toe.
+  battleaxe: {
+    dur: 0.85,
+    track: [[0, 0.03, -0.16, 0.05, -0.3, 0, 0.3], S(0.48, 0, 0.01, -0.01, 0.06, 0, -0.05), [0.85, ...Z]],
+    parts: {
+      w: [[0, 0, 0, 0, 0, 0, -TAU, 1], ...spin(0.05, 0.42, 2, 1, Z, -TAU), [0.85, ...Z, 1]],
+      edge: [[0, ...Z, 0.001], [0.15, ...Z, 0.001], L(0.5, ...Z, 1), [0.85, ...Z, 1]],
+    },
+    glow: [[0, 1], S(0.52, 3), [0.85, 1]],
   },
   // The Tanto comes up in a reverse grip and is flipped point-forward, its cord swinging, edge lit as it turns.
   tanto: {
@@ -343,7 +444,7 @@ export const MELEE = {
       },
       {
         name: 'Thumb the bit', dur: 3.2,
-        track: [[0, ...Z], [0.6, -0.12, 0.08, -0.06, 0.1, 1.35, 1.0], [1.0, -0.12, 0.085, -0.06, 0.12, 1.4, 1.05], S(1.1, -0.12, 0.08, -0.06, 0.1, 1.35, 0.95), [1.5, -0.12, 0.085, -0.06, 0.12, 1.4, 1.05], S(1.6, -0.12, 0.08, -0.06, 0.1, 1.35, 0.95), [2.6, -0.1, 0.07, -0.05, 0.1, 1.3, 1.0], [3.2, ...Z]],
+        track: [[0, ...Z], [0.6, -0.12, 0.08, -0.06, 0.1, 1.35, -1.0], [1.0, -0.12, 0.085, -0.06, 0.12, 1.4, -1.05], S(1.1, -0.12, 0.08, -0.06, 0.1, 1.35, -0.95), [1.5, -0.12, 0.085, -0.06, 0.12, 1.4, -1.05], S(1.6, -0.12, 0.08, -0.06, 0.1, 1.35, -0.95), [2.6, -0.1, 0.07, -0.05, 0.1, 1.3, -1.0], [3.2, ...Z]],
         glow: [[0, 1], [0.6, 1], S(1.1, 2.5), [1.4, 1.2], S(1.6, 3), [2.4, 1], [3.2, 1]],
       },
     ],
@@ -527,6 +628,30 @@ export const MELEE = {
       },
     ],
   },
+  battleaxe: {
+    name: 'Battle Axe', blurb: 'A gilded battle axe on a black haft. Gild the edge, spin it on the haft, toss it end over end.',
+    pivot: [0, 0, 0], hip: [0, -0.01, 0.04], rot: [0.15, 0, 0],
+    inspects: [
+      {
+        name: 'Gild', dur: 3.2,
+        track: [[0, ...Z], [0.6, -0.12, 0.08, -0.06, 0.1, 1.35, -0.9], [2.6, -0.1, 0.085, -0.06, 0.12, 1.4, -0.95], [3.2, ...Z]],
+        parts: { edge: [[0, ...Z, 1], [0.6, ...Z, 1], S(0.75, ...Z, 0.001), [1.0, ...Z, 0.001], L(2.0, ...Z, 1), [3.2, ...Z, 1]] },
+        glow: [[0, 1], [0.7, 0.5], [1.9, 2.4], S(2.1, 3.4), [2.7, 1.1], [3.2, 1]],
+      },
+      {
+        name: 'Haft spin', dur: 2.8,
+        track: [[0, ...Z], [0.4, -0.04, 0.05, -0.04, 0.35, 0.2, 0], [1.8, -0.04, 0.055, -0.04, 0.38, 0.2, 0], [2.8, ...Z]],
+        parts: { w: [[0, ...Z, 1], [0.4, ...Z, 1], ...spin(0.4, 1.6, 2, 2), [2.8, 0, 0, 0, 0, 0, 2 * TAU, 1]] },
+        glow: [[0, 1], [1.5, 1.6], S(1.7, 3), [2.3, 1.1], [2.8, 1]],
+      },
+      {
+        name: 'Toss', dur: 2.6,
+        track: [[0, ...Z], [0.25, 0, -0.03, 0.02, -0.25, 0, 0], S(0.4, 0, 0.03, 0, 0.3, 0, 0), [1.3, 0, 0.03, -0.01, 0.3, 0, 0], S(1.45, 0, -0.03, 0, -0.1, 0, 0), [2.0, 0, 0, 0, 0.05, 0, 0], [2.6, ...Z]],
+        parts: { w: [[0, ...Z, 1], [0.4, ...Z, 1], L(0.7, 0, 0.26, 0.02, -Math.PI * 0.75, 0, 0, 1), L(1.0, 0, 0.28, 0.02, -Math.PI * 1.5, 0, 0, 1), L(1.35, 0, 0, 0, -TAU, 0, 0, 1), [2.6, 0, 0, 0, -TAU, 0, 0, 1]] },
+        glow: [[0, 1], [1.35, 1], S(1.45, 3.2), [2.0, 1], [2.6, 1]],
+      },
+    ],
+  },
 };
 
 // Swings: each melee type cuts its own way. `light` (fire) is a list played in turn, so the cuts alternate
@@ -620,6 +745,17 @@ const TANTO_LIGHT = {
   trail: [
     { pts: [[1.9, 0.6], [0.6, 0.06], [-0.6, -0.16], [-1.9, -0.12]], t0: 0.03, t1: 0.15, w: 0.07, linger: 0.55, core: 1, sparks: 9, sparkSize: 9 },
     { pts: [[1.9, 0.54], [0.6, 0.015], [-0.6, -0.2], [-1.9, -0.16]], t0: 0.045, t1: 0.165, w: 0.025, linger: 0.4, core: 0.2, color: 'accent', alpha: 0.9 },
+  ],
+};
+// Apogee battle axe: a heavy chop that leaves a gold stroke with a cyan core and a violet thread under it, throwing gold sparks.
+const BATTLEAXE_LIGHT = {
+  dur: 0.46,
+  track: [[0, ...Z], [0.06, 0.03, 0.06, 0.02, 0.5, -0.25, -0.45], S(0.19, -0.13, -0.035, -0.06, -0.25, 0.5, 0.8), [0.46, ...Z]],
+  glow: [[0, 1], S(0.19, 2.6), [0.46, 1]],
+  trail: [
+    { pts: [[0.95, 0.75], [0.4, 0.22], [-0.15, -0.28], [-0.6, -0.8]], t0: 0.04, t1: 0.18, w: 0.12, linger: 0.3, core: 0.7, color: 'trim', sparks: 7, sparkSize: 10, sparkColor: 'trim' },
+    { pts: [[0.95, 0.75], [0.4, 0.22], [-0.15, -0.28], [-0.6, -0.8]], t0: 0.04, t1: 0.18, w: 0.04, linger: 0.26, core: 1 },
+    { pts: [[0.9, 0.69], [0.36, 0.16], [-0.19, -0.33], [-0.64, -0.85]], t0: 0.055, t1: 0.195, w: 0.02, linger: 0.24, core: 0.2, color: 'accent', alpha: 0.9 },
   ],
 };
 const BOWIE_LIGHT = {
@@ -729,6 +865,21 @@ export const SWINGS = {
       ],
     },
   },
+  // Apogee battle axe: gold chops with a cyan core; the heavy brings it down overhead and bursts a gold crown of sparks.
+  battleaxe: {
+    light: [BATTLEAXE_LIGHT, { ...BATTLEAXE_LIGHT, track: [[0, ...Z], [0.06, -0.16, 0.07, 0.02, 0.5, 0.3, 0.5], S(0.19, 0, -0.012, -0.06, -0.25, -0.45, -0.8), [0.46, ...Z]], trail: BATTLEAXE_LIGHT.trail.map(flipX) }],
+    heavy: {
+      dur: 0.92,
+      track: [[0, ...Z], [0.18, 0, 0.065, 0.08, 0.85, 0.1, 0.1], S(0.32, -0.05, -0.1, -0.09, -0.9, 0.1, 0), [0.52, -0.05, -0.096, -0.09, -0.85, 0.1, 0], [0.92, ...Z]],
+      parts: { w: [[0, ...Z, 1], ...spin(0, 0.18, 2, 1), [0.92, 0, 0, 0, 0, 0, TAU, 1]] },
+      glow: [[0, 1], [0.18, 1.6], S(0.33, 3.4), [0.92, 1]],
+      trail: [
+        { pts: [[0.12, 1.1], [0.08, 0.5], [0.02, -0.1], [-0.02, -0.85]], t0: 0.2, t1: 0.32, w: 0.16, linger: 0.32, core: 0.6, color: 'trim', burst: 14, burstAt: 0.6, sparkSize: 12, sparkColor: 'trim' },
+        { pts: [[0.12, 1.1], [0.08, 0.5], [0.02, -0.1], [-0.02, -0.85]], t0: 0.2, t1: 0.32, w: 0.05, linger: 0.3, core: 1 },
+        { pts: hexPts(0.02, -0.15, 0.32), t0: 0.32, t1: 0.42, w: 0.03, linger: 0.3, core: 0.4, taper: 0, color: 'accent', alpha: 0.9 },
+      ],
+    },
+  },
   // Starspur bowie: a rising backhand with the rowel spinning, a teal arc that throws copper stars; the heavy hacks
   // down overhead and bursts a spray of stars where it crosses the middle.
   bowie: {
@@ -751,6 +902,7 @@ for (const [id, snd] of Object.entries({
   kunai: { whoosh: { hp: 1200, lp: 4000, decay: 0.08, gain: 0.18 } },
   arc: { whoosh: { lp: 2400, decay: 0.18 }, tones: [{ freq: 140, end: 230, decay: 0.28, gain: 0.05, type: 'sawtooth' }] },
   tanto: { whoosh: { hp: 1500, lp: 7000, decay: 0.14, gain: 0.18 }, tones: [{ at: 0.04, freq: 3600, end: 3300, decay: 0.6, gain: 0.04, type: 'triangle' }] },
+  battleaxe: { whoosh: { lp: 1200, decay: 0.2 }, heavyWhoosh: { lp: 900, decay: 0.3, gain: 0.26 }, tones: [{ at: 0.03, freq: 1180, end: 820, decay: 0.16, gain: 0.03, type: 'triangle' }, { at: 0.05, freq: 2950, decay: 0.3, gain: 0.018, type: 'triangle' }] },
   bowie: { whoosh: { lp: 1900, decay: 0.15 }, tones: [{ at: 0.03, freq: 2400, decay: 0.2, gain: 0.022, type: 'triangle' }, { at: 0.07, freq: 3100, decay: 0.22, gain: 0.02, type: 'triangle' }] },
 })) SWINGS[id].sound = snd;
 

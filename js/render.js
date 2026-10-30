@@ -12,7 +12,7 @@ import { VM_SHINE, shineMaterial, fitShine, updateShine, sweepAt, ViewmodelPost 
 // Blitz's Finale launcher, shown in the hands (and on her body) while the ultimate is out.
 const FINALE = { id: 'finale', name: 'Finale', cat: 'Ability', model: 'launcher', launcher: true };
 // Finisher effects a skin can name (`finisher` in skins.js), drawn by fxCollapse / fxLastLight below.
-const FINISHERS = ['collapse', 'lastLight', 'lastStroke'];
+const FINISHERS = ['collapse', 'lastLight', 'lastStroke', 'coronation'];
 import { ROUND } from './rounds.js';
 import { materialOf } from './map.js';
 import { dirFromAngles } from './entity.js';
@@ -587,7 +587,7 @@ export class Renderer {
       // A melee type cuts its own way and leaves its own trail, in its theme's colours; light cuts alternate sides.
       const sw = SWINGS[vm.meleeId];
       vm.swingAnim = sw ? (heavy ? sw.heavy : sw.light[this.swings++ % sw.light.length]) : null;
-      if (vm.swingAnim) { const sk = SKINS[vm.skin]; this.trails.play(vm.swingAnim.trail, { glow: sk?.glow?.color, accent: sk?.accent?.color }); }
+      if (vm.swingAnim) { const sk = SKINS[vm.skin]; this.trails.play(vm.swingAnim.trail, { glow: sk?.glow?.color, accent: sk?.accent?.color, trim: sk?.trim?.color }); }
     });
     g.on('equip', ({ who, gun }) => {
       if (who === g.player) { this.vm.equipStart = performance.now(); this.vm.equipDur = gun.def.equip * 1000; this.resetRecoil(); this.cycle = null; }
@@ -868,16 +868,17 @@ export class Renderer {
     if (f && (this.game.mode || this.game.time - f.at < 2)) this.playFinisher(f.kind, f.victim, f.skin);
   }
 
-  // Finishers take their colours from the skin (variant) that got the kill: its glow and its accent.
+  // Finishers take their colours from the skin (variant) that got the kill: its glow, its accent and its trim.
   playFinisher(kind, victim, skin) {
     const ch = this.characters.get(victim);
     const pos = ch?.group.visible ? [ch.group.position.x, ch.group.position.y, ch.group.position.z] : [...victim.pos];
-    const s = SKINS[skin] || {}, col = { glow: s.glow?.color ?? 0x3fb4ff, accent: s.accent?.color ?? s.glow?.color ?? 0xb44dff };
+    const s = SKINS[skin] || {}, col = { glow: s.glow?.color ?? 0x3fb4ff, accent: s.accent?.color ?? s.glow?.color ?? 0xb44dff, trim: s.trim?.color ?? 0xd9ad45 };
     this.lastFinisher = { kind, skin, at: this.game.time };
     this.game.emit('finisher', { kind, pos });
     if (kind === 'collapse') this.fxCollapse(pos, ch, col);
     else if (kind === 'lastLight') this.fxLastLight(pos, ch, col);
     else if (kind === 'lastStroke') this.fxLastStroke(pos, ch, col);
+    else if (kind === 'coronation') this.fxCoronation(pos, ch, col);
   }
 
   // The body shrinks away to nothing over `dur` seconds, starting `delay` seconds from now, rising `lift` metres.
@@ -1143,6 +1144,91 @@ export class Renderer {
           m.rotation.x += m.userData.spin[0] * dt; m.rotation.y += m.userData.spin[1] * dt;
           m.material.opacity = 0.9 * Math.min(1, k * 10) * (1 - k);
         }
+      }
+    });
+  }
+
+  // Apogee: "Coronation". A gold sigil (a ring, a hexagon in the glow colour and six spokes) turns out across the
+  // ground under the body; the body is lifted and burns away inside a column of light in the accent colour while a
+  // crown of eight gold blades, each tipped in the glow colour, rises out of the sigil round it, turning. The blades
+  // lean in until their tips meet over the body, and it all goes up as one white-gold beam: a flash, a shockwave,
+  // a ring and a shower of gold sparks, and a hard shake. It leaves nothing behind.
+  fxCoronation(pos, ch, col) {
+    const t0 = this.game.time, life = 3.0, meet = 1.9, rise = 1.0, R = 0.85, H = 1.15;
+    const lean = Math.asin(R / H), top = H * Math.cos(lean);
+    const add = (c, o) => Object.assign(new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }), { userData: { o } });
+    const shape = (pts) => { const sh = new THREE.Shape(); pts.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y))); return new THREE.ShapeGeometry(sh); };
+    const g = new THREE.Group();
+    g.position.set(pos[0], pos[1], pos[2]);
+    const sigil = new THREE.Group();
+    sigil.rotation.x = -Math.PI / 2;
+    sigil.position.y = 0.04;
+    const ringA = new THREE.Mesh(new THREE.RingGeometry(1.12, 1.2, 64), add(col.trim, 0.9));
+    const ringB = new THREE.Mesh(new THREE.RingGeometry(0.58, 0.63, 6), add(col.glow, 0.8));
+    sigil.add(ringA, ringB);
+    for (let i = 0; i < 6; i++) {
+      const sp = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.5), add(col.trim, 0.85));
+      sp.geometry.translate(0, 0.86, 0);
+      sp.rotation.z = (i / 6) * Math.PI * 2 + Math.PI / 6;
+      sigil.add(sp);
+    }
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.5, 1, 24, 1, true), add(col.accent, 0.3));
+    column.geometry.translate(0, 0.5, 0);
+    // The crown: each blade stands on a pivot at the sigil's edge, facing out, and leans in about its own tangent.
+    const crown = new THREE.Group(), blades = [];
+    const bladeGeo = shape([[-0.09, 0], [0.09, 0], [0.025, H * 0.9], [0, H], [-0.025, H * 0.9]]).rotateY(Math.PI / 2);
+    const tipGeo = shape([[0, H * 0.84], [0.035, H * 0.92], [0, H * 1.04], [-0.035, H * 0.92]]).rotateY(Math.PI / 2);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2, pivot = new THREE.Group();
+      pivot.position.set(Math.cos(a) * R, 0, Math.sin(a) * R);
+      pivot.rotation.y = -a; // local +x points out from the middle
+      const blade = new THREE.Group();
+      blade.add(new THREE.Mesh(bladeGeo, add(col.trim, 0.95)), new THREE.Mesh(tipGeo, add(col.glow, 1)));
+      pivot.add(blade);
+      crown.add(pivot);
+      blades.push(blade);
+    }
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 1, 16, 1, true), add(new THREE.Color(col.trim).lerp(new THREE.Color(0xffffff), 0.55), 0.9));
+    beam.geometry.translate(0, 0.5, 0);
+    beam.visible = false;
+    g.add(sigil, column, crown, beam);
+    this.vanishBody(ch, 0.4, 1.4, 1.0);
+    this.fxFinLight([pos[0], pos[1] + 1.2, pos[2]], col.trim, life, (t) => (t < meet ? 1.5 + 4 * (t / meet) : 42 * Math.max(0, 1 - (t - meet) / 0.9) ** 2));
+    let crowned = false;
+    this.fxAdd(g, t0 + life, (now) => {
+      const t = now - t0, fade = Math.max(0, 1 - Math.max(0, t - meet) / 0.35);
+      const draw = Math.min(1, t / 0.5), up = Math.min(1, t / rise), e = 1 - (1 - up) ** 3;
+      sigil.scale.setScalar(Math.max(0.001, 0.3 + 0.7 * draw));
+      sigil.rotation.z = t * 0.8;
+      ringB.rotation.z = -t * 2.2;
+      for (const m of sigil.children) m.material.opacity = m.material.userData.o * draw * fade;
+      column.scale.set(Math.max(0.001, fade), Math.max(0.001, 3.5 * e), Math.max(0.001, fade));
+      column.material.opacity = 0.3 * e * fade;
+      crown.position.y = -H * (1 - e);
+      crown.rotation.y = t * (0.6 + 1.6 * Math.min(1, t / meet));
+      const k = Math.min(1, Math.max(0, (t - (meet - 0.55)) / 0.55)), lk = k * k * (3 - 2 * k);
+      for (const b of blades) {
+        b.rotation.z = lean * lk;
+        for (const m of b.children) m.material.opacity = m.material.userData.o * fade;
+      }
+      crown.visible = sigil.visible = column.visible = fade > 0;
+      if (!crowned && t >= meet) {
+        crowned = true;
+        const p = [pos[0], pos[1] + top, pos[2]];
+        beam.visible = true;
+        this.fxBurst(p, 0xffffff, 4.5, 0.3, true);
+        this.fxBurst(p, col.trim, 9, 0.6);
+        this.fxBurst(p, col.glow, 5, 0.45, true);
+        this.fxShock([pos[0], pos[1] + 0.05, pos[2]], col.accent, 9, 0.9);
+        this.fxRingUp(p, col.trim, 4.5, 0.6);
+        this.burst(p, null, new THREE.Color(col.trim).toArray(), 60, 8);
+        this.burst(p, null, new THREE.Color(col.glow).toArray(), 30, 5);
+        this.shakeCamera(p, 0.032, 0.65);
+      }
+      if (crowned) {
+        const b = Math.min(1, (t - meet) / 0.12), out = Math.max(0, 1 - (t - meet) / (life - meet));
+        beam.scale.set(Math.max(0.001, out * (1 + 2 * (1 - b))), Math.max(0.001, 40 * b), Math.max(0.001, out * (1 + 2 * (1 - b))));
+        beam.material.opacity = 0.9 * out;
       }
     });
   }

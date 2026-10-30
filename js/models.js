@@ -215,6 +215,44 @@ function wrap(k, n, y0, z0, y1, z1, w, d, slot, tilt = 0) {
   }
 }
 
+// A straight bar of square section w x t from (z0, y0) to (z1, y1) in the side plane: Apogee's skeletal stocks.
+function bar(k, z0, y0, z1, y1, w, t, slot, x = 0) {
+  const len = Math.hypot(z1 - z0, y1 - y0);
+  k.box(w, t, len, slot, x, (y0 + y1) / 2, (z0 + z1) / 2, Math.atan2(-(y1 - y0), z1 - z0));
+}
+// Apogee's gilded skeleton stock behind the receiver at z0: a top bar, a bottom bar, a brace, and a white butt
+// plate with a black pad at z1. `top` / `bot` are the heights where it meets the receiver; it drops by `drop`.
+function apoStock(k, z0, z1, top, bot, drop, w = 0.012) {
+  bar(k, z0, top, z1, top - 0.006, w, 0.009, 'trim');
+  bar(k, z0 + 0.03, bot, z1 - 0.02, bot - drop, w, 0.009, 'trim');
+  bar(k, z0 + 0.06, bot - drop * 0.25, z1 - 0.07, top - 0.004, w * 0.85, 0.007, 'trim');
+  bar(k, z0 + 0.003, top, z0 + 0.03, bot, w, 0.009, 'trim');
+  const by = (top - 0.006 + bot - drop) / 2, bh = top - 0.006 - (bot - drop) + 0.012;
+  k.box(w + 0.026, bh, 0.02, 'body', 0, by, z1);
+  k.box(w + 0.028, bh * 0.9, 0.008, 'metal', 0, by, z1 + 0.012);
+  k.box(w + 0.027, 0.003, 0.021, 'glow', 0, by + bh * 0.3, z1);
+}
+// Apogee's hinged top: the receiver's top cover from z0 (front) to z1 (back) is part `lid`, hinged along its left
+// edge so it swings up and over to the left like a book, and lies over a channel that holds the energy cell (part
+// `cell`): a lit bar with gold caps. The cover is white with gold edges, a cyan strip and a gold latch on its right
+// edge. `y` is the top of the cover, `w` the width, `parent` a part to nest in (a gun wrapped in `w`).
+function apoLid(k, z0, z1, y, w, parent = null) {
+  const len = z1 - z0, zc = (z0 + z1) / 2, h = 0.014, floor = y - h;
+  // The channel: a black floor and white walls at each side, under the cover.
+  k.part(parent);
+  k.box(w * 0.8, 0.003, len * 0.96, 'metal', 0, floor + 0.0015, zc);
+  for (const s of [-1, 1]) k.box(0.003, h - 0.002, len, 'body', s * (w / 2 - 0.0015), floor + (h - 0.002) / 2, zc);
+  k.part('cell', [0, floor + 0.007, zc], parent);
+  k.box(w * 0.42, 0.008, len * 0.8, 'glow', 0, floor + 0.007, zc);
+  for (const s of [-1, 1]) k.box(w * 0.46, 0.01, 0.01, 'trim', 0, floor + 0.007, zc + s * len * 0.42);
+  k.part('lid', [-w / 2, y, zc], parent);
+  k.box(w, h * 0.7, len, 'body', 0, y - h * 0.35, zc);
+  for (const s of [-1, 1]) k.box(0.004, 0.004, len * 0.98, 'trim', s * (w / 2 - 0.001), y - 0.001, zc);
+  k.box(w * 0.18, 0.0025, len * 0.62, 'glow', 0, y + 0.0005, zc);
+  k.box(0.005, 0.007, len * 0.3, 'trim', w / 2 + 0.001, y - 0.004, zc); // the latch on the free edge
+  k.part(parent);
+}
+
 // Orbital's reactor spire, set into the gun at z: the middle of the receiver is cut away and a hollow cone fills
 // the gap, standing on its point at the bottom of the gun (yb) on a slim bar that ties the two halves together
 // and flaring to a wide reactor ring at `top`, just over the top of the gun. It is open at the top and lit from
@@ -271,17 +309,48 @@ const DESIGNS = {
   },
 
   // ---- melee types (js/melee.js): the hand grips at the origin, the blade points to -z ----
+  // The head hangs below the haft with its edge facing down, the way the hatchet chops (the poll is on top).
   axe(k) {
+    const dn = (pts) => pts.map(([z, y]) => [z, -y]);
     k.cyl(0.011, 0.36, 'trim', 0, 0, -0.1, 10);
     k.cyl(0.0135, 0.1, 'grip', 0, 0, 0.03, 10);
     k.teeth(4, -0.005, 0.065, 0.029, 0.029, 0.004, 'trim', 0, 0);
     k.cyl(0.016, 0.016, 'body', 0, 0, 0.088, 10);
-    k.box(0.024, 0.044, 0.05, 'body', 0, 0.002, -0.262);
-    k.box(0.018, 0.028, 0.032, 'trim', 0, -0.034, -0.262);
-    k.prof([[-0.24, 0.015], [-0.243, 0.06], [-0.208, 0.102], [-0.25, 0.114], [-0.3, 0.114], [-0.346, 0.098], [-0.292, 0.06], [-0.285, 0.015]], 0.008, 'metal', 0, 0.001);
-    k.prof([[-0.206, 0.099], [-0.25, 0.117], [-0.3, 0.117], [-0.348, 0.1], [-0.342, 0.094], [-0.3, 0.109], [-0.25, 0.109], [-0.212, 0.095]], 0.0088, 'glow', 0, 0.0005);
-    k.box(0.026, 0.006, 0.054, 'glow', 0, 0.026, -0.262);
-    return { muzzle: [0, 0.07, -0.3], sightY: 0 };
+    k.box(0.024, 0.044, 0.05, 'body', 0, -0.002, -0.262);
+    k.box(0.018, 0.028, 0.032, 'trim', 0, 0.034, -0.262);
+    k.prof(dn([[-0.24, 0.015], [-0.243, 0.06], [-0.208, 0.102], [-0.25, 0.114], [-0.3, 0.114], [-0.346, 0.098], [-0.292, 0.06], [-0.285, 0.015]]), 0.008, 'metal', 0, 0.001);
+    k.prof(dn([[-0.206, 0.099], [-0.25, 0.117], [-0.3, 0.117], [-0.348, 0.1], [-0.342, 0.094], [-0.3, 0.109], [-0.25, 0.109], [-0.212, 0.095]]), 0.0088, 'glow', 0, 0.0005);
+    k.box(0.026, 0.006, 0.054, 'glow', 0, -0.026, -0.262);
+    return { muzzle: [0, -0.07, -0.3], sightY: 0 };
+  },
+
+  // Apogee Battle Axe: a black haft with gold rings and a violet wrap, a white blade with a black glass inlay in a
+  // gold rim hanging below the head (edge down, like the hatchet), a gold spear tip past the head, and a lit edge
+  // (part `edge`, pivoting at the beard so it gilds from the beard to the toe).
+  battleaxe(k) {
+    k.cyl(0.0105, 0.43, 'metal', 0, 0, -0.115, 10);
+    for (const z of [-0.2, -0.02, 0.075]) k.cyl(0.0128, 0.008, 'trim', 0, 0, z, 10);
+    k.cyl(0.0132, 0.085, 'grip', 0, 0, 0.03, 10);
+    k.box(0.0272, 0.0035, 0.07, 'glow', 0, 0, -0.11);
+    k.cyl(0.015, 0.02, 'trim', 0, 0, 0.105, 10);
+    k.tor(0.0152, 0.0018, 'glow', 0, 0, 0.116);
+    // Head: a white socket with a gold collar, a gold spike on top and a spear tip forward.
+    k.box(0.026, 0.038, 0.07, 'body', 0, -0.004, -0.3);
+    k.box(0.0275, 0.004, 0.072, 'trim', 0, 0.015, -0.3);
+    k.prof([[-0.275, 0.016], [-0.29, 0.042], [-0.31, 0.046], [-0.322, 0.016]], 0.01, 'trim', 0, 0.001);
+    k.prof([[-0.335, 0.01], [-0.385, 0.0], [-0.335, -0.012]], 0.012, 'trim', 0, 0.001);
+    k.ball(0.005, 'accent', 0, 0.002, -0.3);
+    // The blade: a gold rim, the white face over it, a black glass inlay with a violet band and cyan strips.
+    const blade = [[-0.268, -0.02], [-0.252, -0.055], [-0.228, -0.1], [-0.245, -0.114], [-0.33, -0.114], [-0.362, -0.1], [-0.338, -0.055], [-0.335, -0.02]];
+    k.prof(blade.map(([z, y]) => [z + (z < -0.3 ? -0.004 : 0.004), y - (y < -0.09 ? 0.004 : 0)]), 0.0074, 'trim', 0, 0.001);
+    k.prof(blade, 0.0086, 'body', 0, 0.001);
+    k.prof([[-0.275, -0.03], [-0.262, -0.058], [-0.248, -0.088], [-0.322, -0.088], [-0.326, -0.058], [-0.322, -0.03]], 0.0092, 'metal', 0, 0.0005);
+    k.box(0.0094, 0.008, 0.06, 'grip', 0, -0.07, -0.292);
+    for (const y of [-0.042, -0.08]) k.box(0.0096, 0.0025, 0.03, 'glow', 0, y, -0.3);
+    k.part('edge', [0, -0.113, -0.24], 'w');
+    k.prof([[-0.226, -0.104], [-0.244, -0.12], [-0.33, -0.12], [-0.366, -0.104], [-0.36, -0.1], [-0.33, -0.113], [-0.244, -0.113], [-0.232, -0.1]], 0.009, 'glow', 0, 0.0004);
+    k.part('w');
+    return { muzzle: [0, -0.09, -0.3], sightY: 0 };
   },
 
   katana(k) {
@@ -1075,6 +1144,123 @@ const DESIGNS = {
     return { muzzle: [0, 0.022, -0.25], sightY: 0.069 };
   },
 
+  // ---- Apogee collection (model skins, see skins.js): white ceramic, black glass, gold, violet, cyan ----
+  // Every gun has the hinged top (apoLid): the cover over the receiver swings open from the front and the reload
+  // swaps the energy cell under it (`cell` in reloadanim.js). Gold skeleton stocks (apoStock) on the long guns.
+  // Vandal: black lower receiver, a white upper that runs out into a long tapered nose over the handguard, a gold
+  // seam between them, violet side panels, a gold muzzle and a gilded skeleton stock.
+  vandalApo(k) {
+    k.prof([[0.06, -0.022], [0.06, 0.02], [-0.3, 0.02], [-0.32, 0.004], [-0.32, -0.022]], 0.05, 'metal');
+    k.prof([[0.06, 0.018], [0.06, 0.046], [0.032, 0.046], [0.032, 0.03], [-0.2, 0.03], [-0.2, 0.046], [-0.4, 0.043], [-0.47, 0.024], [-0.47, 0.008], [-0.32, 0.018]], 0.052, 'body');
+    apoLid(k, -0.2, 0.032, 0.046, 0.05);
+    k.box(0.0525, 0.003, 0.38, 'trim', 0, 0.019, -0.13);
+    k.box(0.0515, 0.016, 0.22, 'grip', 0, -0.004, -0.16);
+    k.box(0.0525, 0.003, 0.05, 'glow', 0, 0.008, -0.272);
+    k.box(0.0525, 0.0025, 0.08, 'glow', 0, 0.034, -0.31);
+    for (const x of [-0.0255, 0.0255]) k.ball(0.0045, 'accent', x, -0.004, 0.0);
+    // Handguard under the nose, gold wings at its sides and a gold fin under the front.
+    k.prof([[-0.32, -0.016], [-0.32, 0.018], [-0.47, 0.01], [-0.47, -0.004]], 0.044, 'metal');
+    k.box(0.056, 0.006, 0.03, 'trim', 0, 0.026, -0.43, 0.3);
+    k.prof([[-0.38, -0.014], [-0.46, -0.004], [-0.48, -0.02], [-0.43, -0.024]], 0.01, 'trim', 0, 0.001);
+    k.cyl(0.0095, 0.08, 'metal', 0, 0.012, -0.505);
+    k.prof([[-0.54, 0.0], [-0.54, 0.026], [-0.6, 0.022], [-0.615, 0.012], [-0.6, 0.002]], 0.026, 'trim');
+    k.tor(0.009, 0.0022, 'glow', 0, 0.012, -0.617);
+    // Curved mag (white, black and gold, a cyan window), violet grip with a gold backstrap.
+    k.box(0.028, 0.06, 0.04, 'body', 0, -0.05, -0.115, 0.28);
+    k.box(0.028, 0.06, 0.04, 'metal', 0, -0.103, -0.088, 0.55);
+    k.box(0.0285, 0.003, 0.03, 'glow', 0, -0.075, -0.104, 0.4);
+    k.box(0.032, 0.008, 0.046, 'trim', 0, -0.13, -0.07, 0.55);
+    k.box(0.034, 0.1, 0.044, 'grip', 0, -0.06, 0.03, -0.3);
+    k.box(0.036, 0.09, 0.008, 'trim', 0, -0.058, 0.054, -0.3);
+    k.box(0.024, 0.005, 0.05, 'trim', 0, -0.028, -0.03);
+    k.box(0.004, 0.014, 0.004, 'metal', 0, -0.02, -0.012);
+    apoStock(k, 0.06, 0.3, 0.04, -0.018, 0.06);
+    irons(k, -0.39, 0.045, 0.046);
+    return { muzzle: [0, 0.012, -0.62], sightY: 0.056 };
+  },
+
+  // Guardian: the Vandal's lines drawn out longer, a slim scope behind the hinged top, a long gold muzzle.
+  guardianApo(k) {
+    k.prof([[0.05, -0.02], [0.05, 0.02], [-0.36, 0.02], [-0.38, 0.0], [-0.38, -0.02]], 0.048, 'metal');
+    k.prof([[0.05, 0.018], [0.05, 0.048], [-0.075, 0.048], [-0.075, 0.034], [-0.3, 0.034], [-0.3, 0.048], [-0.5, 0.045], [-0.56, 0.026], [-0.56, 0.01], [-0.38, 0.018]], 0.05, 'body');
+    apoLid(k, -0.3, -0.075, 0.048, 0.048);
+    k.box(0.0505, 0.003, 0.43, 'trim', 0, 0.019, -0.16);
+    k.box(0.0495, 0.016, 0.26, 'grip', 0, -0.004, -0.2);
+    k.box(0.0505, 0.003, 0.06, 'glow', 0, 0.008, -0.33);
+    k.box(0.0505, 0.0025, 0.1, 'glow', 0, 0.036, -0.39);
+    for (const x of [-0.0245, 0.0245]) k.ball(0.0045, 'accent', x, -0.004, -0.02);
+    k.prof([[-0.38, -0.016], [-0.38, 0.018], [-0.56, 0.01], [-0.56, -0.004]], 0.042, 'metal');
+    k.box(0.054, 0.006, 0.03, 'trim', 0, 0.027, -0.52, 0.3);
+    k.prof([[-0.42, -0.014], [-0.55, -0.004], [-0.58, -0.022], [-0.5, -0.026]], 0.01, 'trim', 0, 0.001);
+    k.cyl(0.0095, 0.12, 'metal', 0, 0.014, -0.62);
+    k.prof([[-0.675, 0.0], [-0.675, 0.028], [-0.715, 0.024], [-0.725, 0.014], [-0.715, 0.003]], 0.024, 'trim');
+    k.tor(0.009, 0.0022, 'glow', 0, 0.014, -0.727);
+    k.box(0.026, 0.07, 0.04, 'body', 0, -0.055, -0.12, 0.08);
+    k.box(0.0265, 0.003, 0.03, 'glow', 0, -0.05, -0.12, 0.08);
+    k.box(0.03, 0.008, 0.044, 'trim', 0, -0.093, -0.117, 0.08);
+    k.box(0.034, 0.1, 0.044, 'grip', 0, -0.06, 0.02, -0.26);
+    k.box(0.036, 0.09, 0.008, 'trim', 0, -0.058, 0.044, -0.26);
+    k.box(0.024, 0.005, 0.05, 'trim', 0, -0.026, -0.02);
+    k.box(0.004, 0.014, 0.004, 'metal', 0, -0.018, -0.004);
+    apoStock(k, 0.05, 0.31, 0.044, -0.018, 0.065);
+    const sy = scope(k, -0.005, 0.048, 0.015, 0.13);
+    return { muzzle: [0, 0.014, -0.73], sightY: sy };
+  },
+
+  // Spectre: a compact white upper over black glass, a fat black shroud with gold bands and a white top strap, a
+  // holo sight behind the hinged top, a folded gold skeleton stock. The whole gun is part `w` (pivoting on the
+  // barrel line) so the inspect and pullout can roll it.
+  spectreApo(k) {
+    k.part('w', [0, 0.022, 0]);
+    k.prof([[0.07, -0.006], [0.07, 0.026], [-0.22, 0.026], [-0.22, -0.006]], 0.044, 'metal');
+    k.prof([[0.07, 0.024], [0.07, 0.054], [-0.05, 0.054], [-0.05, 0.04], [-0.2, 0.04], [-0.2, 0.054], [-0.24, 0.05], [-0.24, 0.024]], 0.046, 'body');
+    apoLid(k, -0.2, -0.05, 0.054, 0.044, 'w');
+    k.box(0.0465, 0.003, 0.29, 'trim', 0, 0.025, -0.075);
+    k.box(0.0455, 0.016, 0.2, 'grip', 0, 0.008, -0.1);
+    k.box(0.047, 0.0025, 0.06, 'glow', 0, 0.033, -0.22);
+    for (const x of [-0.0225, 0.0225]) k.ball(0.004, 'accent', x, 0.008, 0.03);
+    k.cyl(0.02, 0.18, 'metal', 0, 0.022, -0.32, 18);
+    k.teeth(4, -0.26, -0.38, 0.0425, 0.0425, 0.004, 'trim', 0, 0.022);
+    k.box(0.03, 0.008, 0.16, 'body', 0, 0.044, -0.31);
+    k.cyl(0.022, 0.012, 'trim', 0, 0.022, -0.405, 18);
+    k.cyl(0.0205, 0.006, 'glow', 0, 0.022, -0.414, 18);
+    k.box(0.026, 0.12, 0.034, 'body', 0, -0.065, -0.07, 0.05);
+    k.box(0.0265, 0.05, 0.003, 'glow', 0, -0.06, -0.088, 0.05);
+    k.box(0.03, 0.008, 0.038, 'trim', 0, -0.126, -0.067, 0.05);
+    k.box(0.034, 0.1, 0.044, 'grip', 0, -0.055, 0.04, -0.24);
+    k.box(0.036, 0.09, 0.008, 'trim', 0, -0.053, 0.064, -0.24);
+    k.box(0.024, 0.005, 0.05, 'trim', 0, -0.024, 0.002);
+    apoStock(k, 0.07, 0.25, 0.048, 0.0, 0.05, 0.01);
+    const sy = holo(k, 0.02, 0.054);
+    k.part(null);
+    return { muzzle: [0, 0.022, -0.425], sightY: sy };
+  },
+
+  // Classic: a white slide with the hinged cover in its middle, a black glass frame with a gold seam and a cyan
+  // strip, a violet grip with a gold backstrap. The whole gun is part `w` (pivoting on the trigger guard) so the
+  // inspect and pullout can twirl it on your finger.
+  classicApo(k) {
+    k.part('w', [0, -0.02, 0.008]);
+    k.prof([[0.05, 0.003], [0.05, 0.036], [0.035, 0.043], [-0.01, 0.043], [-0.01, 0.003]], 0.03, 'body');
+    k.prof([[-0.01, 0.003], [-0.01, 0.029], [-0.13, 0.029], [-0.13, 0.003]], 0.03, 'body');
+    apoLid(k, -0.13, -0.01, 0.043, 0.03, 'w');
+    k.prof([[-0.13, 0.003], [-0.13, 0.043], [-0.155, 0.043], [-0.168, 0.03], [-0.168, 0.003]], 0.03, 'body');
+    k.cyl(0.008, 0.01, 'trim', 0, 0.022, -0.17);
+    k.tor(0.006, 0.0016, 'glow', 0, 0.022, -0.176);
+    k.prof([[0.045, -0.024], [0.045, 0.003], [-0.155, 0.003], [-0.155, -0.012], [-0.03, -0.024]], 0.032, 'metal');
+    k.box(0.0325, 0.003, 0.2, 'trim', 0, 0.004, -0.055);
+    k.box(0.0325, 0.003, 0.07, 'glow', 0, -0.006, -0.105);
+    for (const x of [-0.0162, 0.0162]) k.ball(0.0035, 'accent', x, -0.012, 0.025);
+    k.box(0.031, 0.11, 0.044, 'grip', 0, -0.07, 0.03, -0.26);
+    k.box(0.033, 0.1, 0.008, 'trim', 0, -0.068, 0.054, -0.26);
+    k.box(0.034, 0.009, 0.048, 'trim', 0, -0.124, 0.046, -0.26);
+    k.box(0.022, 0.005, 0.05, 'trim', 0, -0.036, -0.022);
+    k.box(0.004, 0.016, 0.005, 'metal', 0, -0.026, -0.006);
+    irons(k, -0.15, 0.04, 0.043);
+    k.part(null);
+    return { muzzle: [0, 0.022, -0.18], sightY: 0.05 };
+  },
+
   warden(k) {
     k.prof([[0.08, -0.024], [0.08, 0.05], [-0.36, 0.05], [-0.38, 0.024], [-0.38, -0.024]], 0.054, 'body');
     k.box(0.055, 0.004, 0.36, 'glow', 0, 0.018, -0.13);
@@ -1246,6 +1432,7 @@ function offHands(g, parts, mats) {
   }
   if (parts.shell) add(parts.shell, 0.014, -0.016, 0.04, [0.06, -0.12, 0.16]);
   if (parts.orb) add(parts.orb, -0.03, 0.022, 0.012, [-0.07, 0.04, 0.15]); // presses the fresh orb in from above-left
+  if (parts.cell) add(parts.cell, -0.03, 0.02, 0.01, [-0.07, 0.04, 0.15]); // Apogee: lays the fresh cell in from above-left
   if (parts.swipe) add(parts.swipe, -0.016, 0.01, 0.0, [-0.016, -0.165, 0.04], [1.32, 0, 0]); // Oathblade: runs along the blade, arm hanging below
   return hands;
 }

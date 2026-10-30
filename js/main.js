@@ -89,16 +89,23 @@ game.on('hit', ({ attacker, target, part, killed, dot }) => {
 // The HUD's kill listener runs first (it was hooked when the HUD was built), so hud.streak already counts this kill.
 game.on('kill', ({ killer, victim }) => { if (isPlayer(killer) && !isPlayer(victim) && game.isEnemy(killer, victim)) sound.killStreak(hud.streak); });
 game.on('finisher', ({ kind, pos }) => sound.finisher(kind, pos));
-game.on('reload', ({ who, gun }) => { if (isPlayer(who)) sound.reload(gun.reloadDur, RELOAD_SOUNDS[RELOAD_STYLE[designFor(skinFor(settings, gun.def.id), gun.def.id)] || RELOAD_STYLE[gun.def.id]], gun.def.id); });
+// A model skin's own reload (Apogee's cell) plays its own steps instead of the gun's stock reload file.
+const OWN_RELOAD_SOUND = new Set(['cell']);
+game.on('reload', ({ who, gun }) => {
+  if (!isPlayer(who)) return;
+  const own = RELOAD_STYLE[designFor(skinFor(settings, gun.def.id), gun.def.id)];
+  sound.reload(gun.reloadDur, RELOAD_SOUNDS[own || RELOAD_STYLE[gun.def.id]], gun.def.id, OWN_RELOAD_SOUND.has(own));
+});
 game.on('reloadRound', ({ who }) => { if (isPlayer(who)) { sound.click(0, 0.3); sound.thunk(0.03); } });
 game.on('dry', ({ who }) => { if (isPlayer(who)) sound.click(0, 0.3); });
-// Oathblade guns and the Tanto play the Oathblade pullout sound (sounds/oathblade-draw.mp3) as they're drawn.
-const BLADE_DRAW = new Set(['vandalOath', 'sheriffOath', 'tanto']);
+// Models that draw their own way: Oathblade guns and the Tanto play the Oathblade pullout sound
+// (sounds/oathblade-draw.mp3, or the synthesized blade draw); Apogee guns and the Battle Axe hum up and snap shut.
+const DRAW_SOUND = { vandalOath: 'blade', sheriffOath: 'blade', tanto: 'blade', vandalApo: 'energy', guardianApo: 'energy', spectreApo: 'energy', classicApo: 'energy', battleaxe: 'energy' };
 game.on('equip', ({ who, gun }) => {
   if (!isPlayer(who)) return;
   const id = gun?.def?.id, w = id === 'knife' ? meleeId(settings.melee) : id;
   const skin = w && skinFor(settings, w);
-  sound.equip(id, skin && (SKINS[skin]?.sounds || baseSkin(skin)), !!w && BLADE_DRAW.has(designFor(skin, w)));
+  sound.equip(id, skin && (SKINS[skin]?.sounds || baseSkin(skin)), (w && DRAW_SOUND[designFor(skin, w)]) || null);
 });
 game.on('swing', ({ who, heavy }) => { if (isPlayer(who)) sound.swing(heavy, SWINGS[meleeId(settings.melee)]?.sound); });
 game.on('ability', ({ who, type }) => { if (isPlayer(who)) sound.ability(type); });
