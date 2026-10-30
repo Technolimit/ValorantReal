@@ -542,6 +542,84 @@ th { color: var(--muted); font-weight: 500; }
 #end-stats b { display: block; font-size: 24px; }
 #end-stats span { color: var(--muted); font-size: 12px; }
 
+/* ---------- Home screen ----------
+   Static CSS only: gradients for the backdrop, no blur, no animation, and the 3D scene behind it stops
+   drawing while it is up (main.js), so the lobby costs next to nothing. */
+#menu.home { display: flex; flex-direction: column; place-items: stretch; padding: 0; overflow: hidden; --gold: #d8b25a;
+  background:
+    linear-gradient(118deg, transparent 0 61%, rgba(216, 178, 90, 0.22) 61.2%, transparent 61.6% 100%),
+    linear-gradient(118deg, transparent 0 66%, rgba(216, 178, 90, 0.10) 66.1%, transparent 67.4% 100%),
+    linear-gradient(62deg, transparent 0 22%, rgba(216, 178, 90, 0.14) 22.1%, transparent 22.5% 100%),
+    radial-gradient(ellipse at 50% 42%, rgba(84, 70, 40, 0.38), transparent 60%),
+    radial-gradient(ellipse at 50% 120%, rgba(255, 70, 85, 0.12), transparent 55%),
+    linear-gradient(#141c25, #0b1016); }
+.home-nav { display: flex; align-items: stretch; height: 46px; flex: none; background: rgba(8, 12, 17, 0.88); border-bottom: 1px solid var(--line); }
+.home-brand { display: flex; align-items: center; gap: 10px; padding: 0 26px 0 18px; font-weight: 800; font-size: 18px; letter-spacing: 3px; text-transform: uppercase; background: var(--text); color: #0f1923; clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 100%, 0 100%); }
+.home-brand svg { width: 20px; height: 20px; fill: var(--accent); }
+.home-tab, .home-gear { background: none; border: 0; color: var(--muted); padding: 0 18px; cursor: pointer; font-size: 12px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; border-bottom: 2px solid transparent; }
+.home-tab:hover, .home-gear:hover { color: var(--text); }
+.home-tab.on { color: var(--text); border-bottom-color: var(--accent); }
+.home-gear { margin-left: auto; margin-right: 76px; padding: 0 16px; /* clear of the FPS counter */ display: grid; place-items: center; }
+.home-gear svg { width: 22px; height: 22px; fill: currentColor; }
+
+.home-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr) 270px; gap: 24px; padding: 3vh 22px 3vh; }
+.home-queue, .home-feed { display: flex; flex-direction: column; gap: 6px; align-self: center; }
+.home-queue h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+.home-queue .mode { padding: 12px 14px; background: rgba(15, 25, 35, 0.82); border: 1px solid var(--line); border-left: 3px solid transparent; }
+.home-queue .mode:hover { border-color: rgba(255, 255, 255, 0.3); }
+.home-queue .mode.sel { border-color: var(--line); border-left-color: var(--accent); background: linear-gradient(90deg, rgba(255, 70, 85, 0.18), rgba(15, 25, 35, 0.86) 70%); }
+.home-queue .mode b { font-size: 14px; letter-spacing: 1.5px; }
+.home-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(15, 25, 35, 0.72); border: 1px solid var(--line); color: var(--text); cursor: pointer; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; text-align: left; }
+.home-row:first-of-type { margin-top: 8px; }
+.home-row span { color: var(--muted); }
+.home-row b { font-weight: 600; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-row:hover { border-color: rgba(255, 255, 255, 0.35); }
+
+.home-party { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.4vh; min-width: 0; }
+.home-strip { display: flex; align-items: center; gap: 18px; padding: 8px 22px; background: rgba(8, 12, 17, 0.6); border: 1px solid var(--line); }
+.home-strip div { text-align: center; }
+.home-strip small { display: block; font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+.home-strip b { font-size: 14px; letter-spacing: 1px; }
+.home-strip i { width: 1px; align-self: stretch; background: var(--line); }
+
+.home-cards { display: flex; align-items: center; justify-content: center; gap: 0; height: min(52vh, 460px); width: 100%; }
+.home-slot, .home-me { clip-path: polygon(0 0, 100% 0, 100% 86%, 50% 100%, 0 86%); }
+.home-slot { width: min(9vw, 130px); height: 78%; margin: 0 -6px; background: linear-gradient(rgba(36, 48, 60, 0.9), rgba(20, 28, 37, 0.92)); border: 0; border-top: 3px solid rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.55); font-size: 26px; font-weight: 300; cursor: pointer; }
+.home-slot.far { height: 70%; opacity: 0.75; }
+.home-slot:hover { color: #fff; background: linear-gradient(rgba(48, 62, 76, 0.95), rgba(24, 33, 43, 0.95)); }
+.home-me { position: relative; z-index: 1; width: min(16vw, 230px); min-width: 170px; height: 100%; margin: 0 14px; display: flex; flex-direction: column; align-items: center; padding: 0 0 13%; border-top: 3px solid var(--ac, var(--accent));
+  background: radial-gradient(ellipse at 50% 38%, color-mix(in srgb, var(--ac, #7fe3ff) 34%, transparent), transparent 62%), linear-gradient(#22303e, #121a23); }
+.home-art { flex: 1; width: 78%; display: grid; place-items: center; }
+.home-art svg { width: 100%; max-height: 100%; filter: drop-shadow(0 0 14px color-mix(in srgb, var(--ac, #7fe3ff) 55%, transparent)); }
+.home-ready { width: 100%; padding: 5px 0; text-align: center; font-size: 12px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #0f1923; background: var(--ac, var(--good)); }
+.home-me b { margin-top: 10px; font-size: 18px; letter-spacing: 1px; }
+.home-me small { color: var(--muted); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; }
+.home-hint { margin: 0; color: var(--muted); font-size: 12px; letter-spacing: 1px; text-align: center; }
+.home-find { padding: 14px 56px; background: var(--accent); border: 0; outline: 1px solid rgba(255, 70, 85, 0.5); outline-offset: 4px; color: #fff; font-size: 18px; font-weight: 800; letter-spacing: 4px; text-transform: uppercase; cursor: pointer; }
+.home-find:hover { background: #ff5b68; outline-color: #fff; }
+.home-party #touch-note { margin: 0; }
+
+.home-feature { position: relative; display: block; padding: 0; border: 1px solid var(--line); border-top: 2px solid var(--gold); cursor: pointer; text-align: left; color: var(--text); overflow: hidden; background: linear-gradient(150deg, #2a2a36, #14161d 70%); }
+.home-feature img { display: block; width: 100%; aspect-ratio: 3 / 1.4; object-fit: contain; padding: 12px 8px 0; }
+.home-feature span { display: block; padding: 8px 14px 14px; }
+.home-feature small, .home-card small { display: block; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); }
+.home-feature b { display: block; font-size: 17px; letter-spacing: 1px; text-transform: uppercase; margin: 2px 0 4px; }
+.home-feature em { font-style: normal; color: var(--muted); font-size: 12px; line-height: 1.35; }
+.home-feature:hover { border-color: rgba(255, 255, 255, 0.35); border-top-color: var(--gold); }
+.home-card { padding: 12px 14px; background: rgba(15, 25, 35, 0.8); border: 1px solid var(--line); border-left: 2px solid var(--accent); }
+.home-card p { margin: 4px 0 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
+
+@media (max-width: 1100px) { .home-body { grid-template-columns: 220px minmax(0, 1fr); } .home-feed { display: none; } }
+@media (max-width: 760px) {
+  #menu.home { overflow: auto; }
+  .home-nav { overflow-x: auto; }
+  .home-tab { padding: 0 12px; }
+  .home-body { grid-template-columns: 1fr; padding: 16px; }
+  .home-slot { display: none; }
+  .home-cards { height: 320px; }
+  .home-party { order: -1; }
+}
+
 @media (max-width: 600px) {
   .panel { padding: 18px 16px; }
   .panel h1 { font-size: 32px; }
@@ -549,7 +627,7 @@ th { color: var(--muted); font-weight: 500; }
   .stat { grid-template-columns: auto 70px; }
 }
 </style>
-<script type="module" src="js/main.js?v=22"></script>
+<script type="module" src="js/main.js?v=23"></script>
 <canvas id="view"></canvas>
 
 <div id="hud" hidden>
@@ -628,27 +706,63 @@ th { color: var(--muted); font-weight: 500; }
   <div id="netbadge" hidden></div>
 </div>
 
-<div id="menu" class="overlay">
-  <div class="panel">
-    <h1>Tapfire</h1>
-    <p class="sub">Tactical-shooter gunplay against bots.</p>
-    <div class="modes">
-      <button class="mode" data-mode="dm"><b>Deathmatch</b><small>Free-for-all, instant respawns, free loadout</small></button>
-      <button class="mode" data-mode="rounds"><b>5v5 Rounds</b><small>Plant / defuse, buy phase, first to 13 · maps: Divide, Foundry or any 5v5 map</small></button>
-    </div>
-    <p class="loadout">Agent: <b id="menu-agent"></b> <small>(chosen when you press Play)</small></p>
-    <p class="loadout">Loadout: <b id="menu-loadout"></b> <small>(press B in game to change)</small></p>
-    <div class="buttons">
-      <button id="play" class="primary">Play</button>
-      <button id="menu-online">Online</button>
-      <button id="menu-maps">Maps</button>
-      <button id="menu-skins">Skins</button>
-      <button id="menu-settings">Settings</button>
-    </div>
-    <p class="loadout">Map: <b id="menu-map"></b> <small>(Maps to change or import one)</small></p>
-    <p class="note">Controls and keybinds are under <b>Settings</b>.</p>
-    <p id="touch-note" class="note warn" hidden>This game needs a mouse and keyboard. Open it on a computer to play.</p>
-    <p class="note">Sensitivity uses the same scale as Valorant, so you can bring yours over. Stop moving before you shoot: rifles are only accurate below about a quarter of run speed. Every gun has a fixed spray pattern: the overlay at the bottom right shows it next to where your shots landed.</p>
+<div id="menu" class="overlay home">
+  <nav class="home-nav">
+    <span class="home-brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h5l4 9 4-9h5L12 21z"/></svg>Tapfire</span>
+    <button class="home-tab on" type="button">Play</button>
+    <button class="home-tab" type="button" data-go="menu-skins">Collection</button>
+    <button class="home-tab" type="button" data-go="menu-maps">Maps</button>
+    <button class="home-tab" type="button" data-go="menu-online">Online</button>
+    <button id="menu-settings" class="home-gear" type="button" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8zm8.4 4.6-.1-2.4 2-1.6-2-3.4-2.4.9a8 8 0 0 0-2-1.2L15.5 3h-4l-.4 2.5a8 8 0 0 0-2 1.2l-2.4-.9-2 3.4 2 1.6a8 8 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-.9a8 8 0 0 0 2 1.2l.4 2.5h4l.4-2.5a8 8 0 0 0 2-1.2l2.4.9 2-3.4z"/></svg></button>
+  </nav>
+
+  <div class="home-body">
+    <aside class="home-queue">
+      <h3>Queue</h3>
+      <button class="mode" data-mode="dm"><b>Deathmatch</b><small>Free-for-all · instant respawns · free loadout</small></button>
+      <button class="mode" data-mode="rounds"><b>5v5 Rounds</b><small>Plant / defuse · buy phase · first to 13</small></button>
+      <button id="menu-maps" class="home-row"><span>Map</span><b id="menu-map"></b></button>
+      <button id="menu-online" class="home-row"><span>Servers</span><b>Online</b></button>
+      <button id="menu-skins" class="home-row"><span>Skins</span><b>Collection</b></button>
+    </aside>
+
+    <section class="home-party">
+      <div class="home-strip">
+        <div><small>Agent</small><b id="menu-agent"></b></div>
+        <i></i>
+        <div><small>Loadout</small><b id="menu-loadout"></b></div>
+      </div>
+      <div class="home-cards">
+        <button class="home-slot far" type="button" data-go="menu-online" title="Play with friends online">+</button>
+        <button class="home-slot" type="button" data-go="menu-online" title="Play with friends online">+</button>
+        <div class="home-me">
+          <div id="home-art" class="home-art"></div>
+          <div class="home-ready">Ready</div>
+          <b id="home-name">You</b>
+          <small id="home-role"></small>
+        </div>
+        <button class="home-slot" type="button" data-go="menu-online" title="Play with friends online">+</button>
+        <button class="home-slot far" type="button" data-go="menu-online" title="Play with friends online">+</button>
+      </div>
+      <p class="home-hint" id="home-hint"></p>
+      <button id="play" class="home-find" type="button">Find match</button>
+      <p id="touch-note" class="note warn" hidden>This game needs a mouse and keyboard. Open it on a computer to play.</p>
+    </section>
+
+    <aside class="home-feed">
+      <button class="home-feature" type="button" data-go="menu-skins">
+        <img id="home-feature-img" alt="">
+        <span><small>Featured</small><b>Apogee collection</b><em>White ceramic, a gilded skeleton and a live energy cell.</em></span>
+      </button>
+      <div class="home-card">
+        <small>Tip</small>
+        <p>Sensitivity uses Valorant's scale, so bring yours over. Stop before you shoot: rifles are only accurate below about a quarter of run speed.</p>
+      </div>
+      <div class="home-card">
+        <small>Spray</small>
+        <p>Every gun has a fixed pattern. The overlay at the bottom right shows it next to where your shots landed.</p>
+      </div>
+    </aside>
   </div>
 </div>
 

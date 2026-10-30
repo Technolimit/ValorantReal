@@ -949,15 +949,24 @@ function switchAgent(id) {
 
 function updateMenuLoadout() {
   for (const b of document.querySelectorAll('.mode')) b.classList.toggle('sel', b.dataset.mode === settings.mode);
-  $('menu-agent').textContent = (AGENTS[settings.agent] || AGENTS.zephyr).name;
+  const a = AGENTS[settings.agent] || AGENTS.zephyr, rounds = settings.mode === 'rounds';
+  $('menu-agent').textContent = a.name;
   const l = settings.loadout;
   $('menu-loadout').textContent = `${WEAPONS[l.primary]?.name || 'No primary'} + ${WEAPONS[l.secondary]?.name}`;
-  $('menu-map').textContent = settings.mode === 'rounds' && !supportsMode(settings.map, 'rounds') ? 'Divide (5v5 needs a 5v5 map)' : MAPS[settings.map] || settings.map;
+  $('menu-map').textContent = rounds && !supportsMode(settings.map, 'rounds') ? 'Divide' : MAPS[settings.map] || settings.map;
+  // Your banner in the middle of the party row, in your agent's colour.
+  $('menu').style.setProperty('--ac', a.color);
+  $('home-art').innerHTML = emblem(a.emblem, a.color);
+  $('home-name').textContent = settings.netName || 'You';
+  $('home-role').textContent = `${a.name} · ${a.role}`;
+  $('home-hint').textContent = rounds ? 'Pick your agent next · bots fill the other slots' : 'Pick your agent next · press B in game to change guns';
+  if (!$('home-feature-img').src) $('home-feature-img').src = gunThumb('vandal', 'apogee'); // drawn once, then cached
 }
 
 $('play').onclick = () => (settings.mode === 'rounds' ? openLocalPick() : openAgents());
 for (const b of document.querySelectorAll('.mode')) b.onclick = () => { settings.mode = b.dataset.mode; saveSettings(settings); updateMenuLoadout(); };
 $('menu-settings').onclick = () => openSettings('menu');
+for (const b of document.querySelectorAll('#menu [data-go]')) b.onclick = () => $(b.dataset.go).click();
 $('resume').onclick = resume;
 $('pause-settings').onclick = () => openSettings('pause');
 $('restart').onclick = () => startMatch();
@@ -1471,8 +1480,8 @@ function frame(t) {
     const ear = ears();
     sound.setListener(ear.eye(), ear.yaw);
     sound.setDeaf(game.player.alive && game.player.st.deafUntil > game.time);
-  } else {
-    renderer.renderIdle(t / 1000);
+  } else if ($('menu').hidden) {
+    renderer.renderIdle(t / 1000); // the home screen covers the view, so the scene behind it rests
   }
   look.dx = look.dy = 0;
 }
