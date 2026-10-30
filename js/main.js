@@ -20,6 +20,7 @@ import { MAPS, loadMapIndex, preloadMap, mapList, mapInfo, mapJSON, addMap, remo
 import { NetSession, roomCode, peerOptions } from './net.js';
 import { Lobby, SelectScreen, emblem } from './agentselect.js';
 import { ServerDirectory } from './servers.js';
+import { Party } from './party.js';
 
 const DEG = Math.PI / 180;
 const $ = (id) => document.getElementById(id);
@@ -911,6 +912,8 @@ function lobbyState(state, me, host) {
   state = { ...state, room: net.room }; // shown on the pick screen so the host can share it
   if ($('select').hidden || localPick) { localPick && clearInterval(localPick.timer); localPick = null; select.show(state, me, { host, preferred: settings.agent }); show('select'); }
   else select.update(state);
+  // A party's room starts the pick on its own once the whole party is in.
+  if (host && partyGame && state.phase === 'wait' && state.players.filter(p => !p.bot).length >= partyGame.expect) { partyGame = null; net.lobbyStart(); }
   const mine = state.players.find(p => p.n === me);
   if (autoAgent && mine && !mine.locked && (state.phase === 'wait' || state.phase === 'pick')) net.lobbyLock(autoAgent);
 }
@@ -949,19 +952,94 @@ function switchAgent(id) {
 
 function updateMenuLoadout() {
   for (const b of document.querySelectorAll('.mode')) b.classList.toggle('sel', b.dataset.mode === settings.mode);
-  $('menu-agent').textContent = (AGENTS[settings.agent] || AGENTS.zephyr).name;
+  const a = AGENTS[settings.agent] || AGENTS.zephyr, rounds = settings.mode === 'rounds';
+  $('menu-agent').textContent = a.name;
   const l = settings.loadout;
   $('menu-loadout').textContent = `${WEAPONS[l.primary]?.name || 'No primary'} + ${WEAPONS[l.secondary]?.name}`;
-  $('menu-map').textContent = settings.mode === 'rounds' && !supportsMode(settings.map, 'rounds') ? 'Divide (5v5 needs a 5v5 map)' : MAPS[settings.map] || settings.map;
+  $('menu-map').textContent = rounds && !supportsMode(settings.map, 'rounds') ? 'Divide' : MAPS[settings.map] || settings.map;
+  // Your banner in the middle of the party row, in your agent's colour.
+  $('menu').style.setProperty('--ac', a.color);
+  $('home-art').innerHTML = emblem(a.emblem, a.color);
+  $('home-name').textContent = settings.netName || 'You';
+  $('home-role').textContent = `${a.name} · ${a.role}`;
+  $('home-hint').textContent = rounds ? 'Pick your agent next · bots fill the other slots' : 'Pick your agent next · press B in game to change guns';
+  if (!$('home-feature-img').src) $('home-feature-img').src = gunThumb('vandal', 'apogee'); // drawn once, then cached
+
+  party.update({ name: settings.netName, agent: settings.agent });
+  drawParty();
 }
 
-$('play').onclick = () => (settings.mode === 'rounds' ? openLocalPick() : openAgents());
+$('play').onclick = () => (party.leader && party.members.length > 1 ? hostParty() : settings.mode === 'rounds' ? openLocalPick() : openAgents());
+
+// ---- party: friends queue together from the home screen (party.js) ----
+const party = new Party({
+  onChange: () => drawParty(),
+  onStatus: (msg) => { $('party-status').textContent = msg; },
+  // The leader pressed Find Match: join the room it opened.
+  onGo: ({ room, transport }) => { if (!net.active) joinOnline({ room, transport }); },
+});
+let partyGame = null; // leader: the room it opened for its party, until everyone is in
+
+function drawParty() {
+  const others = party.members.filter(p => p.id !== party.id);
+  for (const b of document.querySelectorAll('.home-slot')) {
+    const p = others[+b.dataset.slot], a = p && AGENTS[p.agent];
+    b.classList.toggle('filled', !!p);
+    b.style.setProperty('--sc', a?.color || '');
+    b.title = p ? `${p.name}${p.leader ? ' (party leader)' : ''}` : 'Invite a friend';
+    b.innerHTML = p ? `<span class="slot-art">${a ? emblem(a.emblem, a.color) : ''}</span><b>${escHtml(p.name)}</b><small${p.leader ? ' class="lead"' : ''}>${p.leader ? 'Leader' : escHtml(a?.name || 'In party')}</small>` : '+';
+  }
+  $('party-code').textContent = party.code || '······';
+  $('party-copy').disabled = !party.code;
+  $('party-leave').hidden = !party.active;
+  const waiting = party.active && !party.leader;
+  $('play').disabled = waiting;
+  $('play').textContent = waiting ? 'Waiting for leader' : 'Find match';
+  if (party.active) $('home-hint').textContent = `Party ${party.code} · ${party.members.length}/5${party.leader ? ' · you lead: Find Match takes everyone in' : ''}`;
+}
+
+function openParty() {
+  $('party-pop').hidden = false;
+  if (!party.active) party.create({ name: settings.netName, agent: settings.agent });
+  drawParty();
+}
+for (const b of document.querySelectorAll('.home-slot')) b.onclick = openParty;
+$('party-close').onclick = () => { $('party-pop').hidden = true; };
+$('party-copy').onclick = () => { navigator.clipboard?.writeText(party.code).then(() => { $('party-status').textContent = 'Code copied'; }, () => {}); };
+$('party-join').onclick = async () => {
+  const code = $('party-input').value;
+  if (party.leader && code.trim().toUpperCase() === party.code) return;
+  if (await party.join(code, { name: settings.netName, agent: settings.agent })) { $('party-input').value = ''; $('party-pop').hidden = true; }
+  updateMenuLoadout();
+};
+$('party-input').onkeydown = (e) => { if (e.key === 'Enter') $('party-join').click(); e.stopPropagation(); };
+$('party-leave').onclick = () => { party.leave(); updateMenuLoadout(); };
+addEventListener('beforeunload', () => party.leave(true));
+
+// Leader: open a match room on the pick screen and send the party there. Over the internet if anyone joined
+// from another computer, otherwise within this browser.
+async function hostParty() {
+  const rounds = settings.mode === 'rounds';
+  const id = rounds && !supportsMode(settings.map, 'rounds') ? 'divide' : settings.map;
+  const transport = party.transport, room = roomCode();
+  $('play').disabled = true; $('play').textContent = 'Starting…';
+  try {
+    await preloadMap(id);
+    await net.host({ transport, room, server: { name: `${settings.netName || 'Player'}'s party`, max: 10 }, profile: netProfile(), mapJSON: mapInfo(id)?.file ? null : mapJSON(id), lobby: new Lobby({ mode: settings.mode, map: id, mapName: MAPS[id] || id, botCount: settings.botCount }) });
+  } catch (err) {
+    net.close(); show('menu'); $('party-status').textContent = err.message; $('party-pop').hidden = false;
+    return;
+  } finally { drawParty(); }
+  partyGame = { expect: party.members.length };
+  party.go(room, transport);
+}
 for (const b of document.querySelectorAll('.mode')) b.onclick = () => { settings.mode = b.dataset.mode; saveSettings(settings); updateMenuLoadout(); };
 $('menu-settings').onclick = () => openSettings('menu');
+for (const b of document.querySelectorAll('#menu [data-go]')) b.onclick = () => $(b.dataset.go).click();
 $('resume').onclick = resume;
 $('pause-settings').onclick = () => openSettings('pause');
 $('restart').onclick = () => startMatch();
-const toMenu = () => { net.close(); running = false; game.state = 'idle'; updateNetBadge(); updateMenuLoadout(); show('menu'); };
+const toMenu = () => { net.close(); partyGame = null; running = false; game.state = 'idle'; updateNetBadge(); updateMenuLoadout(); show('menu'); };
 $('quit').onclick = toMenu;
 $('settings-back').onclick = () => show(settingsReturn);
 $('settings-reset').onclick = () => {
@@ -1007,7 +1085,8 @@ function updateNetBadge() {
 function netProfile() {
   const skinDefs = {};
   for (const sid of Object.values(settings.skins)) if (isCustom(sid) && SKINS[sid]) skinDefs[sid] = SKINS[sid];
-  return { name: settings.netName, color: parseInt(settings.netColor.slice(1), 16), loadout: { ...settings.loadout }, skins: { ...settings.skins }, skinDefs, melee: meleeId(settings.melee) };
+  const party_ = party.leader ? party.id : party.members.find(p => p.leader)?.id; // the host keeps its party on its team
+  return { name: settings.netName, color: parseInt(settings.netColor.slice(1), 16), loadout: { ...settings.loadout }, skins: { ...settings.skins }, skinDefs, melee: meleeId(settings.melee), party: party_ || undefined };
 }
 
 function readProfile() {
@@ -1471,8 +1550,8 @@ function frame(t) {
     const ear = ears();
     sound.setListener(ear.eye(), ear.yaw);
     sound.setDeaf(game.player.alive && game.player.st.deafUntil > game.time);
-  } else {
-    renderer.renderIdle(t / 1000);
+  } else if ($('menu').hidden) {
+    renderer.renderIdle(t / 1000); // the home screen covers the view, so the scene behind it rests
   }
   look.dx = look.dy = 0;
 }
