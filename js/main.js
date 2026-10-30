@@ -2,9 +2,9 @@
 import { Game } from './game.js';
 import { Renderer } from './render.js';
 import { Sound } from './audio.js';
-import { Hud } from './hud.js';
+import { Hud, paintCrosshair } from './hud.js';
 import { loadSettings, saveSettings, DEFAULTS } from './settings.js';
-import { ACTIONS, FIXED, DEFAULT_BINDS, actionFor, rebind, keyLabel } from './keybinds.js';
+import { ACTIONS, FIXED, DEFAULT_BINDS, DEFAULT_BINDS2, actionFor, bindKey, keyLabel } from './keybinds.js';
 import { DT, YAW_PER_COUNT } from './config.js';
 import { WEAPONS, BUY_GROUPS } from './weapons.js';
 import { SKINS, SKIN_ORDER, skinFor, skinFits, designFor, swatch, meleeSkin, baseSkin, variantsOf, isCustom, saveCustomSkin, deleteCustomSkin, skinCode, parseSkinCode, sanitizeSkin, registerSkin, PATTERNS } from './skins.js';
@@ -20,8 +20,7 @@ import { MAPS, loadMapIndex, preloadMap, mapList, mapInfo, mapJSON, addMap, remo
 import { NetSession, roomCode, peerOptions } from './net.js';
 import { Lobby, SelectScreen, emblem } from './agentselect.js';
 import { ServerDirectory } from './servers.js';
-
-const escHtml = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+import { Party } from './party.js';
 
 const DEG = Math.PI / 180;
 const $ = (id) => document.getElementById(id);
@@ -229,12 +228,12 @@ function show(id) {
 }
 
 // ---- input ----
-// Keys come from settings.binds (Settings → Keybinds, see keybinds.js).
+// Keys come from settings.binds and settings.binds2 (Settings → Controls, see keybinds.js).
 const key = (action) => keyLabel(settings.binds[action]);
 
 addEventListener('keydown', (e) => {
   if (!running || paused) return;
-  const act = actionFor(settings.binds, e.code);
+  const act = actionFor(settings.binds, e.code, settings.binds2);
   if (act || e.ctrlKey) e.preventDefault();
   if (e.repeat) return;
   keys.add(e.code);
@@ -267,7 +266,7 @@ addEventListener('keydown', (e) => {
 
 addEventListener('keyup', (e) => {
   keys.delete(e.code);
-  const act = actionFor(settings.binds, e.code);
+  const act = actionFor(settings.binds, e.code, settings.binds2);
   if (act === 'scores') $('scoreboard').hidden = true;
 });
 
@@ -332,7 +331,7 @@ addEventListener('wheel', (e) => {
 
 function playerInput() {
   const p = game.player, i = p.input;
-  const k = (action) => keys.has(settings.binds[action]);
+  const k = (action) => keys.has(settings.binds[action]) || keys.has(settings.binds2[action]);
   if (!p.alive) { i.fwd = i.side = 0; i.fire = i.alt = false; return; }
   i.fwd = (k('fwd') ? 1 : 0) - (k('back') ? 1 : 0);
   i.side = (k('right') ? 1 : 0) - (k('left') ? 1 : 0);
@@ -441,180 +440,257 @@ function showEnd() {
 }
 
 // ---- settings UI ----
-// Each section belongs to a tab across the top of the settings screen, as in Valorant.
-const SETTING_TABS = [['general', 'General'], ['controls', 'Controls'], ['crosshair', 'Crosshair'], ['video', 'Video'], ['audio', 'Audio']];
-const SCHEMA = [
-  ['Mouse', 'general', [
-    ['sensitivity', 'Sensitivity (Valorant scale)', 'number', { min: 0.01, max: 10, step: 0.001 }],
-    ['zoomSensMult', 'Scoped / ADS sensitivity multiplier', 'number', { min: 0.1, max: 3, step: 0.01 }],
-    ['invertY', 'Invert Y', 'checkbox'],
+// Laid out like Valorant's: top tabs, sub-tabs, then table rows of label | primary | secondary. A section is a list of
+// setting rows [key, label, type, options, hint], or 'binds:<group>' for that keybind group, or 'fixed'.
+const ONOFF = { true: 'On', false: 'Off' };
+const TABS = [
+  ['General', [
+    ['Mouse', [
+      ['Mouse', [
+        ['sensitivity', 'Sensitivity', 'number', { min: 0.01, max: 10, step: 0.001 }, 'Same scale as Valorant: 0.07° per mouse count at 1.0, so your Valorant number carries over.'],
+        ['zoomSensMult', 'Scoped / ADS sensitivity multiplier', 'number', { min: 0.1, max: 3, step: 0.01 }, 'Applied on top of the zoom ratio while aiming down sights or scoped.'],
+        ['invertY', 'Invert Y', 'checkbox'],
+      ]],
+    ]],
+    ['Gameplay', [
+      ['Gunplay', [
+        ['recoilFeel', 'Physical recoil (camera & gun kick)', 'range', { min: 0, max: 2, step: 0.1 }, 'How hard the camera and the gun kick. 0 turns it off; the spray pattern stays the same.'],
+        ['sprayTrainer', 'Spray pattern overlay', 'checkbox', null, 'Draws the spray pattern and where your shots went.'],
+        ['damageNumbers', 'Damage numbers', 'checkbox'],
+        ['showImpacts', 'Bullet holes', 'checkbox'],
+        ['impactSeconds', 'Bullet holes last (s)', 'range', { min: 1, max: 30, step: 1 }],
+      ]],
+    ]],
+    ['Match', [
+      ['Match (applies next match)', [
+        ['mode', 'Mode', 'select', { dm: 'Deathmatch', rounds: '5v5 Rounds' }],
+        ['map', 'Deathmatch map', 'select', MAPS],
+        ['side', '5v5 starting side', 'select', { random: 'Random', atk: 'Attack', def: 'Defense' }],
+        ['botCount', 'Bots (deathmatch)', 'range', { min: 1, max: 10, step: 1 }],
+        ['difficulty', 'Bot difficulty', 'select', { easy: 'Easy', normal: 'Normal', hard: 'Hard', pro: 'Pro' }],
+        ['botMode', 'Bot behaviour', 'select', { fight: 'Fight back', passive: 'Move, never shoot', static: 'Stand still' }],
+        ['botWeapons', 'Bot weapons', 'select', { rifles: 'Vandal / Phantom', match: 'Same as mine', random: 'Random' }],
+        ['killLimit', 'Kill limit', 'number', { min: 1, max: 200, step: 1 }],
+        ['timeMinutes', 'Time limit (minutes)', 'number', { min: 1, max: 60, step: 1 }],
+      ]],
+    ]],
   ]],
-  ['Controls', 'controls', [
-    ['adsMode', 'Aim down sights', 'select', { hold: 'Hold', toggle: 'Toggle' }],
-    ['walkMode', 'Walk', 'select', { hold: 'Hold', toggle: 'Toggle' }],
-    ['crouchMode', 'Crouch', 'select', { hold: 'Hold', toggle: 'Toggle' }],
-    ['wheel', 'Mouse wheel', 'select', { weapons: 'Switch weapon', jump: 'Jump' }],
+  ['Controls', [
+    ['Actions', [
+      ['Movement', 'binds:Movement'],
+      ['Modes', [
+        ['adsMode', 'Aim down sights', 'select', { hold: 'Hold', toggle: 'Toggle' }],
+        ['walkMode', 'Walk', 'select', { hold: 'Hold', toggle: 'Toggle' }],
+        ['crouchMode', 'Crouch', 'select', { hold: 'Hold', toggle: 'Toggle' }],
+        ['wheel', 'Mouse wheel', 'select', { weapons: 'Switch weapon', jump: 'Jump' }],
+      ]],
+    ]],
+    ['Equipment', [['Weapons', 'binds:Weapons'], ['Abilities', 'binds:Abilities']]],
+    ['Interface', [['Interface', 'binds:Interface'], ['Fixed', 'fixed']]],
   ]],
-  ['Gunplay', 'general', [
-    ['recoilFeel', 'Physical recoil (camera & gun kick)', 'range', { min: 0, max: 2, step: 0.1 }],
-    ['sprayTrainer', 'Spray pattern overlay', 'checkbox'],
+  ['Crosshair', [
+    ['Primary', [
+      ['Crosshair', [
+        ['chColor', 'Crosshair color', 'color'],
+        ['chOutline', 'Outlines', 'checkbox'],
+        ['chDot', 'Center dot', 'checkbox'],
+        ['chLength', 'Inner line length', 'range', { min: 0, max: 20, step: 1 }],
+        ['chThickness', 'Inner line thickness', 'range', { min: 1, max: 6, step: 1 }],
+        ['chGap', 'Inner line offset', 'range', { min: 0, max: 20, step: 1 }],
+        ['chError', 'Movement / firing error', 'select', { off: 'Off', firing: 'On' }, 'Lines spread out while you move and fire.'],
+      ]],
+    ]],
   ]],
-  ['Crosshair', 'crosshair', [
-    ['chColor', 'Color', 'color'],
-    ['chOutline', 'Outline', 'checkbox'],
-    ['chDot', 'Center dot', 'checkbox'],
-    ['chLength', 'Line length', 'range', { min: 0, max: 20, step: 1 }],
-    ['chThickness', 'Line thickness', 'range', { min: 1, max: 6, step: 1 }],
-    ['chGap', 'Gap', 'range', { min: 0, max: 20, step: 1 }],
-    ['chError', 'Show spread', 'select', { off: 'Off', firing: 'Movement + firing error' }],
+  ['Video', [
+    ['Graphics quality', [
+      ['Graphics', [
+        ['renderScale', 'Render scale', 'select', { auto: 'Auto (drops when the frame rate does)', 0.5: '50%', 0.75: '75%', 1: '100%' }, 'Auto lowers the resolution when the frame rate dips and raises it again when it recovers.'],
+        ['shadows', 'Shadows', 'checkbox'],
+        ['weaponFx', 'Weapon glow (bloom)', 'checkbox', null, 'Glowing skin lines and highlights. Off saves a few full-screen passes.'],
+      ]],
+    ]],
+    ['Stats', [
+      ['Readouts', [
+        ['showFps', 'FPS counter', 'checkbox'],
+        ['debug', 'Debug readout', 'checkbox'],
+      ]],
+    ]],
   ]],
-  ['Match (applies next match)', 'general', [
-    ['mode', 'Mode', 'select', { dm: 'Deathmatch', rounds: '5v5 Rounds' }],
-    ['map', 'Deathmatch map', 'select', MAPS],
-    ['side', '5v5 starting side', 'select', { random: 'Random', atk: 'Attack', def: 'Defense' }],
-    ['botCount', 'Bots (deathmatch)', 'range', { min: 1, max: 10, step: 1 }],
-    ['difficulty', 'Bot difficulty', 'select', { easy: 'Easy', normal: 'Normal', hard: 'Hard', pro: 'Pro' }],
-    ['botMode', 'Bot behaviour', 'select', { fight: 'Fight back', passive: 'Move, never shoot', static: 'Stand still' }],
-    ['botWeapons', 'Bot weapons', 'select', { rifles: 'Vandal / Phantom', match: 'Same as mine', random: 'Random' }],
-    ['killLimit', 'Kill limit', 'number', { min: 1, max: 200, step: 1 }],
-    ['timeMinutes', 'Time limit (minutes)', 'number', { min: 1, max: 60, step: 1 }],
-  ]],
-  ['Graphics', 'video', [    ['shadows', 'Shadows', 'checkbox'],
-    ['weaponFx', 'Weapon glow (bloom)', 'checkbox'],
-    ['showFps', 'FPS counter', 'checkbox'],
-    ['renderScale', 'Render scale', 'select', { auto: 'Auto (drops when the frame rate does)', 0.5: '50%', 0.75: '75%', 1: '100%' }],
-    ['showImpacts', 'Bullet holes', 'checkbox'],
-    ['impactSeconds', 'Bullet holes last (s)', 'range', { min: 1, max: 30, step: 1 }],
-    ['damageNumbers', 'Damage numbers', 'checkbox'],
-    ['debug', 'Debug readout', 'checkbox'],
-  ]],
-  ['Sound', 'audio', [
-    ['volume', 'Volume', 'range', { min: 0, max: 1, step: 0.05 }],
+  ['Audio', [
+    ['Sounds', [
+      ['Volume', [
+        ['volume', 'Overall volume', 'range', { min: 0, max: 1, step: 0.05 }],
+      ]],
+    ]],
   ]],
 ];
-const TAB_NOTES = {
-  general: 'Sensitivity uses the same scale as Valorant, so you can bring yours over. Match settings apply from the next match.',
-  controls: 'Click a key, then press the new one (Esc cancels). A key that is already in use swaps over. Saved in this browser.',
-  crosshair: 'Preview',
-  video: 'Shadows, weapon glow and render scale cost the most. Auto render scale drops when the frame rate does.',
-  audio: 'Gun, ability and spike sounds all follow this volume.',
+const CH_COLORS = ['#ffffff', '#00ff9c', '#7fff00', '#dfff00', '#ffff00', '#00ffff', '#ff00ff', '#ff4655'];
+const TAB_HINT = {
+  General: 'Settings save in this browser as you change them.',
+  Controls: 'Click a key, then press the new one. Esc cancels, Backspace clears a secondary key. A key that is already in use swaps over.',
+  Crosshair: 'The preview above updates as you change things.',
+  Video: 'Shadows and weapon glow cost the most frame time. Turn them off first if the game stutters.',
+  Audio: '',
 };
-let settingsTab = 'general';
+let setTab = 0, setSub = [0, 0, 0, 0, 0];
+let capture = null; // { action, slot, btn } while waiting for a key
+let setNote = '';
 
 function buildSettings() {
-  $('set-tabs').innerHTML = SETTING_TABS.map(([id, t]) => `<button data-tab="${id}" class="${id === settingsTab ? 'sel' : ''}">${t}</button>`).join('');
-  for (const b of $('set-tabs').children) b.onclick = () => { settingsTab = b.dataset.tab; capture = null; buildSettings(); buildKeybinds(); };
-  const root = $('settings-form');
+  capture = null;
+  const tabs = $('set-tabs'), subs = $('set-subtabs'), root = $('settings-form');
+  const [tabName, subList] = TABS[setTab];
+  tabs.innerHTML = TABS.map(([t], i) => `<button data-i="${i}" class="${i === setTab ? 'on' : ''}">${t}</button>`).join('');
+  subs.innerHTML = subList.map(([t], i) => `<button data-i="${i}" class="${i === setSub[setTab] ? 'on' : ''}">${t}</button>`).join('');
+  for (const b of tabs.children) b.onclick = () => { setTab = +b.dataset.i; setNote = ''; buildSettings(); };
+  for (const b of subs.children) b.onclick = () => { setSub[setTab] = +b.dataset.i; buildSettings(); };
   root.innerHTML = '';
-  for (const [title, tab, fields] of SCHEMA) {
-    if (tab !== settingsTab) continue;
+  root.scrollTop = 0;
+  if (tabName === 'Crosshair') {
+    const pv = document.createElement('div');
+    pv.className = 'set-chpv';
+    pv.innerHTML = '<canvas width="120" height="120"></canvas>';
+    root.appendChild(pv);
+  }
+  for (const [title, content] of subList[setSub[setTab]][1]) {
     const sec = document.createElement('section');
-    sec.innerHTML = `<h3>${title}</h3>`;
-    for (const [key, label, type, opt] of fields) {
-      const row = document.createElement('label');
-      row.className = 'row';
-      row.innerHTML = `<span>${label}</span>`;
-      let input;
-      if (type === 'select') {
-        input = document.createElement('select');
-        for (const [v, t] of Object.entries(opt)) input.add(new Option(t, v));
-        input.value = String(settings[key]);
-      } else {
-        input = document.createElement('input');
-        input.type = type;
-        if (opt) Object.assign(input, opt);
-        if (type === 'checkbox') input.checked = !!settings[key];
-        else input.value = settings[key];
-      }
-      const out = document.createElement('output');
-      const showVal = () => { out.textContent = type === 'range' ? input.value : type === 'checkbox' ? (input.checked ? 'On' : 'Off') : ''; };
-      showVal();
-      input.addEventListener('input', () => {
-        let v = type === 'checkbox' ? input.checked : input.value;
-        if (type === 'number' || type === 'range') { v = parseFloat(v); if (!Number.isFinite(v)) return; }
-        if (key === 'renderScale') v = v === 'auto' ? 'auto' : parseFloat(v);
-        settings[key] = v;
-        showVal();
-        applySettings(key);
-        saveSettings(settings);
-        if (key.startsWith('ch')) crosshairPreview();
-      });
-      row.append(input, out);
-      sec.appendChild(row);
-    }
+    sec.className = 'set-sec';
+    const binds = typeof content === 'string';
+    sec.innerHTML = `<h3><span>${title}</span>${binds ? '<i>Primary</i><i>Secondary</i>' : ''}</h3>`;
+    if (content === 'fixed') for (const [l, k] of FIXED) sec.appendChild(setRow(l, `<span class="set-cell set-span dim">${k}</span>`));
+    else if (binds) for (const [action, label] of ACTIONS.find(([g]) => g === content.slice(6))[1]) sec.appendChild(bindRow(action, label));
+    else for (const f of content) sec.appendChild(settingRow(...f));
     root.appendChild(sec);
   }
-  if (settingsTab === 'controls') root.appendChild(Object.assign(document.createElement('section'), { id: 'keybinds' }));
-  $('set-side').innerHTML = settingsTab === 'crosshair'
-    ? '<h3>Preview</h3><canvas id="ch-preview" width="240" height="240"></canvas><p class="note">Over a light wall and a dark one.</p>'
-    : `<p class="note" id="set-note">${TAB_NOTES[settingsTab]}</p>`;
-  if (settingsTab === 'crosshair') crosshairPreview();
+  $('set-hint').textContent = setNote || TAB_HINT[tabName];
+  drawChPreview();
 }
 
-// The crosshair as the HUD draws it, zoomed 2x over a light and a dark half so its outline shows.
-function crosshairPreview() {
-  const c = $('ch-preview')?.getContext('2d');
-  if (!c) return;
-  hud.drawCrosshair(0);
-  c.fillStyle = '#c9c2b4'; c.fillRect(0, 0, 120, 240);
-  c.fillStyle = '#1b2530'; c.fillRect(120, 0, 120, 240);
-  const w = hud.ch.width; // drawn at twice the size, the middle half of the HUD's canvas
-  c.imageSmoothingEnabled = false;
-  c.drawImage(hud.ch, w / 4, w / 4, w / 2, w / 2, 0, 0, 240, 240);
+function setRow(label, cells = '', hint = '') {
+  const row = document.createElement('div');
+  row.className = 'set-row';
+  row.innerHTML = `<span class="set-label">${label}</span>${cells}`;
+  if (hint) row.onmouseenter = () => { $('set-hint').textContent = hint; };
+  return row;
 }
 
-// Settings → Keybinds: click a key, then press the new one (Esc cancels). A key already in use swaps over.
-let capture = null; // { action, btn } while waiting for a key
-function buildKeybinds(note = '') {
-  const root = $('keybinds');
-  if (!root) return; // another settings tab is showing
-  if (note) $('set-side').innerHTML = `<p class="note warn" id="kb-note">${escHtml(note)}</p>`;
-  root.innerHTML = '<h3>Keybinds</h3>';
-  const grid = document.createElement('div');
-  grid.className = 'kb-grid';
-  for (const [title, list] of ACTIONS) {
-    const sec = document.createElement('section');
-    sec.innerHTML = `<h4>${title}</h4>`;
-    for (const [action, label] of list) {
-      const row = document.createElement('div');
-      row.className = 'kb-row';
-      const btn = document.createElement('button');
-      btn.className = 'kb-key' + (settings.binds[action] !== DEFAULT_BINDS[action] ? ' changed' : '');
-      btn.textContent = key(action);
-      btn.dataset.action = action;
-      btn.onclick = () => {
-        if (capture) capture.btn.textContent = key(capture.action);
-        capture = { action, btn };
-        btn.textContent = 'Press a key…';
-        btn.classList.add('wait');
-      };
-      row.innerHTML = `<span>${label}</span>`;
-      row.appendChild(btn);
-      sec.appendChild(row);
-    }
-    grid.appendChild(sec);
+function bindRow(action, label) {
+  const row = setRow(label);
+  for (const slot of [0, 1]) {
+    const code = (slot ? settings.binds2 : settings.binds)[action];
+    const dflt = (slot ? DEFAULT_BINDS2 : DEFAULT_BINDS)[action];
+    const btn = document.createElement('button');
+    btn.className = 'set-cell set-key' + (code !== dflt ? ' changed' : '');
+    btn.textContent = code ? keyLabel(code) : '-';
+    btn.onclick = () => {
+      if (capture) { capture.btn.classList.remove('wait'); capture.btn.textContent = capture.text; }
+      capture = { action, slot, btn, text: btn.textContent };
+      btn.textContent = 'Press a key…';
+      btn.classList.add('wait');
+    };
+    row.appendChild(btn);
   }
-  const fixed = document.createElement('section');
-  fixed.innerHTML = '<h4>Fixed</h4>' + FIXED.map(([l, k]) => `<div class="kb-row"><span>${l}</span><span class="kb-fixed">${k}</span></div>`).join('');
-  grid.appendChild(fixed);
-  root.appendChild(grid);
-  const reset = document.createElement('button');
-  reset.className = 'mini'; reset.textContent = 'Reset keybinds';
-  reset.onclick = () => { capture = null; settings.binds = { ...DEFAULT_BINDS }; saveSettings(settings); buildKeybinds('Keybinds are back to the defaults.'); };
-  root.appendChild(reset);
+  return row;
+}
+
+function settingRow(key, label, type, opt, hint) {
+  const row = setRow(label, '', hint);
+  const set = (v) => { settings[key] = v; applySettings(key); saveSettings(settings); };
+  // Two choices (and on/off) are side-by-side buttons in the primary and secondary columns.
+  const two = type === 'checkbox' ? ONOFF : type === 'select' && Object.keys(opt).length === 2 ? opt : null;
+  if (two) {
+    for (const [v, t] of Object.entries(two)) {
+      const b = document.createElement('button');
+      const val = type === 'checkbox' ? v === 'true' : v;
+      b.className = 'set-cell set-opt' + (String(type === 'checkbox' ? !!settings[key] : settings[key]) === v ? ' on' : '');
+      b.textContent = t;
+      b.onclick = () => { set(val); for (const o of row.querySelectorAll('.set-opt')) o.classList.toggle('on', o === b); };
+      row.appendChild(b);
+    }
+    return row;
+  }
+  const cell = document.createElement('div');
+  cell.className = 'set-cell set-span';
+  if (type === 'color') {
+    cell.classList.add('set-swatches');
+    const pick = (v) => { set(v); for (const o of cell.children) o.classList.toggle('on', o.dataset.c === v); };
+    for (const c of CH_COLORS) {
+      const b = document.createElement('button');
+      b.dataset.c = c; b.style.background = c; b.title = c;
+      b.className = settings[key].toLowerCase() === c ? 'on' : '';
+      b.onclick = () => { pick(c); custom.value = c; };
+      cell.appendChild(b);
+    }
+    const custom = document.createElement('input');
+    custom.type = 'color'; custom.value = settings[key]; custom.title = 'Custom color';
+    custom.oninput = () => pick(custom.value);
+    cell.appendChild(custom);
+  } else if (type === 'select') {
+    const input = document.createElement('select');
+    for (const [v, t] of Object.entries(opt)) input.add(new Option(t, v));
+    input.value = String(settings[key]);
+    input.onchange = () => set(key === 'renderScale' && input.value !== 'auto' ? parseFloat(input.value) : input.value);
+    cell.appendChild(input);
+  } else {
+    const input = document.createElement('input');
+    input.type = type;
+    Object.assign(input, opt);
+    input.value = settings[key];
+    const out = document.createElement('output');
+    if (type === 'range') { out.textContent = input.value; cell.classList.add('set-range'); }
+    input.addEventListener('input', () => {
+      const v = parseFloat(input.value);
+      if (!Number.isFinite(v)) return;
+      out.textContent = input.value;
+      set(v);
+    });
+    cell.append(input);
+    if (type === 'range') cell.append(out);
+  }
+  row.appendChild(cell);
+  return row;
+}
+
+function drawChPreview() {
+  const cv = document.querySelector('.set-chpv canvas');
+  if (!cv) return;
+  const dpr = devicePixelRatio || 1;
+  cv.width = cv.height = 120 * dpr;
+  paintCrosshair(cv.getContext('2d'), settings, 120, dpr);
 }
 
 addEventListener('keydown', (e) => {
-  if (!capture || $('settings').hidden) return;
+  if ($('settings').hidden) return;
+  if (!capture) { // Esc closes settings
+    if (e.code === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); show(settingsReturn); }
+    return;
+  }
   e.preventDefault(); e.stopImmediatePropagation();
-  const { action } = capture;
+  const { action, slot } = capture;
   capture = null;
-  if (e.code === 'Escape') { buildKeybinds(); return; }
   const label = ACTIONS.flatMap(([, l]) => l).find(([a]) => a === action)[1];
-  const other = rebind(settings.binds, action, e.code);
+  if (e.code === 'Escape') { buildSettings(); return; }
+  if ((e.code === 'Backspace' || e.code === 'Delete') && slot === 1) {
+    settings.binds2[action] = '';
+    saveSettings(settings);
+    setNote = `${label}: secondary key cleared.`;
+    buildSettings();
+    return;
+  }
+  // Taking another action's only key with an empty secondary would leave that action with no key at all.
+  const holder = actionFor(settings.binds, e.code, settings.binds2);
+  if (holder && holder !== action && !(slot ? settings.binds2 : settings.binds)[action] && !(settings.binds[holder] && settings.binds2[holder])) {
+    const holderLabel = ACTIONS.flatMap(([, l]) => l).find(([a]) => a === holder)[1];
+    setNote = `${keyLabel(e.code)} is the only key for ${holderLabel}. Give that another key first.`;
+    buildSettings();
+    return;
+  }
+  const other = bindKey(settings, action, slot, e.code);
   saveSettings(settings);
   const otherLabel = other && ACTIONS.flatMap(([, l]) => l).find(([a]) => a === other)[1];
-  buildKeybinds(other ? `${keyLabel(e.code)} was on ${otherLabel}, so that's on ${key(other)} now.` : `${label}: ${keyLabel(e.code)}.`);
+  const otherKeys = other && [settings.binds[other], settings.binds2[other]].filter(Boolean).map(keyLabel).join(' / ');
+  setNote = other ? `${keyLabel(e.code)} was on ${otherLabel}, so that's on ${otherKeys} now.` : `${label}: ${keyLabel(e.code)}.`;
+  buildSettings();
 }, true);
 
 function applySettings(key) {
@@ -623,13 +699,13 @@ function applySettings(key) {
   if (key === 'renderScale') renderer.resize();
   if (key === 'adsMode' && game.player) game.player.adsHold = settings.adsMode === 'hold';
   if (key === 'showImpacts' && !settings.showImpacts) renderer.clearDecals();
+  if (key.startsWith('ch')) drawChPreview();
 }
 
 function openSettings(from) {
   settingsReturn = from;
-  capture = null;
+  setNote = '';
   buildSettings();
-  buildKeybinds();
   show('settings');
 }
 
@@ -945,6 +1021,8 @@ function lobbyState(state, me, host) {
   state = { ...state, room: net.room }; // shown on the pick screen so the host can share it
   if ($('select').hidden || localPick) { localPick && clearInterval(localPick.timer); localPick = null; select.show(state, me, { host, preferred: settings.agent }); show('select'); }
   else select.update(state);
+  // A party's room starts the pick on its own once the whole party is in.
+  if (host && partyGame && state.phase === 'wait' && state.players.filter(p => !p.bot).length >= partyGame.expect) { partyGame = null; net.lobbyStart(); }
   const mine = state.players.find(p => p.n === me);
   if (autoAgent && mine && !mine.locked && (state.phase === 'wait' || state.phase === 'pick')) net.lobbyLock(autoAgent);
 }
@@ -983,42 +1061,111 @@ function switchAgent(id) {
 
 function updateMenuLoadout() {
   for (const b of document.querySelectorAll('.mode')) b.classList.toggle('sel', b.dataset.mode === settings.mode);
-  $('menu-agent').textContent = (AGENTS[settings.agent] || AGENTS.zephyr).name;
+  const a = AGENTS[settings.agent] || AGENTS.zephyr, rounds = settings.mode === 'rounds';
+  $('menu-agent').textContent = a.name;
   const l = settings.loadout;
   $('menu-loadout').textContent = `${WEAPONS[l.primary]?.name || 'No primary'} + ${WEAPONS[l.secondary]?.name}`;
-  $('menu-map').textContent = settings.mode === 'rounds' && !supportsMode(settings.map, 'rounds') ? 'Divide' : MAPS[settings.map] || settings.map;
-  const rounds = settings.mode === 'rounds';
-  $('home-mode').textContent = rounds ? '5v5 Rounds' : 'Deathmatch';
-  $('home-bots').textContent = rounds ? `9 · ${settings.difficulty}` : `${settings.botCount} · ${settings.difficulty}`;
-  // Your card in the party line-up: the agent you last played, on its colour.
-  const a = AGENTS[settings.agent] || AGENTS.zephyr;
-  const me = $('home-me');
-  me.style.setProperty('--ac', a.color);
-  me.innerHTML = `<div class="pc-art">${emblem(a.emblem, a.color)}</div><div class="pc-ready">Ready</div><div class="pc-name"><b>${escHtml(settings.netName || 'You')}</b><small>${escHtml(a.name)} · ${escHtml(a.role)}</small></div>`;
+  $('menu-map').textContent = rounds && !supportsMode(settings.map, 'rounds') ? 'Divide' : MAPS[settings.map] || settings.map;
+  // Your banner in the middle of the party row, in your agent's colour.
+  $('menu').style.setProperty('--ac', a.color);
+  $('home-art').innerHTML = emblem(a.emblem, a.color);
+  $('home-name').textContent = settings.netName || 'You';
+  $('home-role').textContent = `${a.name} · ${a.role}`;
+  $('home-hint').textContent = rounds ? 'Pick your agent next · bots fill the other slots' : 'Pick your agent next · press B in game to change guns';
+  if (!$('home-feature-img').src) $('home-feature-img').src = gunThumb('vandal', 'apogee'); // drawn once, then cached
+
+  party.update({ name: settings.netName, agent: settings.agent });
+  drawParty();
 }
 
-$('play').onclick = () => (settings.mode === 'rounds' ? openLocalPick() : openAgents());
+$('play').onclick = () => (party.leader && party.members.length > 1 ? hostParty() : settings.mode === 'rounds' ? openLocalPick() : openAgents());
+
+// ---- party: friends queue together from the home screen (party.js) ----
+const party = new Party({
+  onChange: () => drawParty(),
+  onStatus: (msg) => { $('party-status').textContent = msg; },
+  // The leader pressed Find Match: join the room it opened.
+  onGo: ({ room, transport }) => { if (!net.active) joinOnline({ room, transport }); },
+});
+let partyGame = null; // leader: the room it opened for its party, until everyone is in
+
+function drawParty() {
+  const others = party.members.filter(p => p.id !== party.id);
+  for (const b of document.querySelectorAll('.home-slot')) {
+    const p = others[+b.dataset.slot], a = p && AGENTS[p.agent];
+    b.classList.toggle('filled', !!p);
+    b.style.setProperty('--sc', a?.color || '');
+    b.title = p ? `${p.name}${p.leader ? ' (party leader)' : ''}` : 'Invite a friend';
+    b.innerHTML = p ? `<span class="slot-art">${a ? emblem(a.emblem, a.color) : ''}</span><b>${escHtml(p.name)}</b><small${p.leader ? ' class="lead"' : ''}>${p.leader ? 'Leader' : escHtml(a?.name || 'In party')}</small>` : '+';
+  }
+  $('party-code').textContent = party.code || '······';
+  $('party-copy').disabled = !party.code;
+  $('party-leave').hidden = !party.active;
+  const waiting = party.active && !party.leader;
+  $('play').disabled = waiting;
+  $('play').textContent = waiting ? 'Waiting for leader' : 'Find match';
+  if (party.active) $('home-hint').textContent = `Party ${party.code} · ${party.members.length}/5${party.leader ? ' · you lead: Find Match takes everyone in' : ''}`;
+}
+
+function openParty() {
+  $('party-pop').hidden = false;
+  if (!party.active) party.create({ name: settings.netName, agent: settings.agent });
+  drawParty();
+}
+for (const b of document.querySelectorAll('.home-slot')) b.onclick = openParty;
+$('party-close').onclick = () => { $('party-pop').hidden = true; };
+$('party-copy').onclick = () => { navigator.clipboard?.writeText(party.code).then(() => { $('party-status').textContent = 'Code copied'; }, () => {}); };
+$('party-join').onclick = async () => {
+  const code = $('party-input').value;
+  if (party.leader && code.trim().toUpperCase() === party.code) return;
+  if (await party.join(code, { name: settings.netName, agent: settings.agent })) { $('party-input').value = ''; $('party-pop').hidden = true; }
+  updateMenuLoadout();
+};
+$('party-input').onkeydown = (e) => { if (e.key === 'Enter') $('party-join').click(); e.stopPropagation(); };
+$('party-leave').onclick = () => { party.leave(); updateMenuLoadout(); };
+addEventListener('beforeunload', () => party.leave(true));
+
+// Leader: open a match room on the pick screen and send the party there. Over the internet if anyone joined
+// from another computer, otherwise within this browser.
+async function hostParty() {
+  const rounds = settings.mode === 'rounds';
+  const id = rounds && !supportsMode(settings.map, 'rounds') ? 'divide' : settings.map;
+  const transport = party.transport, room = roomCode();
+  $('play').disabled = true; $('play').textContent = 'Starting…';
+  try {
+    await preloadMap(id);
+    await net.host({ transport, room, server: { name: `${settings.netName || 'Player'}'s party`, max: 10 }, profile: netProfile(), mapJSON: mapInfo(id)?.file ? null : mapJSON(id), lobby: new Lobby({ mode: settings.mode, map: id, mapName: MAPS[id] || id, botCount: settings.botCount }) });
+  } catch (err) {
+    net.close(); show('menu'); $('party-status').textContent = err.message; $('party-pop').hidden = false;
+    return;
+  } finally { drawParty(); }
+  partyGame = { expect: party.members.length };
+  party.go(room, transport);
+}
 for (const b of document.querySelectorAll('.mode')) b.onclick = () => { settings.mode = b.dataset.mode; saveSettings(settings); updateMenuLoadout(); };
 $('menu-settings').onclick = () => openSettings('menu');
-$('home-feat').onclick = () => openSkins('menu');
-$('home-feat-online').onclick = () => openOnline();
-for (const b of document.querySelectorAll('[data-invite]')) b.onclick = () => openOnline();
+for (const b of document.querySelectorAll('#menu [data-go]')) b.onclick = () => $(b.dataset.go).click();
 $('resume').onclick = resume;
 $('pause-settings').onclick = () => openSettings('pause');
 $('restart').onclick = () => startMatch();
-const toMenu = () => { net.close(); running = false; game.state = 'idle'; updateNetBadge(); updateMenuLoadout(); show('menu'); };
+const toMenu = () => { net.close(); partyGame = null; running = false; game.state = 'idle'; updateNetBadge(); updateMenuLoadout(); show('menu'); };
 $('quit').onclick = toMenu;
 $('settings-back').onclick = () => show(settingsReturn);
 $('settings-reset').onclick = () => {
   const loadout = settings.loadout;
   const skins = settings.skins, melee = settings.melee;
-  Object.assign(settings, DEFAULTS, { loadout, skins, melee, binds: { ...DEFAULT_BINDS } });
+  Object.assign(settings, DEFAULTS, { loadout, skins, melee, binds: { ...DEFAULT_BINDS }, binds2: { ...DEFAULT_BINDS2 } });
   saveSettings(settings);
   for (const k of Object.keys(DEFAULTS)) applySettings(k);
   hud.chKey = '';
-  capture = null;
+  setNote = 'Everything is back to the game defaults.';
   buildSettings();
-  buildKeybinds();
+};
+$('kb-reset').onclick = () => {
+  settings.binds = { ...DEFAULT_BINDS }; settings.binds2 = { ...DEFAULT_BINDS2 };
+  saveSettings(settings);
+  setNote = 'Keybinds are back to the defaults.';
+  buildSettings();
 };
 $('again').onclick = () => startMatch();
 $('end-menu').onclick = toMenu;
@@ -1031,6 +1178,7 @@ addEventListener('beforeunload', (e) => {
 });
 
 // ---- online (see net.js) ----
+const escHtml = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function netStatus(msg, err = false) {
   const el = $('online-status');
@@ -1051,7 +1199,8 @@ function updateNetBadge() {
 function netProfile() {
   const skinDefs = {};
   for (const sid of Object.values(settings.skins)) if (isCustom(sid) && SKINS[sid]) skinDefs[sid] = SKINS[sid];
-  return { name: settings.netName, color: parseInt(settings.netColor.slice(1), 16), loadout: { ...settings.loadout }, skins: { ...settings.skins }, skinDefs, melee: meleeId(settings.melee) };
+  const party_ = party.leader ? party.id : party.members.find(p => p.leader)?.id; // the host keeps its party on its team
+  return { name: settings.netName, color: parseInt(settings.netColor.slice(1), 16), loadout: { ...settings.loadout }, skins: { ...settings.skins }, skinDefs, melee: meleeId(settings.melee), party: party_ || undefined };
 }
 
 function readProfile() {
@@ -1515,8 +1664,8 @@ function frame(t) {
     const ear = ears();
     sound.setListener(ear.eye(), ear.yaw);
     sound.setDeaf(game.player.alive && game.player.st.deafUntil > game.time);
-  } else if ($('menu').hidden && $('settings').hidden) {
-    renderer.renderIdle(t / 1000); // the home and settings screens cover the whole view: no 3D behind them
+  } else if ($('menu').hidden) {
+    renderer.renderIdle(t / 1000); // the home screen covers the view, so the scene behind it rests
   }
   look.dx = look.dy = 0;
 }

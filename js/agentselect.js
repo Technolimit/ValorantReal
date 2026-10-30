@@ -33,15 +33,16 @@ export class Lobby {
   get humans() { return this.players.filter(p => !p.bot); }
   get open() { return this.phase === 'wait' || this.phase === 'pick'; }
 
-  // A new person: in 5v5 they go on the team with fewer people (ties to team 0, the host's).
-  add(n, name, host = false) {
+  // A new person: in 5v5 they go on the team with fewer people (ties to team 0, the host's), or on the
+  // host's team if they came with the host's party and there's room.
+  add(n, name, host = false, withHost = false) {
     if (!this.open) return null;
     const have = [0, 0];
     for (const p of this.humans) have[p.t]++;
     let t = 0;
     if (this.rounds) {
       if (have[0] >= 5 && have[1] >= 5) return null;
-      t = have[1] < have[0] ? 1 : 0;
+      t = withHost && have[0] < 5 ? 0 : have[1] < have[0] ? 1 : 0;
     }
     const p = { n, name, t, hover: null, a: null, locked: false, bot: false, host };
     this.players.push(p);

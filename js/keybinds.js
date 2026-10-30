@@ -1,5 +1,6 @@
-// Rebindable keys (Settings → Keybinds). settings.binds maps an action to a KeyboardEvent.code; each code
-// belongs to at most one action, so rebinding a key that's in use swaps the two.
+// Rebindable keys (Settings → Controls). settings.binds maps an action to its primary KeyboardEvent.code and
+// settings.binds2 to its secondary one ('' = none); each code belongs to at most one action slot, so rebinding a key
+// that's in use swaps the two.
 
 export const ACTIONS = [
   ['Movement', [
@@ -39,19 +40,28 @@ export const ACTIONS = [
 export const FIXED = [['Fire / alt fire', 'Left / right mouse'], ['Switch weapon', 'Mouse wheel'], ['Pause', 'Esc']];
 
 export const DEFAULT_BINDS = Object.fromEntries(ACTIONS.flatMap(([, list]) => list.map(([id, , code]) => [id, code])));
+export const DEFAULT_BINDS2 = Object.fromEntries(Object.keys(DEFAULT_BINDS).map((id) => [id, '']));
 
-// The action bound to a key, or null.
-export function actionFor(binds, code) {
+// The action bound to a key (primary or secondary), or null.
+export function actionFor(binds, code, binds2) {
   for (const a in binds) if (binds[a] === code) return a;
+  if (binds2 && code) for (const a in binds2) if (binds2[a] === code) return a;
   return null;
 }
 
-// Bind `code` to `action`. Returns the action that had that key (it gets `action`'s old key), or null.
-export function rebind(binds, action, code) {
-  const other = actionFor(binds, code);
-  if (other && other !== action) binds[other] = binds[action];
-  binds[action] = code;
-  return other && other !== action ? other : null;
+// Bind `code` to `action`'s primary (slot 0) or secondary (slot 1) key in settings `s`. Whatever had that key gets
+// `action`'s old key in that slot. Returns the other action that lost the key, or null.
+export function bindKey(s, action, slot, code) {
+  const maps = [s.binds, s.binds2], old = maps[slot][action] || '';
+  let other = null;
+  for (let i = 0; i < 2 && !other; i++) {
+    for (const a in maps[i]) if (maps[i][a] === code && !(i === slot && a === action)) { other = [a, i]; break; }
+  }
+  if (other) maps[other[1]][other[0]] = old;
+  maps[slot][action] = code;
+  // A primary key is never left empty while there's a secondary one.
+  for (const a of other ? [action, other[0]] : [action]) if (!maps[0][a] && maps[1][a]) { maps[0][a] = maps[1][a]; maps[1][a] = ''; }
+  return other && other[0] !== action ? other[0] : null;
 }
 
 export function keyLabel(code) {

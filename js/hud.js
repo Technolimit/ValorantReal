@@ -729,24 +729,7 @@ export class Hud {
     const size = 240;
     this.ch.width = this.ch.height = size * dpr;
     this.ch.style.width = this.ch.style.height = `${size}px`;
-    const c = this.chCtx;
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.clearRect(0, 0, size, size);
-    const mid = size / 2, t = s.chThickness, L = s.chLength, gap = s.chGap + err;
-    const rects = [];
-    if (L > 0) {
-      rects.push([mid - t / 2, mid - gap - L, t, L]); // up
-      rects.push([mid - t / 2, mid + gap, t, L]); // down
-      rects.push([mid - gap - L, mid - t / 2, L, t]); // left
-      rects.push([mid + gap, mid - t / 2, L, t]); // right
-    }
-    if (s.chDot) rects.push([mid - t / 2, mid - t / 2, t, t]);
-    if (s.chOutline) {
-      c.fillStyle = 'rgba(0,0,0,0.85)';
-      for (const [x, y, w, h] of rects) c.fillRect(x - 1, y - 1, w + 2, h + 2);
-    }
-    c.fillStyle = s.chColor;
-    for (const [x, y, w, h] of rects) c.fillRect(x, y, w, h);
+    paintCrosshair(this.chCtx, s, size, dpr, err);
   }
 
   renderScoreboard(tbody) {
@@ -775,4 +758,25 @@ export class Hud {
       return `<tr class="${c === this.game.player ? 'me' : ''}"><td>${esc(c.name)}</td><td>${st.kills}</td><td>${st.deaths}</td><td>${hs}%</td><td>${acc}%</td><td>${st.damage}</td></tr>`;
     }).join('');
   }
+}
+
+// Draw the crosshair from settings `s` centred on a `size` px square canvas context (also the settings preview).
+export function paintCrosshair(c, s, size, dpr = 1, err = 0) {
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, size, size);
+  const mid = size / 2, t = s.chThickness, L = s.chLength, gap = s.chGap + err;
+  const rects = [];
+  if (L > 0) {
+    rects.push([mid - t / 2, mid - gap - L, t, L]); // up
+    rects.push([mid - t / 2, mid + gap, t, L]); // down
+    rects.push([mid - gap - L, mid - t / 2, L, t]); // left
+    rects.push([mid + gap, mid - t / 2, L, t]); // right
+  }
+  if (s.chDot) rects.push([mid - t / 2, mid - t / 2, t, t]);
+  if (s.chOutline) {
+    c.fillStyle = 'rgba(0,0,0,0.85)';
+    for (const [x, y, w, h] of rects) c.fillRect(x - 1, y - 1, w + 2, h + 2);
+  }
+  c.fillStyle = s.chColor;
+  for (const [x, y, w, h] of rects) c.fillRect(x, y, w, h);
 }
