@@ -594,6 +594,29 @@ th { color: var(--muted); font-weight: 500; }
 .home-ready { width: 100%; padding: 5px 0; text-align: center; font-size: 12px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #0f1923; background: var(--ac, var(--good)); }
 .home-me b { margin-top: 10px; font-size: 18px; letter-spacing: 1px; }
 .home-me small { color: var(--muted); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; }
+.home-cards { position: relative; }
+.home-slot.filled { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 22% 6px 0; gap: 6px; font-size: 13px; color: var(--text); border-top-color: var(--sc, var(--good)); background: radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--sc, #4fd1a5) 22%, transparent), transparent 65%), linear-gradient(#22303e, #141c25); }
+.home-slot.filled .slot-art { width: 70%; aspect-ratio: 1; }
+.home-slot.filled .slot-art svg { width: 100%; height: 100%; }
+.home-slot.filled b { font-size: 13px; letter-spacing: .5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-slot.filled small { color: var(--muted); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; }
+.home-slot.filled small.lead { color: var(--gold); }
+.party-pop { position: absolute; z-index: 3; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(320px, 92vw); padding: 14px 16px 16px; background: #0d141c; border: 1px solid var(--line); border-top: 2px solid var(--accent); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6); display: flex; flex-direction: column; gap: 8px; }
+.party-pop header { display: flex; justify-content: space-between; align-items: center; }
+.party-pop header b { font-size: 13px; letter-spacing: 3px; text-transform: uppercase; }
+.party-pop header button { background: none; border: 0; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; }
+.party-pop small { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+.party-pop p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.4; }
+.party-pop #party-status:empty { display: none; }
+.party-pop #party-status { color: #ffd54a; }
+.party-code { display: flex; align-items: center; gap: 8px; }
+.party-code b { flex: 1; padding: 8px 10px; font: 700 22px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 4px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); }
+.party-join { display: flex; gap: 8px; }
+.party-join input { flex: 1; min-width: 0; padding: 8px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--text); font: 600 15px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 3px; text-transform: uppercase; }
+.party-pop button:not(header button) { padding: 8px 14px; background: rgba(255, 255, 255, 0.08); border: 1px solid var(--line); color: var(--text); cursor: pointer; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; }
+.party-pop button:not(header button):hover { border-color: var(--text); }
+#party-leave { color: var(--accent); }
+.home-find:disabled { background: #3a434d; outline-color: transparent; color: var(--muted); cursor: default; }
 .home-hint { margin: 0; color: var(--muted); font-size: 12px; letter-spacing: 1px; text-align: center; }
 .home-find { padding: 14px 56px; background: var(--accent); border: 0; outline: 1px solid rgba(255, 70, 85, 0.5); outline-offset: 4px; color: #fff; font-size: 18px; font-weight: 800; letter-spacing: 4px; text-transform: uppercase; cursor: pointer; }
 .home-find:hover { background: #ff5b68; outline-color: #fff; }
@@ -627,7 +650,7 @@ th { color: var(--muted); font-weight: 500; }
   .stat { grid-template-columns: auto 70px; }
 }
 </style>
-<script type="module" src="js/main.js?v=23"></script>
+<script type="module" src="js/main.js?v=24"></script>
 <canvas id="view"></canvas>
 
 <div id="hud" hidden>
@@ -733,16 +756,28 @@ th { color: var(--muted); font-weight: 500; }
         <div><small>Loadout</small><b id="menu-loadout"></b></div>
       </div>
       <div class="home-cards">
-        <button class="home-slot far" type="button" data-go="menu-online" title="Play with friends online">+</button>
-        <button class="home-slot" type="button" data-go="menu-online" title="Play with friends online">+</button>
+        <button class="home-slot far" type="button" data-slot="2" title="Invite a friend">+</button>
+        <button class="home-slot" type="button" data-slot="0" title="Invite a friend">+</button>
         <div class="home-me">
           <div id="home-art" class="home-art"></div>
           <div class="home-ready">Ready</div>
           <b id="home-name">You</b>
           <small id="home-role"></small>
         </div>
-        <button class="home-slot" type="button" data-go="menu-online" title="Play with friends online">+</button>
-        <button class="home-slot far" type="button" data-go="menu-online" title="Play with friends online">+</button>
+        <button class="home-slot" type="button" data-slot="1" title="Invite a friend">+</button>
+        <button class="home-slot far" type="button" data-slot="3" title="Invite a friend">+</button>
+        <div id="party-pop" class="party-pop" hidden>
+          <header><b>Party</b><button id="party-close" type="button" aria-label="Close">&times;</button></header>
+          <div id="party-lead">
+            <small>Party code</small>
+            <div class="party-code"><b id="party-code">&middot;&middot;&middot;&middot;&middot;&middot;</b><button id="party-copy" type="button">Copy</button></div>
+            <p>Send this to a friend. They open the + on their home screen and paste it under Join.</p>
+          </div>
+          <small>Join a friend's party</small>
+          <div class="party-join"><input id="party-input" maxlength="8" autocomplete="off" placeholder="CODE"><button id="party-join" type="button">Join</button></div>
+          <p id="party-status"></p>
+          <button id="party-leave" type="button" hidden>Leave party</button>
+        </div>
       </div>
       <p class="home-hint" id="home-hint"></p>
       <button id="play" class="home-find" type="button">Find match</button>

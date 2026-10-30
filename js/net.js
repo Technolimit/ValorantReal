@@ -42,7 +42,7 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 export const roomCode = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
 // ---------- transports: send(msg, to?) / onmessage(msg) / onpeergone(id) / close() ----------
-class LocalTransport {
+export class LocalTransport {
   constructor(room, self) {
     this.self = self;
     this.ch = new BroadcastChannel('tapfire-room:' + room);
@@ -81,7 +81,7 @@ export function loadPeerJS() {
   return peerLib;
 }
 
-class PeerTransport {
+export class PeerTransport {
   constructor(room, self, isHost) {
     this.room = room; this.self = self; this.isHost = isHost;
     this.conns = new Map(); // nid -> DataConnection
@@ -591,7 +591,7 @@ export class NetSession {
       if (m.v !== NET_VERSION) { this.t.send({ k: 'version', v: NET_VERSION }, id); return; }
       if (!L.get(id)) {
         if (!L.open) { this.t.send({ k: 'wait' }, id); return; } // the pick is finishing: they join the match once it starts
-        if (this.humanCount() >= this.server.max || !L.add(id, cleanName(m.name))) { this.t.send({ k: 'full' }, id); return; }
+        if (this.humanCount() >= this.server.max || !L.add(id, cleanName(m.name), false, !!m.party && m.party === this.profile.party)) { this.t.send({ k: 'full' }, id); return; }
         this.cb.onStatus(`${cleanName(m.name)} joined room ${this.room}`);
       }
       this.lobbyPeers.set(id, { profile: m, seenWall: performance.now() });
