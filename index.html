@@ -332,22 +332,54 @@ th { color: var(--muted); font-weight: 500; }
 .buttons button:hover { border-color: var(--text); }
 .buttons button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-#settings-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 6px 26px; }
-#settings-form h3 { font-size: 12px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin: 12px 0 6px; }
-.row { display: grid; grid-template-columns: 1fr 120px 28px; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
-.row input[type=number], .row select { width: 100%; background: rgba(255, 255, 255, 0.06); color: var(--text); border: 1px solid var(--line); padding: 4px 6px; }
-.row select option { background: var(--bg); }
-.row input[type=checkbox] { justify-self: start; }
-.row output { color: var(--muted); font-size: 12px; }
-#keybinds h3 { font-size: 12px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin: 18px 0 6px; }
-#keybinds h4 { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin: 8px 0 4px; font-weight: 500; }
-.kb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 0 26px; margin-bottom: 10px; }
-.kb-row { display: grid; grid-template-columns: 1fr 120px; align-items: center; gap: 8px; font-size: 13px; padding: 2px 0; }
-.kb-key { padding: 4px 8px; background: rgba(255, 255, 255, 0.06); color: var(--text); border: 1px solid var(--line); cursor: pointer; font: inherit; font-size: 12px; }
-.kb-key:hover { border-color: var(--text); }
-.kb-key.changed { border-color: #4fd1c5; }
-.kb-key.wait { border-color: var(--accent); color: var(--accent); }
-.kb-fixed { color: var(--muted); font-size: 12px; text-align: center; }
+/* Settings (built in main.js): top tabs, sub-tabs, table rows of label | primary | secondary, as in Valorant. */
+#settings { display: flex; flex-direction: column; padding: 0; overflow: hidden; background: radial-gradient(120% 90% at 50% 0%, rgba(38, 66, 78, 0.97), rgba(14, 26, 34, 0.98) 55%, rgba(8, 14, 20, 0.99)); }
+#set-tabs, #set-subtabs { display: flex; justify-content: center; gap: clamp(14px, 4vw, 52px); flex: none; }
+#set-tabs { padding: 14px 16px 0; flex-wrap: wrap; row-gap: 4px; }
+#set-subtabs { padding: 16px 0 18px; gap: clamp(12px, 3.5vw, 44px); }
+#set-tabs button, #set-subtabs button { position: relative; background: none; border: 0; padding: 4px 2px 12px; cursor: pointer; color: rgba(236, 232, 225, 0.6); letter-spacing: 1.5px; text-transform: uppercase; font-size: 13px; font-weight: 600; }
+#set-subtabs button { font-size: 11.5px; padding-bottom: 6px; }
+#set-tabs button:hover, #set-subtabs button:hover { color: var(--text); }
+#set-tabs button::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 6px; height: 6px; background: currentColor; transform: translateX(-50%) rotate(45deg); opacity: 0.8; }
+#set-tabs button.on { color: #f3e6a3; }
+#set-subtabs button.on { color: #f3e6a3; }
+#set-subtabs button.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #f3e6a3; }
+.set-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 860px) minmax(0, 1fr); gap: 24px; padding: 0 16px; }
+#settings-form { grid-column: 2; overflow-y: auto; padding-right: 10px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.35) transparent; }
+#set-hint { grid-column: 3; max-width: 240px; padding-top: 34px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.set-sec { margin-bottom: 22px; }
+.set-sec h3, .set-row { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr); gap: 2px; }
+.set-sec h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700; }
+.set-sec h3 i { font-style: normal; font-weight: 500; font-size: 10px; color: var(--muted); text-align: center; align-self: end; }
+.set-row { min-height: 36px; margin-bottom: 2px; background: rgba(255, 255, 255, 0.05); font-size: 12.5px; }
+.set-row:hover { background: rgba(255, 255, 255, 0.09); }
+.set-label { align-self: center; padding: 0 12px; }
+.set-cell { display: flex; align-items: center; justify-content: center; min-width: 0; background: rgba(255, 255, 255, 0.04); border: 0; color: var(--text); font: inherit; font-size: 12px; }
+.set-span { grid-column: span 2; gap: 10px; padding: 0 12px; }
+.set-span.dim { color: var(--muted); }
+button.set-cell { cursor: pointer; }
+button.set-cell:hover { background: rgba(255, 255, 255, 0.12); }
+.set-opt { color: rgba(236, 232, 225, 0.55); }
+.set-opt.on { background: rgba(255, 255, 255, 0.24); color: #fff; }
+button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
+.set-key.changed { color: #8ff0e4; }
+.set-key.wait { color: var(--accent); background: rgba(255, 70, 85, 0.14); box-shadow: inset 0 0 0 1px var(--accent); }
+.set-cell select, .set-cell input[type=number] { width: 100%; background: rgba(0, 0, 0, 0.25); color: var(--text); border: 1px solid var(--line); padding: 5px 8px; font: inherit; text-align: center; }
+.set-cell select option { background: var(--bg); }
+.set-range input { flex: 1; min-width: 0; accent-color: #f3e6a3; }
+.set-range output { width: 34px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.set-swatches { justify-content: flex-start; gap: 6px; }
+.set-swatches button { width: 18px; height: 18px; border: 1px solid rgba(0, 0, 0, 0.6); padding: 0; cursor: pointer; }
+.set-swatches button.on { outline: 2px solid #fff; outline-offset: 1px; }
+.set-swatches input { width: 26px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; margin-left: auto; }
+.set-chpv { display: grid; place-items: center; height: 130px; margin-bottom: 18px; background: linear-gradient(180deg, #6f8796, #3c4b52 60%, #2a3136); border: 1px solid var(--line); }
+.set-foot { flex: none; display: flex; justify-content: center; align-items: center; gap: 12px; padding: 14px 16px 18px; }
+.set-foot button { padding: 9px 16px; background: rgba(255, 255, 255, 0.08); border: 1px solid var(--line); color: var(--text); cursor: pointer; font-size: 11.5px; letter-spacing: 1.5px; text-transform: uppercase; }
+.set-foot button:hover { background: rgba(255, 255, 255, 0.14); }
+#settings-back { order: 1; padding: 12px 54px; background: #45c8b3; border-color: #45c8b3; color: #0e1b20; font-weight: 700; font-size: 14px; letter-spacing: 2px; }
+#settings-back:hover { background: #5ad8c3; }
+#kb-reset { order: 2; }
+@media (max-width: 900px) { .set-body { grid-template-columns: minmax(0, 1fr); } #settings-form { grid-column: 1; } #set-hint { display: none; } .set-foot { flex-wrap: wrap; } #set-tabs { gap: 10px; } #set-tabs button { font-size: 11px; letter-spacing: 1px; } }
 
 /* ---------- Online, maps, skin editor ---------- */
 .form { display: grid; grid-template-columns: 130px 1fr; gap: 8px 12px; align-items: center; font-size: 13px; margin: 6px 0 4px; }
@@ -735,14 +767,16 @@ th { color: var(--muted); font-weight: 500; }
 </div>
 
 <div id="settings" class="overlay" hidden>
-  <div class="panel wide">
-    <h2>Settings</h2>
+  <nav id="set-tabs"></nav>
+  <nav id="set-subtabs"></nav>
+  <div class="set-body">
     <div id="settings-form"></div>
-    <section id="keybinds"></section>
-    <div class="buttons">
-      <button id="settings-back" class="primary">Back</button>
-      <button id="settings-reset">Reset to defaults</button>
-    </div>
+    <aside id="set-hint"></aside>
+  </div>
+  <div class="set-foot">
+    <button id="settings-reset">Reset to game defaults</button>
+    <button id="settings-back">Close settings</button>
+    <button id="kb-reset">Reset keybinds</button>
   </div>
 </div>
 
