@@ -21,6 +21,8 @@ import { NetSession, roomCode, peerOptions } from './net.js';
 import { Lobby, SelectScreen, emblem } from './agentselect.js';
 import { ServerDirectory } from './servers.js';
 
+const escHtml = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 const DEG = Math.PI / 180;
 const $ = (id) => document.getElementById(id);
 
@@ -344,31 +346,28 @@ function playerInput() {
 }
 
 // ---- buy menu (virtual cursor so the mouse stays captured) ----
+// One screen for both modes: the 5v5 shop, or in deathmatch the same layout with every gun free.
 function toggleBuy(open = !hud.buyOpen) {
   hud.buyOpen = open;
-  if (game.mode) { rhud.toggleShop(open); $('buy').hidden = true; }
-  else $('buy').hidden = !open;
+  rhud.toggleShop(open);
   $('cursor').hidden = !open;
   hud.cursor = { x: innerWidth / 2, y: innerHeight / 2 };
-  hud.markLoadout(settings.loadout);
   mouse.fill(false);
 }
 
 function clickBuy(button = 0) {
+  const el = document.elementFromPoint(hud.cursor.x, hud.cursor.y)?.closest('.scard, #shop-close');
+  if (!el) return;
+  if (el.id === 'shop-close') { toggleBuy(false); return; }
   if (game.mode) {
-    const el = document.elementFromPoint(hud.cursor.x, hud.cursor.y)?.closest('.scard, #shop-close');
-    if (!el) return;
-    if (el.id === 'shop-close') { toggleBuy(false); return; }
     const err = rhud.shopClick(el, button);
     if (err) hud.center(`<small>${err.toUpperCase()}</small>`);
     else sound.click(0, 0.25);
     return;
   }
-  if (button !== 0) return;
-  const el = document.elementFromPoint(hud.cursor.x, hud.cursor.y)?.closest('.card, #buy-close');
-  if (!el) return;
-  if (el.id === 'buy-close') { toggleBuy(false); return; }
-  const w = WEAPONS[el.dataset.id];
+  const item = JSON.parse(el.dataset.item || '{}');
+  if (button !== 0 || item.type !== 'weapon') return;
+  const w = WEAPONS[item.id];
   settings.loadout[w.slot] = w.id;
   saveSettings(settings);
   const p = game.player;
@@ -377,7 +376,8 @@ function clickBuy(button = 0) {
     p.give(w.id);
     p.equip(w.slot, game.time, true);
   }
-  hud.markLoadout(settings.loadout);
+  sound.click(0, 0.25);
+  rhud.renderLoadout();
 }
 
 // ---- match flow ----
@@ -441,23 +441,25 @@ function showEnd() {
 }
 
 // ---- settings UI ----
+// Each section belongs to a tab across the top of the settings screen, as in Valorant.
+const SETTING_TABS = [['general', 'General'], ['controls', 'Controls'], ['crosshair', 'Crosshair'], ['video', 'Video'], ['audio', 'Audio']];
 const SCHEMA = [
-  ['Mouse', [
+  ['Mouse', 'general', [
     ['sensitivity', 'Sensitivity (Valorant scale)', 'number', { min: 0.01, max: 10, step: 0.001 }],
     ['zoomSensMult', 'Scoped / ADS sensitivity multiplier', 'number', { min: 0.1, max: 3, step: 0.01 }],
     ['invertY', 'Invert Y', 'checkbox'],
   ]],
-  ['Controls', [
+  ['Controls', 'controls', [
     ['adsMode', 'Aim down sights', 'select', { hold: 'Hold', toggle: 'Toggle' }],
     ['walkMode', 'Walk', 'select', { hold: 'Hold', toggle: 'Toggle' }],
     ['crouchMode', 'Crouch', 'select', { hold: 'Hold', toggle: 'Toggle' }],
     ['wheel', 'Mouse wheel', 'select', { weapons: 'Switch weapon', jump: 'Jump' }],
   ]],
-  ['Gunplay', [
+  ['Gunplay', 'general', [
     ['recoilFeel', 'Physical recoil (camera & gun kick)', 'range', { min: 0, max: 2, step: 0.1 }],
     ['sprayTrainer', 'Spray pattern overlay', 'checkbox'],
   ]],
-  ['Crosshair', [
+  ['Crosshair', 'crosshair', [
     ['chColor', 'Color', 'color'],
     ['chOutline', 'Outline', 'checkbox'],
     ['chDot', 'Center dot', 'checkbox'],
@@ -466,7 +468,7 @@ const SCHEMA = [
     ['chGap', 'Gap', 'range', { min: 0, max: 20, step: 1 }],
     ['chError', 'Show spread', 'select', { off: 'Off', firing: 'Movement + firing error' }],
   ]],
-  ['Match (applies next match)', [
+  ['Match (applies next match)', 'general', [
     ['mode', 'Mode', 'select', { dm: 'Deathmatch', rounds: '5v5 Rounds' }],
     ['map', 'Deathmatch map', 'select', MAPS],
     ['side', '5v5 starting side', 'select', { random: 'Random', atk: 'Attack', def: 'Defense' }],
@@ -477,9 +479,7 @@ const SCHEMA = [
     ['killLimit', 'Kill limit', 'number', { min: 1, max: 200, step: 1 }],
     ['timeMinutes', 'Time limit (minutes)', 'number', { min: 1, max: 60, step: 1 }],
   ]],
-  ['Video & audio', [
-    ['volume', 'Volume', 'range', { min: 0, max: 1, step: 0.05 }],
-    ['shadows', 'Shadows', 'checkbox'],
+  ['Graphics', 'video', [    ['shadows', 'Shadows', 'checkbox'],
     ['weaponFx', 'Weapon glow (bloom)', 'checkbox'],
     ['showFps', 'FPS counter', 'checkbox'],
     ['renderScale', 'Render scale', 'select', { auto: 'Auto (drops when the frame rate does)', 0.5: '50%', 0.75: '75%', 1: '100%' }],
@@ -488,12 +488,26 @@ const SCHEMA = [
     ['damageNumbers', 'Damage numbers', 'checkbox'],
     ['debug', 'Debug readout', 'checkbox'],
   ]],
+  ['Sound', 'audio', [
+    ['volume', 'Volume', 'range', { min: 0, max: 1, step: 0.05 }],
+  ]],
 ];
+const TAB_NOTES = {
+  general: 'Sensitivity uses the same scale as Valorant, so you can bring yours over. Match settings apply from the next match.',
+  controls: 'Click a key, then press the new one (Esc cancels). A key that is already in use swaps over. Saved in this browser.',
+  crosshair: 'Preview',
+  video: 'Shadows, weapon glow and render scale cost the most. Auto render scale drops when the frame rate does.',
+  audio: 'Gun, ability and spike sounds all follow this volume.',
+};
+let settingsTab = 'general';
 
 function buildSettings() {
+  $('set-tabs').innerHTML = SETTING_TABS.map(([id, t]) => `<button data-tab="${id}" class="${id === settingsTab ? 'sel' : ''}">${t}</button>`).join('');
+  for (const b of $('set-tabs').children) b.onclick = () => { settingsTab = b.dataset.tab; capture = null; buildSettings(); buildKeybinds(); };
   const root = $('settings-form');
   root.innerHTML = '';
-  for (const [title, fields] of SCHEMA) {
+  for (const [title, tab, fields] of SCHEMA) {
+    if (tab !== settingsTab) continue;
     const sec = document.createElement('section');
     sec.innerHTML = `<h3>${title}</h3>`;
     for (const [key, label, type, opt] of fields) {
@@ -513,7 +527,7 @@ function buildSettings() {
         else input.value = settings[key];
       }
       const out = document.createElement('output');
-      const showVal = () => { out.textContent = type === 'range' ? input.value : ''; };
+      const showVal = () => { out.textContent = type === 'range' ? input.value : type === 'checkbox' ? (input.checked ? 'On' : 'Off') : ''; };
       showVal();
       input.addEventListener('input', () => {
         let v = type === 'checkbox' ? input.checked : input.value;
@@ -523,19 +537,39 @@ function buildSettings() {
         showVal();
         applySettings(key);
         saveSettings(settings);
+        if (key.startsWith('ch')) crosshairPreview();
       });
       row.append(input, out);
       sec.appendChild(row);
     }
     root.appendChild(sec);
   }
+  if (settingsTab === 'controls') root.appendChild(Object.assign(document.createElement('section'), { id: 'keybinds' }));
+  $('set-side').innerHTML = settingsTab === 'crosshair'
+    ? '<h3>Preview</h3><canvas id="ch-preview" width="240" height="240"></canvas><p class="note">Over a light wall and a dark one.</p>'
+    : `<p class="note" id="set-note">${TAB_NOTES[settingsTab]}</p>`;
+  if (settingsTab === 'crosshair') crosshairPreview();
+}
+
+// The crosshair as the HUD draws it, zoomed 2x over a light and a dark half so its outline shows.
+function crosshairPreview() {
+  const c = $('ch-preview')?.getContext('2d');
+  if (!c) return;
+  hud.drawCrosshair(0);
+  c.fillStyle = '#c9c2b4'; c.fillRect(0, 0, 120, 240);
+  c.fillStyle = '#1b2530'; c.fillRect(120, 0, 120, 240);
+  const w = hud.ch.width; // drawn at twice the size, the middle half of the HUD's canvas
+  c.imageSmoothingEnabled = false;
+  c.drawImage(hud.ch, w / 4, w / 4, w / 2, w / 2, 0, 0, 240, 240);
 }
 
 // Settings → Keybinds: click a key, then press the new one (Esc cancels). A key already in use swaps over.
 let capture = null; // { action, btn } while waiting for a key
 function buildKeybinds(note = '') {
   const root = $('keybinds');
-  root.innerHTML = `<h3>Keybinds</h3><p class="note" id="kb-note">${escHtml(note) || 'Click a key to change it, then press the new key. Saved in this browser.'}</p>`;
+  if (!root) return; // another settings tab is showing
+  if (note) $('set-side').innerHTML = `<p class="note warn" id="kb-note">${escHtml(note)}</p>`;
+  root.innerHTML = '<h3>Keybinds</h3>';
   const grid = document.createElement('div');
   grid.className = 'kb-grid';
   for (const [title, list] of ACTIONS) {
@@ -952,12 +986,23 @@ function updateMenuLoadout() {
   $('menu-agent').textContent = (AGENTS[settings.agent] || AGENTS.zephyr).name;
   const l = settings.loadout;
   $('menu-loadout').textContent = `${WEAPONS[l.primary]?.name || 'No primary'} + ${WEAPONS[l.secondary]?.name}`;
-  $('menu-map').textContent = settings.mode === 'rounds' && !supportsMode(settings.map, 'rounds') ? 'Divide (5v5 needs a 5v5 map)' : MAPS[settings.map] || settings.map;
+  $('menu-map').textContent = settings.mode === 'rounds' && !supportsMode(settings.map, 'rounds') ? 'Divide' : MAPS[settings.map] || settings.map;
+  const rounds = settings.mode === 'rounds';
+  $('home-mode').textContent = rounds ? '5v5 Rounds' : 'Deathmatch';
+  $('home-bots').textContent = rounds ? `9 · ${settings.difficulty}` : `${settings.botCount} · ${settings.difficulty}`;
+  // Your card in the party line-up: the agent you last played, on its colour.
+  const a = AGENTS[settings.agent] || AGENTS.zephyr;
+  const me = $('home-me');
+  me.style.setProperty('--ac', a.color);
+  me.innerHTML = `<div class="pc-art">${emblem(a.emblem, a.color)}</div><div class="pc-ready">Ready</div><div class="pc-name"><b>${escHtml(settings.netName || 'You')}</b><small>${escHtml(a.name)} · ${escHtml(a.role)}</small></div>`;
 }
 
 $('play').onclick = () => (settings.mode === 'rounds' ? openLocalPick() : openAgents());
 for (const b of document.querySelectorAll('.mode')) b.onclick = () => { settings.mode = b.dataset.mode; saveSettings(settings); updateMenuLoadout(); };
 $('menu-settings').onclick = () => openSettings('menu');
+$('home-feat').onclick = () => openSkins('menu');
+$('home-feat-online').onclick = () => openOnline();
+for (const b of document.querySelectorAll('[data-invite]')) b.onclick = () => openOnline();
 $('resume').onclick = resume;
 $('pause-settings').onclick = () => openSettings('pause');
 $('restart').onclick = () => startMatch();
@@ -986,7 +1031,6 @@ addEventListener('beforeunload', (e) => {
 });
 
 // ---- online (see net.js) ----
-const escHtml = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function netStatus(msg, err = false) {
   const el = $('online-status');
@@ -1471,13 +1515,13 @@ function frame(t) {
     const ear = ears();
     sound.setListener(ear.eye(), ear.yaw);
     sound.setDeaf(game.player.alive && game.player.st.deafUntil > game.time);
-  } else {
-    renderer.renderIdle(t / 1000);
+  } else if ($('menu').hidden && $('settings').hidden) {
+    renderer.renderIdle(t / 1000); // the home and settings screens cover the whole view: no 3D behind them
   }
   look.dx = look.dy = 0;
 }
 requestAnimationFrame(frame);
 
 // Exposed for automated checks in a headless browser; `frozen` stops the loop from ticking.
-const hooks = { game, renderer, rhud, sound, settings, startMatch, playerInput, openAgents, switchAgent, net, hostOnline, joinOnline, servers, peerOptions, frozen: false };
+const hooks = { game, renderer, rhud, hud, sound, settings, startMatch, playerInput, openAgents, switchAgent, toggleBuy, clickBuy, net, hostOnline, joinOnline, servers, peerOptions, frozen: false };
 window.__game = hooks;
