@@ -159,6 +159,26 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+// screenRect's per-part visitor, made once: the bounds go in a typed array instead of numbers captured by a
+// closure made on every frame, which turned every update of them into garbage.
+const _rc = new Float64Array(5); // x0, y0, x1, y1, behind
+let _rcCam = null;
+function boundPart(o) {
+  const camera = _rcCam;
+  if (_rc[4] === 1 || !(o.isMesh || o.isSprite || o.isPoints || o.isLine)) return;
+  if (o.isSprite) { o.getWorldPosition(_v); o.getWorldScale(_s); _box.setFromCenterAndSize(_v, _s.setScalar(Math.max(_s.x, _s.y))); _m.copy(camera.matrixWorldInverse); }
+  else { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); _box.copy(o.geometry.boundingBox); _m.multiplyMatrices(camera.matrixWorldInverse, o.matrixWorld); }
+  for (let i = 0; i < 8; i++) {
+    _v.set(i & 1 ? _box.max.x : _box.min.x, i & 2 ? _box.max.y : _box.min.y, i & 4 ? _box.max.z : _box.min.z).applyMatrix4(_m);
+    if (_v.z > -camera.near) { _rc[4] = 1; return; } // crosses the eye: can't bound it on screen
+    _v.applyMatrix4(camera.projectionMatrix);
+    if (_v.x < _rc[0]) _rc[0] = _v.x;
+    if (_v.y < _rc[1]) _rc[1] = _v.y;
+    if (_v.x > _rc[2]) _rc[2] = _v.x;
+    if (_v.y > _rc[3]) _rc[3] = _v.y;
+  }
+}
+
 export class ViewmodelPost {
   constructor() {
     const hdr = { type: THREE.HalfFloatType, depthBuffer: false };
@@ -200,18 +220,12 @@ export class ViewmodelPost {
     // out starts below the screen, so measuring it from last frame's matrices returns "off screen", the scene is
     // skipped, the matrices never move on, and the gun stays invisible until something else updates them (a shot).
     obj.updateMatrixWorld();
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, behind = false;
-    obj.traverseVisible((o) => {
-      if (behind || !(o.isMesh || o.isSprite || o.isPoints || o.isLine)) return;
-      if (o.isSprite) { o.getWorldPosition(_v); o.getWorldScale(_s); _box.setFromCenterAndSize(_v, _s.setScalar(Math.max(_s.x, _s.y))); _m.copy(camera.matrixWorldInverse); }
-      else { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); _box.copy(o.geometry.boundingBox); _m.multiplyMatrices(camera.matrixWorldInverse, o.matrixWorld); }
-      for (let i = 0; i < 8; i++) {
-        _v.set(i & 1 ? _box.max.x : _box.min.x, i & 2 ? _box.max.y : _box.min.y, i & 4 ? _box.max.z : _box.min.z).applyMatrix4(_m);
-        if (_v.z > -camera.near) { behind = true; return; } // crosses the eye: can't bound it on screen
-        _v.applyMatrix4(camera.projectionMatrix);
-        x0 = Math.min(x0, _v.x); x1 = Math.max(x1, _v.x); y0 = Math.min(y0, _v.y); y1 = Math.max(y1, _v.y);
-      }
-    });
+    _rc[0] = _rc[1] = Infinity; _rc[2] = _rc[3] = -Infinity; _rc[4] = 0;
+    _rcCam = camera;
+    obj.traverseVisible(boundPart);
+    _rcCam = null;
+    const behind = _rc[4] === 1;
+    let x0 = _rc[0], y0 = _rc[1], x1 = _rc[2], y1 = _rc[3];
     if (behind) return null;
     if (x0 > x1) return [0, 0, 0, 0]; // nothing to draw
     x0 = Math.max(-1, x0); y0 = Math.max(-1, y0); x1 = Math.min(1, x1); y1 = Math.min(1, y1);

@@ -51,6 +51,7 @@ function rayHit(o, d, min, max) {
 // tests the boxes near it instead of all of them (Divide has close to 900). Temporary boxes (walls, barriers) are
 // few and come and go, so they are always tested. Results are the same as testing every box in list order.
 const CELL = 4;
+const byOrder = (a, b) => a._order - b._order;
 
 export class World {
   constructor(boxes) {
@@ -89,14 +90,20 @@ export class World {
     return this.extra;
   }
 
-  // Calls fn(box) once for each box that can touch the x/z rectangle; stops when fn returns true.
-  near(minx, minz, maxx, maxz, fn) {
-    const st = ++this.stamp;
-    const [cx0, cz0] = this.cellOf(minx, minz), [cx1, cz1] = this.cellOf(maxx, maxz);
+  // The boxes that can touch the x/z rectangle, each once, in a list reused by the next call (movement checks
+  // run several times per player per tick, so this makes no garbage).
+  near(minx, minz, maxx, maxz) {
+    const st = ++this.stamp, out = this.nearOut ||= [], nx = this.nx, nz = this.nz;
+    out.length = 0;
+    const cx0 = Math.min(nx - 1, Math.max(0, Math.floor((minx - this.gx) / CELL))), cz0 = Math.min(nz - 1, Math.max(0, Math.floor((minz - this.gz) / CELL)));
+    const cx1 = Math.min(nx - 1, Math.max(0, Math.floor((maxx - this.gx) / CELL))), cz1 = Math.min(nz - 1, Math.max(0, Math.floor((maxz - this.gz) / CELL)));
     for (let z = cz0; z <= cz1; z++) for (let x = cx0; x <= cx1; x++) {
-      for (const b of this.cells[z * this.nx + x]) { if (b._seen === st) continue; b._seen = st; if (fn(b)) return; }
+      const cell = this.cells[z * nx + x];
+      for (let i = 0; i < cell.length; i++) { const b = cell[i]; if (b._seen !== st) { b._seen = st; out.push(b); } }
     }
-    for (const b of this.temps()) if (fn(b)) return;
+    const t = this.temps();
+    for (let i = 0; i < t.length; i++) out.push(t[i]);
+    return out;
   }
 
   // Calls fn(box) for each grid box in the cells the ray passes through, nearest cell first; stops when fn returns
@@ -106,7 +113,8 @@ export class World {
     const fx = (o[0] - this.gx) / CELL, fz = (o[2] - this.gz) / CELL;
     // Clip the ray to the grid's rectangle; outside it there are no grid boxes.
     let t0 = 0, t1 = maxT;
-    for (const [p, dd, n] of [[fx, d[0] / CELL, this.nx], [fz, d[2] / CELL, this.nz]]) {
+    for (let k = 0; k < 2; k++) {
+      const p = k ? fz : fx, dd = d[k * 2] / CELL, n = k ? this.nz : this.nx;
       if (Math.abs(dd) < 1e-12) { if (p < 0 || p >= n) t1 = -1; continue; }
       let a = (0 - p) / dd, b = (n - p) / dd;
       if (a > b) { const s = a; a = b; b = s; }
@@ -133,29 +141,29 @@ export class World {
 
   // Movement collision. Boxes marked `passable` (Rift Line) block bullets and sight but not players.
   overlap(minx, miny, minz, maxx, maxy, maxz) {
-    const e = 1e-5;
+    const e = 1e-5, list = this.near(minx, minz, maxx, maxz);
     let found = null;
-    this.near(minx, minz, maxx, maxz, (b) => {
-      if (b.passable || (found && b._order > found._order)) return false;
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i];
+      if (b.passable || (found && b._order > found._order)) continue;
       if (minx < b.max[0] - e && maxx > b.min[0] + e &&
           miny < b.max[1] - e && maxy > b.min[1] + e &&
           minz < b.max[2] - e && maxz > b.min[2] + e) found = b;
-      return false;
-    });
+    }
     return found;
   }
 
   overlapAll(minx, miny, minz, maxx, maxy, maxz, out) {
-    const e = 1e-5;
+    const e = 1e-5, list = this.near(minx, minz, maxx, maxz);
     out.length = 0;
-    this.near(minx, minz, maxx, maxz, (b) => {
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i];
       if (!b.passable &&
           minx < b.max[0] - e && maxx > b.min[0] + e &&
           miny < b.max[1] - e && maxy > b.min[1] + e &&
           minz < b.max[2] - e && maxz > b.min[2] + e) out.push(b);
-      return false;
-    });
-    if (out.length > 1) out.sort((a, b) => a._order - b._order);
+    }
+    if (out.length > 1) out.sort(byOrder);
     return out;
   }
 

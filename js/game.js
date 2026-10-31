@@ -1106,7 +1106,11 @@ export class Game {
   }
 
   tickDrops(now) {
-    if (!this.mode) this.drops = this.drops.filter(d => now - d.at < 25); // deathmatch: guns despawn
+    if (!this.mode) { // deathmatch: guns despawn (filtered only when one is due, so most ticks make no new list)
+      let due = false;
+      for (const d of this.drops) if (now - d.at >= 25) { due = true; break; }
+      if (due) this.drops = this.drops.filter(d => now - d.at < 25);
+    }
     for (const c of this.combatants) {
       const pressed = c.input.use && !c.prevUse;
       c.prevUse = c.input.use;
@@ -1115,7 +1119,7 @@ export class Game {
       if (pressed && !c.isBot && c.kit) { const d = c.kit.pickupInView(); if (d && c.kit.pickUp([...d.pos])) continue; }
       if (!this.drops.length) continue;
       // Walk over a gun with that slot empty: it's picked up automatically (not your own fresh drop).
-      for (const d of [...this.drops]) {
+      for (const d of this.drops) { // a pickup ends the loop, so the list can't change under it
         if (now - d.at < (d.by === c ? 1.5 : 0.3)) continue;
         if (d.for && d.for !== c && d.for.alive && now - d.at < 10) continue; // bought for a teammate: theirs for a moment
         if (Math.hypot(d.pos[0] - c.pos[0], d.pos[2] - c.pos[2]) > 1.0 || Math.abs(d.pos[1] - c.pos[1]) > 1.2) continue;

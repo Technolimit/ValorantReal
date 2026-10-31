@@ -192,6 +192,48 @@ function mergeGeometries(list) {
   return out;
 }
 
+// A gun model as one mesh per material, for guns nobody animates (in other players' hands, lying on the floor).
+// A model is built from dozens of small parts (a Phantom is 56, an Operator 70), and each one is a draw call,
+// twice with shadows on; ten players holding rifles cost over a thousand draw calls a frame. Merged, a gun is
+// the handful of materials it uses. Hidden parts (hands, a spent shell) are left out.
+const _rel = new THREE.Matrix4(), _inv = new THREE.Matrix4();
+function flattenModel(model, castShadow = false) {
+  model.updateMatrixWorld(true);
+  _inv.copy(model.matrixWorld).invert();
+  const byMat = new Map();
+  const walk = (o) => {
+    if (!o.visible) return;
+    if (o.isMesh) {
+      const k = o.material;
+      if (!byMat.has(k)) byMat.set(k, []);
+      _rel.multiplyMatrices(_inv, o.matrixWorld);
+      const g = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()).applyMatrix4(_rel);
+      if (_rel.determinant() < 0) flipWinding(g); // a mirrored part would turn inside out
+      byMat.get(k).push(g);
+    }
+    for (const c of o.children) walk(c);
+  };
+  walk(model);
+  const out = new THREE.Group();
+  for (const [mat, parts] of byMat) {
+    const mesh = new THREE.Mesh(mergeGeometries(parts), mat);
+    mesh.castShadow = castShadow;
+    mesh.geometry.computeBoundingSphere();
+    out.add(mesh);
+    for (const g of parts) g.dispose();
+  }
+  model.traverse(o => o.geometry?.dispose());
+  return out;
+}
+
+// Swaps two corners of every triangle of a non-indexed geometry.
+function flipWinding(g) {
+  for (const a of Object.values(g.attributes)) {
+    const n = a.itemSize, arr = a.array;
+    for (let t = 0; t + 3 * n <= arr.length; t += 3 * n) for (let j = 0; j < n; j++) { const x = arr[t + n + j]; arr[t + n + j] = arr[t + 2 * n + j]; arr[t + 2 * n + j] = x; }
+  }
+}
+
 function labelTexture(text) {
   const c = document.createElement('canvas');
   c.width = 512; c.height = 256;
@@ -738,9 +780,9 @@ export class Renderer {
   // A dropped gun: arcs from the hand (or the body) to the floor, then lies on its side, slowly glinting.
   fxDrop(d) {
     const skin = d.by !== this.game.player && d.skin && SKINS[d.skin] ? d.skin : this.skinOf(d.by, d.gun.def.id);
-    const m = gunModel(d.gun.def.id, skin, { noHands: true });
-    m.traverse(o => { if (o.isMesh) o.castShadow = true; });
-    if (m.userData.hands) for (const h of m.userData.hands) h.visible = false;
+    const model = gunModel(d.gun.def.id, skin, { noHands: true });
+    if (model.userData.hands) for (const h of model.userData.hands) h.visible = false;
+    const m = flattenModel(model, true);
     const g = new THREE.Group();
     g.add(m);
     m.rotation.set(0, 0, Math.PI / 2); // on its side
@@ -2452,9 +2494,9 @@ export class Renderer {
         ch.heldKey = hk;
         for (const o of [...ch.held.children]) { ch.held.remove(o); o.traverse(m => m.geometry?.dispose()); }
         if (heldDef && !heldDef.hands) {
-          const m = gunModel(heldId, heldSkin, { noHands: true });
-          if (m.userData.hands) for (const hh of m.userData.hands) hh.visible = false;
-          m.traverse(o => { if (o.isMesh) o.castShadow = true; });
+          const model = gunModel(heldId, heldSkin, { noHands: true });
+          if (model.userData.hands) for (const hh of model.userData.hands) hh.visible = false;
+          const m = flattenModel(model, true);
           m.scale.setScalar(1.15);
           ch.held.add(m);
         }
