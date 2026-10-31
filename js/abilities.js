@@ -15,6 +15,7 @@ import { dirFromAngles } from './entity.js';
 import { PLAYER } from './config.js';
 
 const DEG = Math.PI / 180;
+const ABILITY_KEYS = ['q', 'e', 'c'];
 
 export const LIFT_VELOCITY = 12.5; // ~3.5 m rise
 export const DASH = { speed: 24.4, time: 0.45, exit: 7 }; // Tailwind: 11 m in 0.45 s, keep 7 m/s afterwards
@@ -1764,7 +1765,7 @@ export class Kit {
   tick(now) {
     this.now = now;
     const o = this.owner, inp = o.input, ab = this.agent.abilities, g = o.game;
-    for (const k of ['q', 'e', 'c']) this.recharge(k, now);
+    for (const k of ABILITY_KEYS) this.recharge(k, now);
     if (this.tailwind && now > this.tailwind.until) this.tailwind = null; // unused dash fades
 
     const buyLock = g.mode?.phase === 'buy';
@@ -1778,7 +1779,7 @@ export class Kit {
       inp.abQ = inp.abE = inp.abC = inp.abX = false;
       if (this.armed) { this.armed = null; o.equip(o.slot, now, true); }
     }
-    for (const k of ['q', 'e', 'c']) {
+    for (const k of ABILITY_KEYS) {
       if (!inp['ab' + k.toUpperCase()]) continue;
       if (this.armed && this.armed.k === k) { this.armed = null; continue; } // press again to put it away
       if (buyLock && !buyPhaseAllows(this.id, k)) {
@@ -2025,7 +2026,7 @@ export class Kit {
     if (this.overdrive) { this.overdrive.fuel = 100; this.energy = 100; this.slideAt = 0; } // Overload: kills refill it and give the slide back
     else if (this.slideAt === Infinity && ++this.slideKills >= 2) { this.slideAt = 0; this.slideKills = 0; } // 5v5: two kills give the slide back
     // Tailwind, Hot Hands, Paint Shells, Refract: every two kills bring a used charge back.
-    for (const k of ['q', 'e', 'c']) {
+    for (const k of ABILITY_KEYS) {
       const a = this.agent.abilities[k];
       if (a.recharge !== 'kills' || this.charges[k] >= a.charges) continue;
       if (++this.killCharge[k] >= 2) { this.charges[k]++; this.killCharge[k] = 0; }
@@ -2142,7 +2143,7 @@ export class Kit {
     if (now < this.empressUntil) rate *= 1.15;
     if (now < this.nullUntil) rate *= 1.1;
     const handling = now < this.empressUntil ? 1.15 : 1;
-    for (const gun of Object.values(o.inv)) if (gun) { gun.buffRate = rate; gun.buffRecoil = 1; gun.buffHandling = handling; }
+    for (const slot in o.inv) { const gun = o.inv[slot]; if (gun) { gun.buffRate = rate; gun.buffRecoil = 1; gun.buffHandling = handling; } }
     // Ability guns are gone once their last round is fired.
     const ag = o.inv.ability;
     if (ag && ag.mag <= 0 && now >= ag.nextFire - 0.05) {

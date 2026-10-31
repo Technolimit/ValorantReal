@@ -4,7 +4,7 @@ import { WEAPONS, BUY_GROUPS } from './weapons.js';
 import { ROUND, ECON, SHIELDS, abilityPrice } from './rounds.js';
 import { AGENTS } from './abilities.js';
 import { emblem } from './agentselect.js';
-import { gunIcons } from './gunicons.js';
+import { gunIcons, warmGunIcons } from './gunicons.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -20,6 +20,8 @@ const SHIELD_ICON = {
   regen: '<svg class="shi" viewBox="0 0 24 24"><path d="M12 2 21 6v6c0 5-4 8.5-9 10C7 20.5 3 17 3 12V6Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 13a4 4 0 1 0 2-3.5M8 7.5V10h2.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   heavy: '<svg class="shi" viewBox="0 0 24 24"><path d="M12 2 21 6v6c0 5-4 8.5-9 10C7 20.5 3 17 3 12V6Z" fill="currentColor" opacity=".25"/><path d="M12 2 21 6v6c0 5-4 8.5-9 10C7 20.5 3 17 3 12V6Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7.5 10 12 7.5l4.5 2.5M7.5 14 12 11.5l4.5 2.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
 };
+// Every gun the buy menu shows, for its icons.
+const SHOP_GUNS = Object.keys(WEAPONS).filter(id => WEAPONS[id].cost !== undefined && !WEAPONS[id].melee && !WEAPONS[id].ability);
 const REASON = { eliminated: 'Team eliminated', time: 'Time ran out', detonated: 'Spike detonated', defused: 'Spike defused' };
 
 export class RoundHud {
@@ -30,6 +32,7 @@ export class RoundHud {
     this.shopOpen = false;
     this.shopHtml = {};
     this.spectating = null;
+    warmGunIcons(SHOP_GUNS); // drawn in the background now, so the first B press doesn't wait for them
     const g = game;
     g.on('round', ({ mode }) => this.banner(`<b>ROUND ${mode.round}</b><small>${mode.round === ROUND.half + 1 ? 'SIDES SWAPPED · ' : ''}${SIDE[mode.sideOf(0)]} · BUY PHASE</small>`, 3));
     g.on('live', () => this.banner('<b>ROUND START</b>', 1.6));
@@ -166,7 +169,7 @@ export class RoundHud {
     this.shopKey = '';
     this.shopHtml = {};
     this.hovered = null;
-    if (open) { this.icons = gunIcons(Object.keys(WEAPONS).filter(id => WEAPONS[id].cost !== undefined && !WEAPONS[id].melee && !WEAPONS[id].ability)); this.game.mode ? this.renderShop() : this.renderLoadout(); }
+    if (open) { this.icons = gunIcons(SHOP_GUNS); this.game.mode ? this.renderShop() : this.renderLoadout(); }
   }
 
   // Deathmatch: the same screen, but every gun is free, as in Valorant. Picking one puts it in your hands now

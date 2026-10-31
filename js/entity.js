@@ -317,7 +317,7 @@ export class Combatant {
 
   collideMove(dt, world, wasGrounded, jumped) {
     const p = this.pos, v = this.vel, r = PLAYER.radius;
-    const hits = [];
+    const hits = this._moveHits ||= []; // reused: this runs for every player every tick
     const box = () => world.overlapAll(p[0] - r, p[1], p[2] - r, p[0] + r, p[1] + this.height, p[2] + r, hits);
 
     // Vertical
@@ -332,7 +332,7 @@ export class Combatant {
     if (hits.length) v[1] = 0;
 
     // Horizontal, one axis at a time so you slide along walls.
-    for (const axis of [0, 2]) {
+    for (let axis = 0; axis <= 2; axis += 2) {
       const d = v[axis] * dt;
       if (!d) continue;
       p[axis] += d;
