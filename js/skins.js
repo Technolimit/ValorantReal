@@ -92,7 +92,7 @@ export const SKINS = {
     ],
   },
   apogee: {
-    name: 'Apogee', tier: 'Ultra', blurb: 'White ceramic over black glass, a gilded skeleton and violet inlays. The top of every gun hinges open to take a live energy cell.',
+    name: 'Apogee', tier: 'Ultra', blurb: 'White ceramic over black glass, a gilded skeleton and violet inlays. A loading tube on top of every gun tips up from the front to take a live energy cell.',
     models: { classic: 'classicApo', spectre: 'spectreApo', vandal: 'vandalApo', guardian: 'guardianApo' },
     // Slots: body = white ceramic shell, metal = black glass panels and barrel, trim = gold, grip = violet panels.
     body: { color: 0xeef0f3, rough: 0.18, metal: 0.08 },

@@ -232,24 +232,47 @@ function apoStock(k, z0, z1, top, bot, drop, w = 0.012) {
   k.box(w + 0.028, bh * 0.9, 0.008, 'metal', 0, by, z1 + 0.012);
   k.box(w + 0.027, 0.003, 0.021, 'glow', 0, by + bh * 0.3, z1);
 }
-// Apogee's hinged top: the receiver's top cover from z0 (front) to z1 (back) is part `lid`, hinged along its left
-// edge so it swings up and over to the left like a book, and lies over a channel that holds the energy cell (part
-// `cell`): a lit bar with gold caps. The cover is white with gold edges, a cyan strip and a gold latch on its right
-// edge. `y` is the top of the cover, `w` the width, `parent` a part to nest in (a gun wrapped in `w`).
+// Apogee's loading tube: the top of the receiver from z0 (front) to z1 (back) is part `lid`, a white eight-sided
+// tube hinged at its front end, on a gold knuckle across the top. It lies in a channel cut into the receiver and
+// tips up from the front like a hood, its open back end rising out of the gun so the energy cell (part `cell`, a
+// lit rod with gold caps, nested in the tube) can slide out of it and a fresh one be slotted in. A window along
+// the top of the tube shows the cell's glow; gold rings round the mouth and a gold latch tab sit at the back.
+// `y` is the top of the receiver, `w` its width, `parent` a part to nest in (a gun wrapped in `w`). The tube's
+// top stands 4mm proud of `y`. Returns the floor of the channel, where the receiver's profile must be cut down to.
+function apoTube(w, y) {
+  const r = Math.min(0.013, w * 0.42), cy = y + 0.004 - r;
+  return { r, cy, floor: cy - r - 0.0015 };
+}
 function apoLid(k, z0, z1, y, w, parent = null) {
-  const len = z1 - z0, zc = (z0 + z1) / 2, h = 0.014, floor = y - h;
-  // The channel: a black floor and white walls at each side, under the cover.
+  const len = z1 - z0, zc = (z0 + z1) / 2, { r, cy, floor } = apoTube(w, y);
+  // The channel: a black floor and white walls at each side, under the tube.
   k.part(parent);
   k.box(w * 0.8, 0.003, len * 0.96, 'metal', 0, floor + 0.0015, zc);
-  for (const s of [-1, 1]) k.box(0.003, h - 0.002, len, 'body', s * (w / 2 - 0.0015), floor + (h - 0.002) / 2, zc);
-  k.part('cell', [0, floor + 0.007, zc], parent);
-  k.box(w * 0.42, 0.008, len * 0.8, 'glow', 0, floor + 0.007, zc);
-  for (const s of [-1, 1]) k.box(w * 0.46, 0.01, 0.01, 'trim', 0, floor + 0.007, zc + s * len * 0.42);
-  k.part('lid', [-w / 2, y, zc], parent);
-  k.box(w, h * 0.7, len, 'body', 0, y - h * 0.35, zc);
-  for (const s of [-1, 1]) k.box(0.004, 0.004, len * 0.98, 'trim', s * (w / 2 - 0.001), y - 0.001, zc);
-  k.box(w * 0.18, 0.0025, len * 0.62, 'glow', 0, y + 0.0005, zc);
-  k.box(0.005, 0.007, len * 0.3, 'trim', w / 2 + 0.001, y - 0.004, zc); // the latch on the free edge
+  for (const s of [-1, 1]) k.box(0.003, y - floor, len, 'body', s * (w / 2 - 0.0015), (y + floor) / 2, zc);
+  // The tube pivots on its top front edge, so it swings up and back clear of the receiver in front of it.
+  k.part('lid', [0, cy + r, z0], parent);
+  const t = 0.0026, sw = 2 * r * Math.tan(PI / 8) * 1.12; // wall thickness, slat width (overlapping at the corners)
+  for (let i = 0; i < 8; i++) {
+    const a = (i * PI) / 4;
+    if (i === 2) continue; // the top slat is the window
+    const rm = r - t / 2;
+    k.box(sw, t, len, 'body', Math.cos(a) * rm, cy + Math.sin(a) * rm, zc, 0, 0, a - PI / 2);
+  }
+  for (const s of [-1, 1]) { // gold rails along the window
+    const a = PI / 2 + s * (PI / 4);
+    k.box(0.0035, 0.0035, len * 0.98, 'trim', Math.cos(a) * r * 0.86, cy + Math.sin(a) * r * 0.86, zc, 0, 0, a - PI / 2);
+  }
+  k.cyl(r, 0.006, 'trim', 0, cy, z0 + 0.003, 8, PI / 2, 0, PI / 8); // the front cap
+  k.cyl(0.0045, w * 0.7, 'trim', 0, cy + r, z0 + 0.002, 10, 0, 0, PI / 2); // the hinge knuckle
+  k.tor(r * 0.97, 0.0024, 'trim', 0, cy, z1 - 0.002); // the mouth
+  k.tor(r * 0.97, 0.0022, 'trim', 0, cy, zc - len * 0.1);
+  k.tor(r * 0.82, 0.0009, 'glow', 0, cy, z1 - 0.004);
+  k.box(0.008, 0.005, 0.012, 'trim', 0, cy + r + 0.001, z1 - 0.008); // the latch tab you thumb to tip it up
+  // The cell, seated in the tube.
+  k.part('cell', [0, cy, zc], 'lid');
+  k.cyl(r * 0.6, len * 0.8, 'glow', 0, cy, zc, 10);
+  for (const s of [-1, 1]) k.cyl(r * 0.74, 0.01, 'trim', 0, cy, zc + s * len * 0.4, 8, PI / 2, 0, PI / 8);
+  k.parts.cell.userData.len = len;
   k.part(parent);
 }
 
@@ -1145,13 +1168,14 @@ const DESIGNS = {
   },
 
   // ---- Apogee collection (model skins, see skins.js): white ceramic, black glass, gold, violet, cyan ----
-  // Every gun has the hinged top (apoLid): the cover over the receiver swings open from the front and the reload
-  // swaps the energy cell under it (`cell` in reloadanim.js). Gold skeleton stocks (apoStock) on the long guns.
+  // Every gun has the loading tube (apoLid): the top of the receiver is a tube hinged at its front end that tips up
+  // so the reload can slide the spent energy cell out of its open back end and slot a fresh one in (`cell` in
+  // reloadanim.js). The receiver's profile is cut down to the channel floor (apoTube) between the tube's ends. Gold skeleton stocks (apoStock) on the long guns.
   // Vandal: black lower receiver, a white upper that runs out into a long tapered nose over the handguard, a gold
   // seam between them, violet side panels, a gold muzzle and a gilded skeleton stock.
   vandalApo(k) {
     k.prof([[0.06, -0.022], [0.06, 0.02], [-0.3, 0.02], [-0.32, 0.004], [-0.32, -0.022]], 0.05, 'metal');
-    k.prof([[0.06, 0.018], [0.06, 0.046], [0.032, 0.046], [0.032, 0.03], [-0.2, 0.03], [-0.2, 0.046], [-0.4, 0.043], [-0.47, 0.024], [-0.47, 0.008], [-0.32, 0.018]], 0.052, 'body');
+    k.prof([[0.06, 0.018], [0.06, 0.046], [0.032, 0.046], [0.032, 0.0225], [-0.2, 0.0225], [-0.2, 0.046], [-0.4, 0.043], [-0.47, 0.024], [-0.47, 0.008], [-0.32, 0.018]], 0.052, 'body');
     apoLid(k, -0.2, 0.032, 0.046, 0.05);
     k.box(0.0525, 0.003, 0.38, 'trim', 0, 0.019, -0.13);
     k.box(0.0515, 0.016, 0.22, 'grip', 0, -0.004, -0.16);
@@ -1179,10 +1203,10 @@ const DESIGNS = {
     return { muzzle: [0, 0.012, -0.62], sightY: 0.056 };
   },
 
-  // Guardian: the Vandal's lines drawn out longer, a slim scope behind the hinged top, a long gold muzzle.
+  // Guardian: the Vandal's lines drawn out longer, a slim scope behind the loading tube, a long gold muzzle.
   guardianApo(k) {
     k.prof([[0.05, -0.02], [0.05, 0.02], [-0.36, 0.02], [-0.38, 0.0], [-0.38, -0.02]], 0.048, 'metal');
-    k.prof([[0.05, 0.018], [0.05, 0.048], [-0.075, 0.048], [-0.075, 0.034], [-0.3, 0.034], [-0.3, 0.048], [-0.5, 0.045], [-0.56, 0.026], [-0.56, 0.01], [-0.38, 0.018]], 0.05, 'body');
+    k.prof([[0.05, 0.018], [0.05, 0.048], [-0.075, 0.048], [-0.075, 0.0245], [-0.3, 0.0245], [-0.3, 0.048], [-0.5, 0.045], [-0.56, 0.026], [-0.56, 0.01], [-0.38, 0.018]], 0.05, 'body');
     apoLid(k, -0.3, -0.075, 0.048, 0.048);
     k.box(0.0505, 0.003, 0.43, 'trim', 0, 0.019, -0.16);
     k.box(0.0495, 0.016, 0.26, 'grip', 0, -0.004, -0.2);
@@ -1208,12 +1232,12 @@ const DESIGNS = {
   },
 
   // Spectre: a compact white upper over black glass, a fat black shroud with gold bands and a white top strap, a
-  // holo sight behind the hinged top, a folded gold skeleton stock. The whole gun is part `w` (pivoting on the
+  // holo sight behind the loading tube, a folded gold skeleton stock. The whole gun is part `w` (pivoting on the
   // barrel line) so the inspect and pullout can roll it.
   spectreApo(k) {
     k.part('w', [0, 0.022, 0]);
     k.prof([[0.07, -0.006], [0.07, 0.026], [-0.22, 0.026], [-0.22, -0.006]], 0.044, 'metal');
-    k.prof([[0.07, 0.024], [0.07, 0.054], [-0.05, 0.054], [-0.05, 0.04], [-0.2, 0.04], [-0.2, 0.054], [-0.24, 0.05], [-0.24, 0.024]], 0.046, 'body');
+    k.prof([[0.07, 0.024], [0.07, 0.054], [-0.05, 0.054], [-0.05, 0.0305], [-0.2, 0.0305], [-0.2, 0.054], [-0.24, 0.05], [-0.24, 0.024]], 0.046, 'body');
     apoLid(k, -0.2, -0.05, 0.054, 0.044, 'w');
     k.box(0.0465, 0.003, 0.29, 'trim', 0, 0.025, -0.075);
     k.box(0.0455, 0.016, 0.2, 'grip', 0, 0.008, -0.1);
@@ -1236,13 +1260,13 @@ const DESIGNS = {
     return { muzzle: [0, 0.022, -0.425], sightY: sy };
   },
 
-  // Classic: a white slide with the hinged cover in its middle, a black glass frame with a gold seam and a cyan
+  // Classic: a white slide with the loading tube in its middle, a black glass frame with a gold seam and a cyan
   // strip, a violet grip with a gold backstrap. The whole gun is part `w` (pivoting on the trigger guard) so the
   // inspect and pullout can twirl it on your finger.
   classicApo(k) {
     k.part('w', [0, -0.02, 0.008]);
     k.prof([[0.05, 0.003], [0.05, 0.036], [0.035, 0.043], [-0.01, 0.043], [-0.01, 0.003]], 0.03, 'body');
-    k.prof([[-0.01, 0.003], [-0.01, 0.029], [-0.13, 0.029], [-0.13, 0.003]], 0.03, 'body');
+    k.prof([[-0.01, 0.003], [-0.01, 0.0203], [-0.13, 0.0203], [-0.13, 0.003]], 0.03, 'body');
     apoLid(k, -0.13, -0.01, 0.043, 0.03, 'w');
     k.prof([[-0.13, 0.003], [-0.13, 0.043], [-0.155, 0.043], [-0.168, 0.03], [-0.168, 0.003]], 0.03, 'body');
     k.cyl(0.008, 0.01, 'trim', 0, 0.022, -0.17);
@@ -1432,7 +1456,7 @@ function offHands(g, parts, mats) {
   }
   if (parts.shell) add(parts.shell, 0.014, -0.016, 0.04, [0.06, -0.12, 0.16]);
   if (parts.orb) add(parts.orb, -0.03, 0.022, 0.012, [-0.07, 0.04, 0.15]); // presses the fresh orb in from above-left
-  if (parts.cell) add(parts.cell, -0.03, 0.02, 0.01, [-0.07, 0.04, 0.15]); // Apogee: lays the fresh cell in from above-left
+  if (parts.cell) add(parts.cell, -0.012, 0.012, parts.cell.userData.len * 0.45 + 0.02, [-0.06, 0.03, 0.16]); // Apogee: pushes the fresh cell into the tube from behind
   if (parts.swipe) add(parts.swipe, -0.016, 0.01, 0.0, [-0.016, -0.165, 0.04], [1.32, 0, 0]); // Oathblade: runs along the blade, arm hanging below
   return hands;
 }
