@@ -15,8 +15,8 @@
 //             off-hand runs along the blade and the edge relights behind it
 //   oathCyl   Oathblade Sheriff: the edge goes dark, the drum is flicked out, loaded and flicked shut, then a
 //             thumb along the blade relights the edge
-//   cell      Apogee guns: the top hinges open to the left, the spent energy cell pops out and is flicked away, the off-hand
-//             lays a fresh glowing one in its channel, and the top is slammed shut with a flash
+//   cell      Apogee guns: the loading tube on top tips up from its front hinge, the spent energy cell shoots out of
+//             its back end and is flicked away, the off-hand slots a fresh glowing one in, and the tube is slammed shut
 //
 // Model skins reload as their model (`design` in models.js), so these tables can key on a design id too.
 // Between shots the bolt guns cycle their bolt and the Bucky works its pump (see `cycle`).
@@ -254,29 +254,32 @@ const STYLES = {
     const shut = pulse(t, 0.6, 0.68);
     return { rz: -0.15 * shut, rx: 0.05 * shut, glow: 1 + 2.4 * pulse(t, 0.82, 0.95) };
   },
-  // Apogee: thumb the latch and the top swings up and over to the left on its hinge; the spent cell jumps up out of its channel
-  // and is flicked away (shrinking out) as the gun's light dims; the off-hand lays a fresh one in from above-left,
-  // it powers up as it seats, and the top is slammed shut with a flare.
+  // Apogee: thumb the latch and the loading tube tips up from its front hinge, its open back end rising out of the gun;
+  // the spent cell shoots out of the mouth and is flicked away (shrinking out) as the gun's light dims; the off-hand
+  // slots a fresh one into the mouth and pushes it home down the tube, it powers up as it seats, and the tube is
+  // slammed back down with a flare. The cell is nested in the tube, so it moves along the tube's own axis (+z is
+  // out of the mouth).
   cell(t, P) {
     const open = ss(t, 0.06, 0.17) * (1 - ss(t, 0.66, 0.72));
-    if (P.lid) P.lid.rotation.z += 1.9 * open;
+    if (P.lid) P.lid.rotation.x -= 0.85 * open;
     const c = P.cell;
     if (c) {
+      const len = c.userData.len || 0.2;
       if (t < 0.4) {
-        const pop = ss(t, 0.18, 0.26), fly = ss(t, 0.26, 0.38);
-        c.position.x -= 0.1 * fly;
-        c.position.y += 0.05 * pop + 0.09 * fly;
-        c.position.z += 0.05 * fly;
-        c.rotation.x += 0.6 * pop + 2.5 * fly;
-        c.rotation.y += 1.5 * fly;
+        const pop = ss(t, 0.18, 0.25), fly = ss(t, 0.25, 0.38);
+        c.position.z += len * 0.95 * pop + 0.06 * fly;
+        c.position.x -= 0.09 * fly;
+        c.position.y += 0.07 * fly;
+        c.rotation.x += 2.2 * fly;
+        c.rotation.y += 1.4 * fly;
         c.scale.setScalar(Math.max(0.001, 1 - 0.9 * fly));
         c.visible = fly < 0.99;
       } else {
-        const k = 1 - ss(t, 0.42, 0.6);
-        c.position.x -= 0.07 * k;
-        c.position.y += 0.08 * k;
-        c.position.z += 0.02 * k;
-        c.rotation.y -= 1.2 * k;
+        const lineUp = 1 - ss(t, 0.42, 0.5), push = 1 - ss(t, 0.48, 0.6);
+        c.position.z += len * 0.9 * push + 0.03 * lineUp;
+        c.position.x -= 0.05 * lineUp;
+        c.position.y += 0.02 * lineUp;
+        c.rotation.y -= 0.6 * lineUp;
         c.visible = t > 0.42;
       }
     }
@@ -372,12 +375,12 @@ export const RELOAD_TRACK = {
   // Oathblade Sheriff: a wrist flick swings the drum out, muzzle up to dump, back to load, flicked shut, then
   // turned side-on for the thumb along the blade, and snapped back.
   sheriffOath: [[0, Z], [0.07, { rx: 0.25, rz: 1.0, ry: 0.3, px: -0.05, py: 0.03 }], [0.16, { rx: 1.3, rz: 0.4, py: 0.06 }], [0.25, { rx: 1.3, rz: 0.4, py: 0.06 }], [0.33, { rx: 0.35, rz: 1.05, ry: 0.3, px: -0.05, py: 0.03 }], [0.58, { rx: 0.4, rz: 1.1, ry: 0.32, px: -0.05, py: 0.03 }], [0.65, { rx: 0.2, rz: -0.35, py: 0.02 }], [0.72, { rx: 0.12, ry: 0.6, rz: 0.1, px: -0.04, py: 0.03 }], [0.86, { rx: 0.1, ry: 0.62, rz: 0.1, px: -0.04, py: 0.03 }], [0.93, { rx: -0.04, rz: -0.06 }], [1, Z]],
-  // Apogee: tipped up and rolled so the top of the gun, and the hinged cover on it, faces you through the swap;
+  // Apogee: tipped up and rolled a little so the loading tube, tipping up off the top, stands clear for the swap;
   // a little dip as the fresh cell seats and a nod as the cover is slammed shut.
-  vandalApo: [[0, Z], [0.12, { rx: 0.32, ry: 0.2, rz: 0.8, px: -0.03, py: 0.03 }], [0.42, { rx: 0.36, ry: 0.24, rz: 0.85, px: -0.04, py: 0.035 }], [0.62, { rx: 0.34, ry: 0.24, rz: 0.84, px: -0.04, py: 0.028 }], [0.74, { rx: 0.42, ry: 0.12, rz: 0.4, py: 0.02 }], [0.86, { rx: 0.12, rz: 0.08 }], [1, Z]],
-  guardianApo: [[0, Z], [0.12, { rx: 0.3, ry: 0.25, rz: 0.85, px: -0.04, py: 0.03 }], [0.42, { rx: 0.34, ry: 0.28, rz: 0.9, px: -0.05, py: 0.035 }], [0.62, { rx: 0.32, ry: 0.28, rz: 0.88, px: -0.05, py: 0.028 }], [0.74, { rx: 0.4, ry: 0.12, rz: 0.35, py: 0.02 }], [0.86, { rx: 0.1, rz: 0.06 }], [1, Z]],
-  spectreApo: [[0, Z], [0.1, { rx: 0.35, ry: 0.18, rz: 0.9, px: -0.03, py: 0.03 }], [0.42, { rx: 0.38, ry: 0.2, rz: 0.95, px: -0.035, py: 0.035 }], [0.62, { rx: 0.36, ry: 0.2, rz: 0.93, px: -0.035, py: 0.028 }], [0.73, { rx: 0.45, ry: 0.08, rz: 0.3, py: 0.025 }], [0.85, { rx: 0.1, rz: -0.08 }], [1, Z]],
-  classicApo: [[0, Z], [0.1, { rx: 0.4, ry: 0.2, rz: 0.95, px: -0.04, py: 0.03 }], [0.42, { rx: 0.44, ry: 0.24, rz: 1.0, px: -0.045, py: 0.035 }], [0.62, { rx: 0.42, ry: 0.24, rz: 0.98, px: -0.045, py: 0.03 }], [0.73, { rx: 0.5, ry: 0.1, rz: 0.3, py: 0.025 }], [0.86, { rx: 0.12 }], [1, Z]],
+  vandalApo: [[0, Z], [0.12, { rx: 0.32, ry: 0.2, rz: 0.36, px: -0.03, py: 0.03 }], [0.42, { rx: 0.36, ry: 0.24, rz: 0.38, px: -0.04, py: 0.035 }], [0.62, { rx: 0.34, ry: 0.24, rz: 0.38, px: -0.04, py: 0.028 }], [0.74, { rx: 0.42, ry: 0.12, rz: 0.4, py: 0.02 }], [0.86, { rx: 0.12, rz: 0.08 }], [1, Z]],
+  guardianApo: [[0, Z], [0.12, { rx: 0.3, ry: 0.25, rz: 0.38, px: -0.04, py: 0.03 }], [0.42, { rx: 0.34, ry: 0.28, rz: 0.41, px: -0.05, py: 0.035 }], [0.62, { rx: 0.32, ry: 0.28, rz: 0.4, px: -0.05, py: 0.028 }], [0.74, { rx: 0.4, ry: 0.12, rz: 0.35, py: 0.02 }], [0.86, { rx: 0.1, rz: 0.06 }], [1, Z]],
+  spectreApo: [[0, Z], [0.1, { rx: 0.35, ry: 0.18, rz: 0.41, px: -0.03, py: 0.03 }], [0.42, { rx: 0.38, ry: 0.2, rz: 0.43, px: -0.035, py: 0.035 }], [0.62, { rx: 0.36, ry: 0.2, rz: 0.42, px: -0.035, py: 0.028 }], [0.73, { rx: 0.45, ry: 0.08, rz: 0.3, py: 0.025 }], [0.85, { rx: 0.1, rz: -0.08 }], [1, Z]],
+  classicApo: [[0, Z], [0.1, { rx: 0.4, ry: 0.2, rz: 0.43, px: -0.04, py: 0.03 }], [0.42, { rx: 0.44, ry: 0.24, rz: 0.45, px: -0.045, py: 0.035 }], [0.62, { rx: 0.42, ry: 0.24, rz: 0.44, px: -0.045, py: 0.03 }], [0.73, { rx: 0.5, ry: 0.1, rz: 0.3, py: 0.025 }], [0.86, { rx: 0.12 }], [1, Z]],
   warden: [[0, Z], [0.12, { rx: 0.9, rz: 0.6, py: 0.05 }], [0.6, { rx: 0.9, rz: 0.6, py: 0.05 }], [0.75, { rx: 1.2, rz: 0.2, py: 0.06 }], [1, Z]],
   // Operator: bolt up, tipped muzzle-up to pull the mag, dropped low-left to seat the new one, bolt home.
   operator: [[0, Z], [0.12, { rx: 0.05, rz: 0.1 }], [0.3, { rx: 0.9, rz: -0.6, ry: -0.1, py: 0.04 }], [0.5, { rx: 0.4, rz: 0.9, ry: 0.5, px: -0.12, py: -0.08 }], [0.7, { rx: 0.3, rz: 0.6, ry: 0.4, px: -0.08, py: -0.05 }], [0.85, { rx: 0.05, rz: 0.1 }], [1, Z]],
