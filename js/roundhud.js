@@ -76,8 +76,13 @@ export class RoundHud {
     const g = this.game, m = g.mode, p = g.player, now = g.time;
     const on = !!m;
     $('rbar').hidden = !on || this.shopOpen; // the shop covers the round HUD, as in Valorant
-    $('top').hidden = on;
-    if (!on) { $('rnotice').textContent = ''; $('rchannel').hidden = true; $('rcredits').hidden = true; $('rhint').textContent = ''; $('shop').hidden = true; return; }
+    $('top').hidden = on || this.shopOpen;
+    if (!on) {
+      $('rnotice').textContent = ''; $('rchannel').hidden = true; $('rcredits').hidden = true; $('rhint').textContent = '';
+      $('shop').hidden = !this.shopOpen; // deathmatch's loadout screen
+      if (this.shopOpen) this.renderLoadout();
+      return;
+    }
     // Score bar
     const mySide = m.sideOf(0);
     this.set('rs0', m.score[0]); this.set('rs1', m.score[1]);
@@ -156,10 +161,38 @@ export class RoundHud {
   toggleShop(open = !this.shopOpen) {
     this.shopOpen = open;
     $('shop').hidden = !open;
+    $('shop').classList.toggle('dm', !this.game.mode);
+    $('shop-h').textContent = this.game.mode ? 'Shop' : 'Loadout';
     this.shopKey = '';
     this.shopHtml = {};
     this.hovered = null;
-    if (open) { this.icons = gunIcons(Object.keys(WEAPONS).filter(id => WEAPONS[id].cost !== undefined && !WEAPONS[id].melee && !WEAPONS[id].ability)); this.renderShop(); }
+    if (open) { this.icons = gunIcons(Object.keys(WEAPONS).filter(id => WEAPONS[id].cost !== undefined && !WEAPONS[id].melee && !WEAPONS[id].ability)); this.game.mode ? this.renderShop() : this.renderLoadout(); }
+  }
+
+  // Deathmatch: the same screen, but every gun is free, as in Valorant. Picking one puts it in your hands now
+  // and on every respawn; the side panel shows the loadout instead of the team.
+  renderLoadout() {
+    const p = this.game.player, l = p.loadout || {};
+    const key = [l.primary, l.secondary].join('|');
+    if (key === this.shopKey) return;
+    this.shopKey = key;
+    const icon = (id) => this.icons?.[id] ? `<img src="${this.icons[id]}" alt="">` : '';
+    const card = (item, inner, state) => `<button class="scard ${state}" data-item='${JSON.stringify(item)}'>${inner}</button>`;
+    const gun = (id) => {
+      const on = l.primary === id || l.secondary === id;
+      return card({ type: 'weapon', id }, `<span class="pr">FREE</span>${icon(id)}<span class="n">${esc(WEAPONS[id].name)}</span>${on ? '<span class="tag">EQUIPPED</span>' : ''}`, `gun${on ? ' owned' : ''}`);
+    };
+    const groups = Object.fromEntries(BUY_GROUPS);
+    const col = (...names) => `<div class="scol">${names.map(n => `<section><h3>${SHOP_TITLES[n] || n}</h3>${groups[n].map(gun).join('')}</section>`).join('')}</div>`;
+    this.put('shop-phase', 'DEATHMATCH', true);
+    this.put('shop-time', '', true);
+    this.put('shop-note', 'Every gun is free · left click to equip it now and on every respawn', true);
+    if (p.kit) $('shop').style.setProperty('--agent', p.kit.agent.color);
+    const rebuilt = this.put('shop-grid', col('Sidearms') + col('SMGs', 'Shotguns') + col('Rifles') + col('Snipers', 'Heavies'))
+      | this.put('shop-gear', `<section class="sgear"><h3>Shields</h3><div>${card({ type: 'none', sh: 'heavy' }, `<span class="pr">FREE</span>${SHIELD_ICON.heavy}<span class="n">Heavy Shields</span><span class="tag">EVERY SPAWN</span>`, 'gear owned')}</div></section>`);
+    const slot = (label, id) => `<div class="lslot"><small>${label}</small>${id ? `${icon(id)}<b>${esc(WEAPONS[id].name)}</b>` : '<b class="none">None</b>'}</div>`;
+    this.put('shop-team', `<h3>Your loadout</h3>${slot('Primary', l.primary)}${slot('Sidearm', l.secondary)}<div class="lslot"><small>Shield</small>${SHIELD_ICON.heavy}<b>Heavy</b></div><p class="lnote">Kept for every respawn and your next deathmatch.</p>`);
+    if (this.hovered && rebuilt) this.hover(this.hovered.dataset.item, true);
   }
 
   renderShop() {
@@ -272,10 +305,12 @@ export class RoundHud {
       const w = WEAPONS[item.id];
       const n = w.dmg.length; // the last bracket covers anything farther
       const ranges = w.dmg.map((b, i) => [n === 1 ? 'Any' : i === n - 1 ? `${w.dmg[i - 1][0]}m+` : `${i ? w.dmg[i - 1][0] : 0}–${b[0]}m`, b]);
-      html = `<div class="dh"><b>${esc(w.name)}</b><small>${esc(w.cat)}</small><span>${w.cost ? CR + w.cost.toLocaleString() : 'FREE'}</span></div>
+      html = `<div class="dh"><b>${esc(w.name)}</b><small>${esc(w.cat)}</small><span>${w.cost && this.game.mode ? CR + w.cost.toLocaleString() : 'FREE'}</span></div>
         ${this.icons?.[item.id] ? `<img class="dimg" src="${this.icons[item.id]}" alt="">` : ''}
         <table class="dtab"><tr><th>Range</th><th>Head</th><th>Body</th><th>Leg</th></tr>${ranges.map(([r, b]) => `<tr><td>${r}</td><td>${b[1]}</td><td>${b[2]}</td><td>${b[3]}</td></tr>`).join('')}</table>
         <div class="dstats"><span>Fire rate<b>${w.spin ? `${w.rate}→${w.spin.to}` : w.rate}/s</b></span><span>Magazine<b>${w.mag}${w.pellets ? ` · ×${w.pellets}` : ''}</b></span><span>Wall pen<b>${esc(w.pen || '—')}</b></span><span>Reload<b>${w.reload}s</b></span></div>`;
+    } else if (item?.sh) {
+      html = `<div class="dh"><b>Heavy Shields</b><small>Shield</small><span>FREE</span></div><p>Every spawn comes with ${SHIELDS.heavy.armor} shield. It absorbs damage before health.</p>`;
     } else if (item?.type === 'shield' && SHIELDS[item.id]) {
       const s = SHIELDS[item.id];
       html = `<div class="dh"><b>${esc(s.name)}</b><small>Shield</small><span>${CR}${s.cost}</span></div><p>${s.pool ? `${s.armor} shield that refills from a ${s.pool}-point reserve after a moment out of combat.` : `Absorbs damage for ${s.armor} points before health.`}</p>`;

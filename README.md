@@ -19,6 +19,7 @@ name contains it. `node tools/check-agent-select.mjs` checks the
 agent select: the pick rules, offline 5v5, and an online room with a player joining mid-match. `node tools/check-spike.mjs`
 checks that bots carry the spike out of spawn and plant it on Divide. `node tools/check-bot-wallbang.mjs` checks that bots
 stop shooting when their target ducks behind a wall, and still shoot when they can see it.
+`node tools/check-dm-loadout.mjs` checks the deathmatch loadout screen (every gun free, a click equips it now and for every respawn).
 `node tools/check-buy-drop.mjs` checks that buying over a carried-over gun drops it and buying over one bought this round sells it back.
 `node tools/check-economy.mjs [--offline] [--shots <dir>]` checks the 5v5 buy menu (credits, next-round minimum, loss bonus,
 team credits), weapon requests offline and online, and ultimate orbs; `--shots` saves pictures of the shop and an orb.

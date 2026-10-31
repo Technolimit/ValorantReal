@@ -1,7 +1,7 @@
 import { priceOf } from './prices.js';
 import { SKINS } from './skins.js';
-// DOM HUD: crosshair, vitals, ammo, kill feed, damage feedback, scoreboard, death report, buy menu.
-import { WEAPONS, BUY_GROUPS } from './weapons.js';
+// DOM HUD: crosshair, vitals, ammo, kill feed, damage feedback, scoreboard, death report.
+import { WEAPONS } from './weapons.js';
 import { PLAYER, TICK_RATE } from './config.js';
 import { patternPreview } from './gun.js';
 import { MELEE } from './melee.js';
@@ -44,7 +44,6 @@ export class Hud {
     this.sprayCtx = this.spray.getContext('2d');
     this.sprayKey = '';
     this.buildAbilities('zephyr');
-    this.buildBuyMenu();
     this.hookEvents();
   }
 
@@ -758,24 +757,6 @@ export class Hud {
       const acc = st.shots ? Math.round(st.hits / st.shots * 100) : 0;
       return `<tr class="${c === this.game.player ? 'me' : ''}"><td>${esc(c.name)}</td><td>${st.kills}</td><td>${st.deaths}</td><td>${hs}%</td><td>${acc}%</td><td>${st.damage}</td></tr>`;
     }).join('');
-  }
-
-  buildBuyMenu() {
-    const root = $('buy-groups');
-    root.innerHTML = BUY_GROUPS.map(([title, ids]) => `
-      <section><h3>${title}</h3>${ids.map(id => {
-        const w = WEAPONS[id];
-        const b = w.dmg[0];
-        const rate = w.spin ? `${w.rate}→${w.spin.to}` : w.rate;
-        return `<button class="card" data-id="${id}"><span class="n">${w.name}</span><span class="c">¤${w.cost}</span>
-          <span class="s">${b[1]} / ${b[2]} / ${b[3]}${w.pellets ? ` ×${w.pellets}` : ''} · ${rate}/s · ${w.mag} rds</span></button>`;
-      }).join('')}</section>`).join('');
-  }
-
-  markLoadout(loadout) {
-    for (const el of document.querySelectorAll('#buy .card')) {
-      el.classList.toggle('sel', el.dataset.id === loadout.primary || el.dataset.id === loadout.secondary);
-    }
   }
 }
 

@@ -345,31 +345,28 @@ function playerInput() {
 }
 
 // ---- buy menu (virtual cursor so the mouse stays captured) ----
+// One screen for both modes: the 5v5 shop, or in deathmatch the same layout with every gun free.
 function toggleBuy(open = !hud.buyOpen) {
   hud.buyOpen = open;
-  if (game.mode) { rhud.toggleShop(open); $('buy').hidden = true; }
-  else $('buy').hidden = !open;
+  rhud.toggleShop(open);
   $('cursor').hidden = !open;
   hud.cursor = { x: innerWidth / 2, y: innerHeight / 2 };
-  hud.markLoadout(settings.loadout);
   mouse.fill(false);
 }
 
 function clickBuy(button = 0) {
+  const el = document.elementFromPoint(hud.cursor.x, hud.cursor.y)?.closest('.scard, #shop-close');
+  if (!el) return;
+  if (el.id === 'shop-close') { toggleBuy(false); return; }
   if (game.mode) {
-    const el = document.elementFromPoint(hud.cursor.x, hud.cursor.y)?.closest('.scard, #shop-close');
-    if (!el) return;
-    if (el.id === 'shop-close') { toggleBuy(false); return; }
     const err = rhud.shopClick(el, button);
     if (err) hud.center(`<small>${err.toUpperCase()}</small>`);
     else sound.click(0, 0.25);
     return;
   }
-  if (button !== 0) return;
-  const el = document.elementFromPoint(hud.cursor.x, hud.cursor.y)?.closest('.card, #buy-close');
-  if (!el) return;
-  if (el.id === 'buy-close') { toggleBuy(false); return; }
-  const w = WEAPONS[el.dataset.id];
+  const item = JSON.parse(el.dataset.item || '{}');
+  if (button !== 0 || item.type !== 'weapon') return;
+  const w = WEAPONS[item.id];
   settings.loadout[w.slot] = w.id;
   saveSettings(settings);
   const p = game.player;
@@ -378,7 +375,8 @@ function clickBuy(button = 0) {
     p.give(w.id);
     p.equip(w.slot, game.time, true);
   }
-  hud.markLoadout(settings.loadout);
+  sound.click(0, 0.25);
+  rhud.renderLoadout();
 }
 
 // ---- match flow ----
@@ -1674,5 +1672,5 @@ function frame(t) {
 requestAnimationFrame(frame);
 
 // Exposed for automated checks in a headless browser; `frozen` stops the loop from ticking.
-const hooks = { game, renderer, rhud, sound, settings, startMatch, playerInput, openAgents, switchAgent, net, hostOnline, joinOnline, servers, peerOptions, frozen: false };
+const hooks = { game, renderer, rhud, hud, sound, settings, startMatch, playerInput, openAgents, switchAgent, toggleBuy, clickBuy, net, hostOnline, joinOnline, servers, peerOptions, frozen: false };
 window.__game = hooks;
