@@ -1,5 +1,6 @@
 // Headless performance profile: plays offline 5v5 on Divide with ten bots and reports what a frame costs.
-//   node tools/profile.mjs [seconds]     (needs playwright, like check-abilities.mjs)
+//   node tools/profile.mjs [seconds] [--dm]     (needs playwright, like check-abilities.mjs)
+// --dm plays deathmatch on Divide instead (bots carry rifles from the start).
 // Prints the simulation cost per 128 Hz tick, the CPU cost of a render call, draw calls and triangles, how often
 // shaders were compiled mid-match, and how much garbage the simulation makes. Headless Chromium draws in software,
 // so render times are only good for comparing runs on the same machine.
@@ -37,10 +38,14 @@ const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
 await page.goto(url, { timeout: 90000 });
 await page.waitForFunction(() => window.__game, null, { timeout: 90000 });
-await page.evaluate(() => { Object.assign(window.__game.settings, { mode: 'rounds', map: 'divide', side: 'atk' }); document.getElementById('play').click(); });
-await page.click('#select .sel-card[data-id="vex"]');
-await page.click('#sel-lock');
-await page.waitForFunction(() => window.__game.game.mode && window.__game.game.state === 'playing', null, { timeout: 20000 });
+const DM = process.argv.includes('--dm');
+if (DM) await page.evaluate(() => { Object.assign(window.__game.settings, { mode: 'dm', map: 'divide', botCount: 9 }); return window.__game.startMatch(); });
+else {
+  await page.evaluate(() => { Object.assign(window.__game.settings, { mode: 'rounds', map: 'divide', side: 'atk' }); document.getElementById('play').click(); });
+  await page.click('#select .sel-card[data-id="vex"]');
+  await page.click('#sel-lock');
+}
+await page.waitForFunction((dm) => (dm || window.__game.game.mode) && window.__game.game.state === 'playing', DM, { timeout: 20000 });
 await page.evaluate(() => { window.__game.frozen = true; });
 // --cpu: also print the functions that take the most time, and where the most garbage is allocated.
 const deep = process.argv.includes('--cpu');
@@ -82,7 +87,7 @@ const out = await page.evaluate(async ([SECONDS, NO_RENDER, GPU]) => {
   const px = new Uint8Array(4);
   const frames = Math.round(SECONDS * 60);
   for (let f = 0; f < frames; f++) {
-    if (g.mode.phase === 'end' || g.state !== 'playing') g.mode.startRound?.();
+    if (g.mode && (g.mode.phase === 'end' || g.state !== 'playing')) g.mode.startRound?.();
     p.hp = 1e9;
     // ~2.13 ticks per 60 Hz frame, as main.js does
     const want = Math.floor((f + 1) * 128 / 60) - Math.floor(f * 128 / 60);
