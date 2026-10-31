@@ -16,7 +16,7 @@ import { AGENTS, AGENT_ORDER, Kit } from './abilities.js';
 import { ROUND } from './rounds.js';
 import { Minimap } from './minimap.js';
 import { RoundHud } from './roundhud.js';
-import { MAPS, loadMapIndex, preloadMap, mapList, mapInfo, mapJSON, addMap, removeCustomMap, supportsMode, upgradeMap, stringifyMap } from './map.js';
+import { MAPS, loadMapIndex, preloadMap, buildMap, mapList, mapInfo, mapJSON, addMap, removeCustomMap, supportsMode, upgradeMap, stringifyMap } from './map.js';
 import { NetSession, roomCode, peerOptions } from './net.js';
 import { Lobby, SelectScreen, emblem } from './agentselect.js';
 import { ServerDirectory } from './servers.js';
@@ -225,7 +225,11 @@ function show(id) {
   if (id === 'pause') $('pause-agent').textContent = `Change agent (${key('agent')})`;
   for (const o of ['menu', 'pause', 'settings', 'skins', 'agents', 'select', 'end', 'online', 'maps']) $(o).hidden = o !== id;
   $('hud').hidden = !running;
+  // Out of a match, the screens the home screen's tabs open share its backdrop (in a match they keep the game behind).
+  for (const o of ['skins', 'online', 'maps']) $(o).classList.toggle('lobby-bg', !running);
+  lobbyCovered = !running && ['menu', 'skins', 'online', 'maps'].includes(id);
 }
+let lobbyCovered = true; // the page opens on the home screen
 
 // ---- input ----
 // Keys come from settings.binds and settings.binds2 (Settings → Controls, see keybinds.js).
@@ -1385,26 +1389,55 @@ function openMaps() {
   show('maps');
 }
 
+// Map cards: a top-down picture of each layout (walkable cells, raised floor lighter, sites tinted), drawn once.
+const mapThumbs = new Map();
+async function mapThumb(id) {
+  if (mapThumbs.has(id)) return mapThumbs.get(id);
+  await preloadMap(id);
+  const m = buildMap(id), W = m.W, H = m.H, px = Math.max(1, Math.floor(400 / Math.max(W, H)));
+  const c = document.createElement('canvas');
+  c.width = W * px; c.height = H * px;
+  const x = c.getContext('2d');
+  for (let z = 0; z < H; z++) for (let cx = 0; cx < W; cx++) {
+    const h = m.heights[z]?.[cx];
+    if (h === null || h === undefined) continue;
+    x.fillStyle = h > 1.5 ? '#9aa9b8' : '#5d6c7b';
+    x.fillRect(cx * px, z * px, px, px);
+  }
+  for (const st of Object.values(m.sites || {})) {
+    const x0 = (st.min[0] - m.ox) / 2 * px, z0 = (st.min[2] - m.oz) / 2 * px, x1 = (st.max[0] - m.ox) / 2 * px, z1 = (st.max[2] - m.oz) / 2 * px;
+    x.fillStyle = 'rgba(255, 70, 85, 0.35)'; x.fillRect(x0, z0, x1 - x0, z1 - z0);
+    x.fillStyle = '#fff'; x.font = `800 ${Math.round(c.width / 16)}px system-ui, sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(st.name, (x0 + x1) / 2, (z0 + z1) / 2);
+  }
+  const url = c.toDataURL();
+  mapThumbs.set(id, url);
+  return url;
+}
+
 function buildMapList() {
   const list = $('map-list');
   list.innerHTML = '';
   for (const m of mapList()) {
-    const row = document.createElement('div');
-    row.className = 'map-row' + (m.id === settings.map ? ' sel' : '');
-    row.innerHTML = `<div><b>${escHtml(m.name)}</b><small>${escHtml(m.blurb || '')}</small></div><span class="tag">${m.modes.includes('rounds') ? 'DM · 5v5' : 'DM'}${m.custom ? ' · imported' : ''}</span><span class="inline"></span>`;
-    const btns = row.lastChild;
-    const use = document.createElement('button');
-    use.textContent = m.id === settings.map ? 'Selected' : 'Use';
-    use.onclick = async () => {
+    const sel = m.id === settings.map;
+    const card = document.createElement('div');
+    card.className = 'map-card' + (sel ? ' sel' : '');
+    card.title = sel ? 'Selected' : `Play on ${m.name}`;
+    card.innerHTML = `<div class="map-thumb">${sel ? '<span class="badge">Selected</span>' : ''}</div><div class="info"><b>${escHtml(m.name)}</b><small>${escHtml(m.blurb || '')}</small></div>`
+      + `<div class="modes"><span>Deathmatch</span>${m.modes.includes('rounds') ? '<span>5v5</span>' : ''}${m.custom ? '<span>Imported</span>' : ''}</div><div class="acts"></div>`;
+    mapThumb(m.id).then((url) => { const img = new Image(); img.alt = ''; img.src = url; card.firstChild.appendChild(img); }, () => {});
+    card.onclick = async () => {
+      if (sel) return;
       try { await preloadMap(m.id); } catch (err) { $('map-status').textContent = err.message; return; }
       settings.map = m.id; saveSettings(settings); updateMenuLoadout(); buildMapList();
     };
-    btns.appendChild(use);
+    const btns = card.lastChild;
     // The map as a version 2 file, to edit and import again (older maps are converted on the way out).
     const dl = document.createElement('button');
     dl.textContent = 'Download';
-    dl.title = 'Save this map as a JSON file you can edit, then load it with Import file';
-    dl.onclick = async () => {
+    dl.title = 'Save this map as a JSON file you can edit, then load it with Import';
+    dl.onclick = async (e) => {
+      e.stopPropagation();
       try {
         const text = stringifyMap(upgradeMap(await preloadMap(m.id)));
         const a = document.createElement('a');
@@ -1418,10 +1451,10 @@ function buildMapList() {
     if (m.custom && !m.file) {
       const del = document.createElement('button');
       del.textContent = 'Remove';
-      del.onclick = () => { removeCustomMap(m.id); if (settings.map === m.id) settings.map = 'arena'; saveSettings(settings); updateMenuLoadout(); buildMapList(); };
+      del.onclick = (e) => { e.stopPropagation(); removeCustomMap(m.id); mapThumbs.delete(m.id); if (settings.map === m.id) settings.map = 'arena'; saveSettings(settings); updateMenuLoadout(); buildMapList(); };
       btns.appendChild(del);
     }
-    list.appendChild(row);
+    list.appendChild(card);
   }
 }
 
@@ -1664,8 +1697,8 @@ function frame(t) {
     const ear = ears();
     sound.setListener(ear.eye(), ear.yaw);
     sound.setDeaf(game.player.alive && game.player.st.deafUntil > game.time);
-  } else if ($('menu').hidden) {
-    renderer.renderIdle(t / 1000); // the home screen covers the view, so the scene behind it rests
+  } else if (!lobbyCovered) {
+    renderer.renderIdle(t / 1000); // the home screen and its tabs cover the view, so the scene behind them rests
   }
   look.dx = look.dy = 0;
 }

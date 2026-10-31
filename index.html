@@ -421,7 +421,7 @@ button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
 .skin-actions button, .skin-actions .mini { padding: 6px 10px !important; font-size: 11px !important; }
 
 /* ---------- Skins: a Valorant-style collection (gun grid) and a weapon screen (big preview, skin list, variants) ---------- */
-.panel.skins { width: min(1180px, 100%); max-height: 96vh; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(20, 44, 68, 0.96), rgba(12, 22, 34, 0.96)); }
+.panel.skins { width: min(1760px, 100%); height: calc(100vh - 32px); max-height: none; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(20, 44, 68, 0.96), rgba(12, 22, 34, 0.96)); }
 .skins-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 12px; }
 .skins-head h2 { margin: 0; }
 .skins-head p { margin: 0; flex: 1; color: var(--muted); font-size: 13px; }
@@ -429,19 +429,19 @@ button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
 .skins-head button:hover, .skin-actions button:hover, .skin-detail-head button:hover, #skin-equip:hover { border-color: var(--text); }
 #skin-collection { display: flex; flex-direction: column; min-height: 0; }
 #skin-weapons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 14px; overflow: auto; padding-right: 4px; }
-.coll-col h3 { margin: 6px 0 8px; text-align: center; font-size: 16px; letter-spacing: 1px; text-transform: uppercase; font-weight: 800; }
-.coll-card { position: relative; display: block; width: 100%; height: 86px; margin-bottom: 10px; padding: 0; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.18); color: var(--text); cursor: pointer; overflow: hidden; }
+.coll-col h3 { margin: 6px 0 10px; text-align: center; font-size: 16px; letter-spacing: 1px; text-transform: uppercase; font-weight: 800; }
+.coll-card { position: relative; display: block; width: 100%; height: clamp(70px, calc((100vh - 140px) / 7 - 4px), 160px); /* the rifle + melee column fills the screen */ margin-bottom: 10px; padding: 0; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.18); color: var(--text); cursor: pointer; overflow: hidden; }
 .coll-card:hover { border-color: var(--text); background: rgba(255, 255, 255, 0.1); }
 .coll-card img { position: absolute; inset: 4px 8px 18px; width: calc(100% - 16px); height: calc(100% - 22px); object-fit: contain; }
-.coll-card b { position: absolute; left: 8px; bottom: 5px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+.coll-card b { position: absolute; left: 10px; bottom: 6px; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
 .coll-card small { position: absolute; right: 8px; bottom: 5px; font-size: 10px; color: var(--muted); max-width: 55%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #skin-detail { display: flex; flex-direction: column; min-height: 0; }
 .skin-detail-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 8px; }
 .skin-detail-head h2 { margin: 0; font-size: 34px; letter-spacing: 2px; text-transform: uppercase; color: #ece9b0; }
 .skin-detail-head button { justify-self: start; }
-.skin-detail-body { display: grid; grid-template-columns: 1fr 220px; gap: 14px; min-height: 0; }
+.skin-detail-body { display: grid; grid-template-columns: 1fr 280px; gap: 14px; min-height: 0; }
 .skin-stage { position: relative; background: radial-gradient(ellipse at 50% 45%, rgba(170, 190, 210, 0.22), rgba(255, 255, 255, 0.02) 70%), #141c26; border: 1px solid var(--line); }
-#skin-preview { display: block; width: 100%; height: clamp(220px, 46vh, 430px); cursor: grab; touch-action: none; }
+#skin-preview { display: block; width: 100%; height: clamp(220px, calc(100vh - 250px), 860px); cursor: grab; touch-action: none; }
 #skin-preview:active { cursor: grabbing; }
 .skin-hint { position: absolute; right: 12px; top: 8px; color: var(--muted); font-size: 11px; pointer-events: none; }
 .skin-bottom { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 12px; padding: 0 14px 12px; margin-top: -64px; position: relative; }
@@ -574,17 +574,78 @@ button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
 #end-stats b { display: block; font-size: 24px; }
 #end-stats span { color: var(--muted); font-size: 12px; }
 
+/* ---------- Full-screen lobby pages (Maps, Online) ---------- */
+.overlay.page { display: flex; flex-direction: column; place-items: stretch; padding: 0; background: rgba(8, 12, 18, 0.9); }
+.overlay.page.lobby-bg { background: var(--lobby-bg); }
+.page-head { flex: none; display: flex; align-items: stretch; gap: 18px; height: 54px; padding: 0 20px; background: rgba(8, 12, 17, 0.88); border-bottom: 1px solid var(--line); }
+.page-head h2 { margin: 0; align-self: center; font-size: 20px; font-weight: 800; letter-spacing: 4px; text-transform: uppercase; }
+.page-back { align-self: center; padding: 7px 14px; background: none; border: 1px solid var(--line); color: var(--muted); cursor: pointer; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; }
+.page-back:hover { color: var(--text); border-color: var(--text); }
+.page-head .srv-tabs { margin: 0 0 0 12px; border: 0; align-self: stretch; }
+.page-head .srv-tabs button { font-size: 12px; font-weight: 600; letter-spacing: 2px; padding: 0 18px; }
+.page-body { flex: 1; min-height: 0; width: min(1500px, 100%); margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; padding: 22px; }
+.page-main { min-height: 0; overflow: auto; padding-right: 4px; }
+.page-side { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; }
+.page-title { display: flex; align-items: baseline; gap: 14px; margin: 0 0 12px; }
+.page-title h3 { margin: 0; font-size: 12px; letter-spacing: 2.5px; color: var(--muted); text-transform: uppercase; }
+.page-title .mini { margin-left: auto; }
+.side-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; background: rgba(12, 19, 27, 0.82); border: 1px solid var(--line); border-top: 2px solid var(--accent); }
+.side-card > small { font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+.side-card .form { grid-template-columns: 60px 1fr; margin: 0; }
+.side-card input:not([type=color]):not([type=file]), .side-card select { width: 100%; background: rgba(255, 255, 255, 0.06); color: var(--text); border: 1px solid var(--line); padding: 7px 9px; font: inherit; font-size: 13px; }
+.side-card select option { background: var(--bg); }
+.side-card #net-code { font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: 2px; text-transform: uppercase; }
+.note-card { border-top-color: var(--gold, #d8b25a); }
+.note-card p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.note-card a { color: var(--text); }
+.file-btn { position: relative; display: block; padding: 9px 12px; text-align: center; border: 1px dashed rgba(255, 255, 255, 0.3); color: var(--text); cursor: pointer; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; }
+.file-btn:hover { border-color: var(--text); background: rgba(255, 255, 255, 0.05); }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.page-cta { margin-top: 16px; padding: 12px 40px; background: var(--accent); border: 0; color: #fff; font-size: 14px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; cursor: pointer; }
+.page-cta:hover { background: #ff5b68; }
+.form.big { grid-template-columns: 150px minmax(0, 520px); gap: 10px 14px; font-size: 14px; }
+.form.big input, .form.big select { padding: 9px 10px; }
+.page #srv-list { max-height: none; gap: 6px; }
+.page .srv-head, .page .srv-row { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.3fr) 80px 100px; }
+.page .srv-row { padding: 12px 14px; background: rgba(12, 19, 27, 0.8); border-left: 3px solid transparent; }
+.page .srv-row:hover { border-left-color: var(--accent); }
+.page .srv-row b { font-size: 14px; }
+.page .srv-row .mini { padding: 8px 12px; }
+.srv-empty { padding: 34px 16px; text-align: center; color: var(--muted); font-size: 13px; background: rgba(12, 19, 27, 0.6); border: 1px dashed var(--line); }
+.page #online-status { margin: 12px 0 0; }
+
+/* Map cards: a top-down drawing of the layout (drawn once per map, then cached), name, modes and actions. */
+.page #map-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; max-height: none; margin: 0; }
+.map-card { position: relative; display: flex; flex-direction: column; background: rgba(12, 19, 27, 0.85); border: 1px solid var(--line); cursor: pointer; }
+.map-card:hover { border-color: rgba(255, 255, 255, 0.4); }
+.map-card.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.map-thumb { position: relative; aspect-ratio: 16 / 10; background: radial-gradient(ellipse at 50% 50%, rgba(80, 100, 120, 0.25), transparent 70%), #0c131a; border-bottom: 1px solid var(--line); overflow: hidden; }
+.map-thumb img { position: absolute; inset: 8px; width: calc(100% - 16px); height: calc(100% - 16px); object-fit: contain; }
+.map-card .badge { position: absolute; z-index: 1; left: 0; top: 10px; padding: 3px 10px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+.map-card .info { padding: 10px 12px 4px; }
+.map-card .info b { display: block; font-size: 17px; letter-spacing: 2px; text-transform: uppercase; }
+.map-card .info small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.35; }
+.map-card .modes { display: flex; gap: 6px; padding: 6px 12px 0; }
+.map-card .modes span { padding: 2px 7px; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); }
+.map-card .acts { display: flex; gap: 6px; margin-top: auto; padding: 10px 12px 12px; }
+.map-card .acts button { padding: 6px 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: var(--text); cursor: pointer; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+.map-card .acts button:hover { border-color: var(--text); }
+@media (max-width: 900px) { .page-body { grid-template-columns: 1fr; } .page-head .srv-tabs button { padding: 0 10px; } .form.big { grid-template-columns: 110px 1fr; } }
+
 /* ---------- Home screen ----------
    Static CSS only: gradients for the backdrop, no blur, no animation, and the 3D scene behind it stops
    drawing while it is up (main.js), so the lobby costs next to nothing. */
-#menu.home { display: flex; flex-direction: column; place-items: stretch; padding: 0; overflow: hidden; --gold: #d8b25a;
-  background:
+/* The home screen's backdrop, shared by the screens its tabs open (Collection, Maps, Online). */
+:root { --lobby-bg:
     linear-gradient(118deg, transparent 0 61%, rgba(216, 178, 90, 0.22) 61.2%, transparent 61.6% 100%),
     linear-gradient(118deg, transparent 0 66%, rgba(216, 178, 90, 0.10) 66.1%, transparent 67.4% 100%),
     linear-gradient(62deg, transparent 0 22%, rgba(216, 178, 90, 0.14) 22.1%, transparent 22.5% 100%),
     radial-gradient(ellipse at 50% 42%, rgba(84, 70, 40, 0.38), transparent 60%),
     radial-gradient(ellipse at 50% 120%, rgba(255, 70, 85, 0.12), transparent 55%),
     linear-gradient(#141c25, #0b1016); }
+.overlay.lobby-bg { background: var(--lobby-bg); }
+.overlay.lobby-bg > .panel { background: rgba(10, 16, 23, 0.7); } /* let the backdrop show through, as on the home screen */
+#menu.home { display: flex; flex-direction: column; place-items: stretch; padding: 0; overflow: hidden; --gold: #d8b25a; background: var(--lobby-bg); }
 .home-nav { display: flex; align-items: stretch; height: 46px; flex: none; background: rgba(8, 12, 17, 0.88); border-bottom: 1px solid var(--line); }
 .home-brand { display: flex; align-items: center; gap: 10px; padding: 0 26px 0 18px; font-weight: 800; font-size: 18px; letter-spacing: 3px; text-transform: uppercase; background: var(--text); color: #0f1923; clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 100%, 0 100%); }
 .home-brand svg { width: 20px; height: 20px; fill: var(--accent); }
@@ -682,7 +743,7 @@ button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
   .stat { grid-template-columns: auto 70px; }
 }
 </style>
-<script type="module" src="js/main.js?v=24"></script>
+<script type="module" src="js/main.js?v=26"></script>
 <canvas id="view"></canvas>
 
 <div id="hud" hidden>
@@ -829,69 +890,91 @@ button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
   </div>
 </div>
 
-<div id="online" class="overlay" hidden>
-  <div class="panel wide">
-    <h2>Servers</h2>
+<div id="online" class="overlay page" hidden>
+  <header class="page-head">
+    <button id="online-back" class="page-back" type="button">&lsaquo; Back</button>
+    <h2>Online</h2>
     <div class="srv-tabs">
-      <button id="srv-tab-join" class="sel" data-tab="join">Join a server</button>
+      <button id="srv-tab-join" class="sel" data-tab="join">Server browser</button>
       <button id="srv-tab-create" data-tab="create">Create server</button>
     </div>
-    <div class="form">
-      <label for="net-name">Your name</label><input id="net-name" maxlength="16">
-      <label for="net-color">Colour</label><input id="net-color" type="color">
-    </div>
+  </header>
+  <div class="page-body">
+    <main class="page-main">
+      <section id="srv-join">
+        <div class="page-title"><h3>Open servers</h3><button id="srv-refresh" class="mini" type="button">Refresh</button></div>
+        <div class="srv-head"><span>Server</span><span>Mode · map</span><span>Players</span><span></span></div>
+        <div id="srv-list"></div>
+        <p id="srv-empty" class="srv-empty">No servers open right now. Create one, or join a friend's server with its code.</p>
+        <p id="srv-net" class="note"></p>
+      </section>
 
-    <section id="srv-join">
-      <div class="srv-head"><span>Server</span><span>Mode · map</span><span>Players</span><span></span></div>
-      <div id="srv-list"></div>
-      <p id="srv-empty" class="note">No servers open right now. Create one, or join a friend's server with its code below.</p>
-      <p id="srv-net" class="note"></p>
-      <div class="form">
-        <label for="net-code">Join by code</label>
+      <section id="srv-create" hidden>
+        <div class="page-title"><h3>Host a server</h3></div>
+        <div class="form big">
+          <label for="net-server">Server name</label><input id="net-server" maxlength="32">
+          <label for="net-mode">Mode</label>
+          <select id="net-mode"><option value="dm">Deathmatch</option><option value="rounds">5v5 Rounds (bots fill empty slots)</option></select>
+          <label for="net-map">Map</label><select id="net-map"></select>
+          <label for="net-max">Max players</label><select id="net-max"></select>
+          <label for="net-transport">Who can join</label>
+          <select id="net-transport">
+            <option value="peer">Anyone with the code (internet, PeerJS)</option>
+            <option value="local">This browser only (tabs and windows)</option>
+          </select>
+          <label for="net-room">Room code</label><span class="inline"><input id="net-room" maxlength="12" autocomplete="off"><button id="net-newroom">New</button></span>
+        </div>
+        <button id="net-host" class="page-cta" type="button">Create server</button>
+      </section>
+      <p id="online-status"></p>
+    </main>
+
+    <aside class="page-side">
+      <div class="side-card">
+        <small>Your profile</small>
+        <div class="form">
+          <label for="net-name">Name</label><input id="net-name" maxlength="16">
+          <label for="net-color">Colour</label><input id="net-color" type="color">
+        </div>
+      </div>
+      <div class="side-card">
+        <small>Join by code</small>
         <span class="inline"><input id="net-code" maxlength="12" autocomplete="off" placeholder="e.g. K3X9QD"><button id="net-join">Join</button></span>
-        <label for="net-join-transport">Connection</label>
         <select id="net-join-transport">
           <option value="peer">Internet (another computer)</option>
           <option value="local">This browser (another tab)</option>
         </select>
       </div>
-      <div class="buttons"><button id="srv-refresh">Refresh</button></div>
-    </section>
-
-    <section id="srv-create" hidden>
-      <div class="form">
-        <label for="net-server">Server name</label><input id="net-server" maxlength="32">
-        <label for="net-mode">Mode</label>
-        <select id="net-mode"><option value="dm">Deathmatch</option><option value="rounds">5v5 Rounds (bots fill empty slots)</option></select>
-        <label for="net-map">Map</label><select id="net-map"></select>
-        <label for="net-max">Max players</label><select id="net-max"></select>
-        <label for="net-transport">Who can join</label>
-        <select id="net-transport">
-          <option value="peer">Anyone with the code (internet, PeerJS)</option>
-          <option value="local">This browser only (tabs and windows)</option>
-        </select>
-        <label for="net-room">Room code</label><span class="inline"><input id="net-room" maxlength="12" autocomplete="off"><button id="net-newroom">New</button></span>
+      <div class="side-card note-card">
+        <small>How it works</small>
+        <p>There's no game server: whoever creates a server hosts it in their own browser, and everyone picks an agent once they're in. The list shows internet servers from every player with this screen open or hosting, plus servers in other tabs of this browser. If one doesn't show up, join with its room code.</p>
       </div>
-      <div class="buttons"><button id="net-host" class="primary">Create server</button></div>
-    </section>
-
-    <p id="online-status"></p>
-    <div class="buttons"><button id="online-back">Back</button></div>
-    <p class="note">There's no game server: whoever creates a server hosts it in their own browser, and everyone picks an agent on the agent select screen once they're in. The list shows internet servers from every player who has this screen open or is hosting (one player's browser keeps the list, and another takes over when they leave), plus servers in other tabs of this browser. If a server doesn't show up, join with its room code; the host sees it on the agent select screen.</p>
+    </aside>
   </div>
 </div>
 
-<div id="maps" class="overlay" hidden>
-  <div class="panel wide">
+<div id="maps" class="overlay page" hidden>
+  <header class="page-head">
+    <button id="maps-back" class="page-back" type="button">&lsaquo; Back</button>
     <h2>Maps</h2>
-    <p class="note">Every map is a JSON file in <code>maps/</code> that you can edit: walls, materials, sky and lighting, spawns, sites, barriers, rules. <b>Download</b> one to start from, change it in any text editor (the format is explained in <a href="MAPS.md" target="_blank" style="color:inherit">MAPS.md</a>), then <b>Import file</b>. Imported maps are kept in this browser and sent to players who join you online.</p>
-    <div id="map-list"></div>
-    <div class="form">
-      <label>Import file</label><span class="inline"><input id="map-file" type="file" accept=".json,application/json"></span>
-      <label for="map-url">Load from URL</label><span class="inline"><input id="map-url" placeholder="https://…/my-map.json"><button id="map-url-go">Load</button></span>
-    </div>
-    <p id="map-status" class="note"></p>
-    <div class="buttons"><button id="maps-back" class="primary">Back</button></div>
+  </header>
+  <div class="page-body">
+    <main class="page-main">
+      <div class="page-title"><h3>Choose a map</h3><span class="note">Click a map to play on it</span></div>
+      <div id="map-list"></div>
+    </main>
+    <aside class="page-side">
+      <div class="side-card">
+        <small>Import a map</small>
+        <label class="file-btn">Choose JSON file<input id="map-file" type="file" accept=".json,application/json"></label>
+        <span class="inline"><input id="map-url" placeholder="https://…/my-map.json"><button id="map-url-go">Load</button></span>
+        <p id="map-status" class="note"></p>
+      </div>
+      <div class="side-card note-card">
+        <small>Make your own</small>
+        <p>Every map is a JSON file in <code>maps/</code>: walls, materials, sky and lighting, spawns, sites, barriers and rules. <b>Download</b> one to start from, edit it in any text editor (the format is in <a href="MAPS.md" target="_blank">MAPS.md</a>), then import it. Imported maps stay in this browser and are sent to players who join you online.</p>
+      </div>
+    </aside>
   </div>
 </div>
 
