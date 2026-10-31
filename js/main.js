@@ -225,7 +225,11 @@ function show(id) {
   if (id === 'pause') $('pause-agent').textContent = `Change agent (${key('agent')})`;
   for (const o of ['menu', 'pause', 'settings', 'skins', 'agents', 'select', 'end', 'online', 'maps']) $(o).hidden = o !== id;
   $('hud').hidden = !running;
+  // Out of a match, the screens the home screen's tabs open share its backdrop (in a match they keep the game behind).
+  for (const o of ['skins', 'online', 'maps']) $(o).classList.toggle('lobby-bg', !running);
+  lobbyCovered = !running && ['menu', 'skins', 'online', 'maps'].includes(id);
 }
+let lobbyCovered = true; // the page opens on the home screen
 
 // ---- input ----
 // Keys come from settings.binds and settings.binds2 (Settings → Controls, see keybinds.js).
@@ -1664,8 +1668,8 @@ function frame(t) {
     const ear = ears();
     sound.setListener(ear.eye(), ear.yaw);
     sound.setDeaf(game.player.alive && game.player.st.deafUntil > game.time);
-  } else if ($('menu').hidden) {
-    renderer.renderIdle(t / 1000); // the home screen covers the view, so the scene behind it rests
+  } else if (!lobbyCovered) {
+    renderer.renderIdle(t / 1000); // the home screen and its tabs cover the view, so the scene behind them rests
   }
   look.dx = look.dy = 0;
 }
