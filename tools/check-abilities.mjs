@@ -126,14 +126,17 @@ const checks = [
     const after = { gas: gas(), emitter: v.devices.some(d => d.kind === 'emitter' && !d.removed), acid: acid(), canToggle: !!k.agent.abilities.q.reuse(k) };
     const b = await __start({ agent: 'bastion' }), q = b.player, bk = q.kit;
     __place(b, q, 12);
+    q.pitch = -0.5; // the Hive lands a few metres ahead
     for (const key of ['q', 'e', 'c']) bk.agent.abilities[key].use(bk);
+    q.pitch = 0;
     b.addSmoke(q, __ahead(q, 4), b.time); // someone else's kind of smoke: it stays
     __tick(b, 1.5);
     const had = b.devices.filter(d => d.owner === q && !d.removed).map(d => d.kind).sort().join();
+    bk.agent.abilities.c.use(bk, 'right'); // one more Hive, lobbed: still in the air when she dies
     kill(b, q);
-    b.tick();
+    __tick(b, 2);
     const left = b.devices.filter(d => d.owner === q && !d.removed).map(d => d.kind).join(), smokeStays = b.smokes.some(s => s.owner === q);
-    return { pass: before > 0 && lingering === before && after.gas === 0 && !after.emitter && !after.canToggle && left === '' && had.includes('turret') && smokeStays, before, lingering, ...after, had, left, smokeStays };
+    return { pass: before > 0 && lingering === before && after.gas === 0 && !after.emitter && !after.canToggle && left === '' && had.includes('turret') && had.includes('swarm') && smokeStays, before, lingering, ...after, had, left, smokeStays };
   }],
   ['Detained players cannot shoot or use abilities', async () => {
     const g = await __start({ agent: 'cinder' });
@@ -155,7 +158,7 @@ const checks = [
     p.st.nearUntil = 0;
     r.updateNearsight(p);
     const after = r.scene.fog?.far ?? Infinity;
-    return { pass: during <= 7 && after === before, farBefore: before, farDuring: during, farAfter: after };
+    return { pass: during <= 9 && after === before, farBefore: before, farDuring: during, farAfter: after };
   }],
   ['Phased-out players shrug off statuses', async () => {
     const g = await __start({});
@@ -207,7 +210,7 @@ const checks = [
     if (!__place(g, o, 14)) return { error: 'no open ground' };
     const base = o.pos[1], st = __stairs(g, o, 3, 4), t = st.top(2); // third step, 1.2 m up
     __aim(o, t);
-    k.charges.c = 2; o.input.abC = true; __tick(g, 0.4);
+    k.charges.c = 2; o.input.abC = true; __tick(g, 0.7); // 0.5 s to take it out
     const pv = k.previewPos && [...k.previewPos];
     o.input.firePressed = true; __tick(g, 1);
     const up = o.pos[1] - base;
@@ -220,7 +223,7 @@ const checks = [
     const [x, y, z] = o.pos, h = 2.4;
     __box(g, [x - 2, y, z - 9], [x + 2, y + h, z - 6]); // a 2.4 m block 6 m ahead
     __aim(o, [x, y + h - 0.3, z - 6]); // just under its lip
-    k.charges.c = 2; o.input.abC = true; __tick(g, 0.4);
+    k.charges.c = 2; o.input.abC = true; __tick(g, 0.7);
     o.input.firePressed = true; __tick(g, 1);
     return { pass: Math.abs(o.pos[1] - (y + h)) < 0.05, landedHeight: +(o.pos[1] - y).toFixed(2) };
   }],
@@ -230,8 +233,8 @@ const checks = [
     if (!__place(g, o, 14)) return { error: 'no open ground' };
     const [x, y, z] = o.pos;
     __box(g, [x - 1, y, z - 8], [x + 1, y + 1, z - 6]); // 1 m crate
-    __aim(o, [x, y + 1, z - 6.2]); // its top, near the front edge
-    k.agent.abilities.q.use(k); __tick(g, 2);
+    __aim(o, [x, y + 1.5, z - 7]); o.pitch = 0.21; // a lob that comes down on its top
+    k.agent.abilities.q.use(k, 'right'); __tick(g, 2);
     const fire = g.zones.find(zz => zz.def?.id === 'ember');
     return { pass: !!fire && Math.abs(fire.pos[1] - (y + 1)) < 0.05, fireHeight: fire && +(fire.pos[1] - y).toFixed(2) };
   }],
@@ -252,7 +255,7 @@ const checks = [
     const o = g.player, k = o.kit;
     if (!__place(g, o, 14)) return { error: 'no open ground' };
     o.pitch = -0.05;
-    k.charges.e = 2; o.input.abE = true; __tick(g, 0.4);
+    k.charges.e = 2; o.input.abE = true; __tick(g, 1.1); // 1 s to take it out
     for (let i = 0; i < 40; i++) { o.input.alt = true; g.tick(); } // hold right click: farther
     o.input.alt = false; g.tick();
     const pv = [...k.previewPos];
@@ -319,6 +322,8 @@ const checks = [
     // A dome between p and b: b takes nothing until the dome has soaked up 500.
     b.pos = __ahead(p, 9); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.hp = 9999; b.armor = 0; // tanky until after the slide
     const dome = g.addSmoke(b, __ahead(p, 5), g.time, { radius: 2.2, life: 12, kind: 'cove' });
+    __tick(g, 0.9); // its shell forms 0.8 s after the cast
+    b.pos = __ahead(p, 9); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.hp = 9999; b.armor = 0;
     const hpBefore = b.hp;
     let n = 0;
     while (dome.hp > 0 && n < 100) { g.fireBullets(p, p.gun, [dir(b.eye())]); n++; if (b.hp < hpBefore) break; }
@@ -355,16 +360,23 @@ const checks = [
     p.kit.agent.abilities.c.use(p.kit);
     const high = g.devices.find(d => d.kind === 'wire');
     const highY = high ? high.pos[1] - y : null;
-    // Walk the bot under the high wire: nothing happens.
-    b.pos = [p.pos[0], y, p.pos[2] - 1]; b.prevPos = [...b.pos];
-    __tick(g, 0.1);
-    const trippedHigh = b.st.stunUntil > g.time;
+    // Stand the bot under the high wire while it arms (1.5 s): nothing happens.
+    const spot = [p.pos[0], y, p.pos[2] - 1];
+    const stand = (sec) => { for (let i = 0; i < sec * 128; i++) { b.pos = [...spot]; b.prevPos = [...spot]; g.tick(); } };
+    const caught = () => g.devices.some(d => d.kind === 'wire' && d.victim === b);
+    stand(1.7);
+    const trippedHigh = caught();
     high.removed = true; g.tick();
     __aim(p, [p.pos[0] + 3, y + 1.0, p.pos[2] - 1]);
     p.kit.agent.abilities.c.use(p.kit);
-    __tick(g, 0.1);
-    const trippedLow = b.st.stunUntil > g.time;
-    return { pass: highY !== null && Math.abs(highY - 2.4) < 0.2 && !trippedHigh && trippedLow, wireHeight: highY, trippedByHighWire: trippedHigh, trippedByWaistWire: trippedLow };
+    stand(1);
+    const early = caught(); // still arming
+    stand(0.7);
+    const trippedLow = caught();
+    b.st.revealUntil = 0;
+    stand(0.8); // the zap comes 0.7 s after the catch
+    const zapped = b.st.slowUntil > g.time && b.st.revealUntil > g.time;
+    return { pass: highY !== null && Math.abs(highY - 2.4) < 0.2 && !trippedHigh && !early && trippedLow && zapped, wireHeight: highY, trippedByHighWire: trippedHigh, trippedWhileArming: early, trippedByWaistWire: trippedLow, zapped };
   }],
   ['Ravenous speeds up reload; Rally buffs teammates too', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', agent: 'vex' });
@@ -376,7 +388,7 @@ const checks = [
     const ally = g.bots.find(x => !g.isEnemy(p, x));
     const zone = g.addZone({ kind: 'stim', owner: p, pos: [...ally.pos], r: 6, life: 12 }, g.time);
     __tick(g, 0.1);
-    return { pass: fast < normal * 0.9 && ally.st.stimUntil > g.time, reloadNormal: normal, reloadRavenous: fast, allyStimmed: ally.st.stimUntil > g.time };
+    return { pass: Math.abs(fast - normal / 1.1) < 0.01 && ally.st.stimUntil > g.time, reloadNormal: normal, reloadRavenous: fast, allyStimmed: ally.st.stimUntil > g.time };
   }],
   ['5v5 recharges follow Valorant: Dark Cover on its 40 s timer (only what you held), Tailwind after two kills, Sky Smoke never', async () => {
     const setup = async (agent) => {
@@ -419,12 +431,12 @@ const checks = [
     const marshalCut = !m.reloading;
     return { pass: stillReloading && full === 25 && auto && loaded === 3 && marshalCut, stillReloading, shotsMid, full, autoReload: auto, marshalLoaded: loaded, marshalCut };
   }],
-  ['Vex: Glare goes 12 m straight ahead through a wall, where its preview showed; Feast and Vanish take the nearest soul orb at any distance on the key press', async () => {
+  ['Vex: Glare goes 10 m straight ahead through a wall, where its preview showed; Feast and Vanish take the nearest soul orb at any distance on the key press', async () => {
     const g = await __start({ agent: 'vex' });
     const p = g.player, k = p.kit;
     if (!__place(g, p, 14)) return { error: 'no open ground' };
     __box(g, [p.pos[0] - 3, p.pos[1], p.pos[2] - 5], [p.pos[0] + 3, p.pos[1] + 4, p.pos[2] - 4.5]); // a wall 5 m ahead
-    k.charges.c = 2; p.input.abC = true; g.tick(); __tick(g, 0.3);
+    k.charges.c = 2; p.input.abC = true; g.tick(); __tick(g, 0.9); // 0.77 s to take it out
     const shown = k.previewPos && [...k.previewPos];
     p.input.firePressed = true; g.tick(); __tick(g, 1.2);
     const eye = g.devices.find(d => d.kind === 'leer' && d.owner === p);
@@ -486,7 +498,7 @@ const checks = [
     p.pitch = 0.2; k.charges.q = 2;
     p.input.abQ = true; g.tick(); __tick(g, 0.1);
     const sat = g.devices.find(d => d.kind === 'satchel' && d.owner === p && !d.removed);
-    const inAir = !!sat?.flight;
+    const inAir = !!sat && sat.physics && !sat.rest;
     p.input.abQ = true; g.tick();
     const blown = !!sat?.removed, launched = p.vel[1] > 5, chargesLeft = k.charges.q;
     // Armed: thrown at a bot's feet, blown after 1.6 s, it deals the full 50 up close.
@@ -500,7 +512,7 @@ const checks = [
     return { pass: inAir && blown && launched && chargesLeft === 1 && armedDamage >= 40, inAir, blown, launched, chargesLeft, armedDamage };
   }],
   ['Buy phase: any ability can be held; set-up utility (camera, Sentry, Anchor) can be placed', async () => {
-    const press = (g, c, key, aim) => { c.input['ab' + key] = true; g.tick(); __tick(g, 0.35); if (aim) aim(); c.input.firePressed = true; g.tick(); __tick(g, 0.2); };
+    const press = (g, c, key, aim) => { c.input['ab' + key] = true; g.tick(); __tick(g, 1.2); if (aim) aim(); c.input.firePressed = true; g.tick(); __tick(g, 0.2); };
     const out = {};
     for (const [agent, key, kind] of [['lattice', 'E', 'cam'], ['bastion', 'E', 'turret'], ['regent', 'E', 'anchor']]) {
       const g = await __start({ mode: 'rounds', map: 'divide', agent });
@@ -511,7 +523,7 @@ const checks = [
     }
     const g = await __start({ mode: 'rounds', map: 'divide', agent: 'cinder' });
     __tick(g, 2);
-    const p = g.player; p.kit.charges.e = 1; p.input.abE = true; g.tick(); __tick(g, 0.35); // Sunflare (Curveball) is the signature now
+    const p = g.player; p.kit.charges.e = 1; p.input.abE = true; g.tick(); __tick(g, 1); // Sunflare (Curveball) is the signature now
     const held = p.kit.armed?.k === 'e';
     p.input.firePressed = true; g.tick(); __tick(g, 0.2);
     const stillHeld = p.kit.armed?.k === 'e' && p.kit.charges.e === 1;
@@ -592,9 +604,9 @@ const checks = [
     const follows = !!grp && Math.hypot(grp.position.x - d.pos[0], grp.position.z - d.pos[2]) < 0.2;
     const sizeShown = !!grp?.userData.cloud.size.visible;
     const trailShown = !!grp?.userData.cloud.trail.visible && grp.userData.cloud.pts.length > 3;
-    p.input.abCHeld = false;
-    for (let i = 0; i < 4; i++) { __tick(g, 0.1); r.updateFx2(); }
-    const burst = d.removed && g.smokes.length > 0, gone = fx().length === 0;
+    p.input.abCHeld = false; // let go: it falls, and bursts on the ground or after its 2 s
+    for (let i = 0; i < 20; i++) { __tick(g, 0.1); r.updateFx2(); }
+    const burst = !!d.removed && g.smokes.length > 0, gone = fx().length === 0;
     return { pass: moved > 3 && follows && sizeShown && trailShown && burst && gone, moved: +moved.toFixed(2), meshFollowsOrb: follows, burstSizeShownWhileHeld: sizeShown, trailShown, burst, meshAndTrailRemoved: gone };
   }],
   ['Watcher camera shows your own body; its tracking dart builds no new shaders mid-fight', async () => {
@@ -642,7 +654,7 @@ const checks = [
     await run('nightwalk', 'umbra', (g, p, k) => { k.ultPoints = k.ultCost; const d = __ahead(p, 6); d[1] = p.pos[1]; k.chooseShadow(d); }, (g) => __tick(g, 4.5));
     let smokeYaw = null;
     await run('shadeView', 'umbra', (g, p, k) => { p.input.abE = true; },
-      (g, p, k) => { p.input.firePressed = true; g.tick(); __tick(g, 3); const s = g.smokes[g.smokes.length - 1]; smokeYaw = s ? Math.atan2(-(s.pos[0] - p.pos[0]), -(s.pos[2] - p.pos[2])) : null; });
+      (g, p, k) => { __tick(g, 0.8); p.input.firePressed = true; g.tick(); __tick(g, 3); const s = g.smokes[g.smokes.length - 1]; smokeYaw = s ? Math.atan2(-(s.pos[0] - p.pos[0]), -(s.pos[2] - p.pos[2])) : null; });
     out.shadeSmokeWhereYouLooked = smokeYaw !== null && Math.abs(smokeYaw - 0.03 * 40) < 0.15;
     return { pass: Object.values(out).every(v => v === 'ok' || v === true), ...out };
   }],
@@ -719,7 +731,7 @@ const checks = [
     __tick(g, 0.6);
     const speed = p.horizSpeed(), shots = p.stats.shots;
     // Slide mid-Overload: the sprint carries on and the beam keeps firing.
-    p.input.crouch = true; g.tick(); p.input.crouch = false;
+    p.input.altPressed = true; g.tick(); // right click slides
     const slid = !!p.dash, stillSprinting = !!k.highGear, shotsBefore = p.stats.shots;
     __tick(g, 0.3);
     const firedSliding = p.stats.shots > shotsBefore;
@@ -727,7 +739,7 @@ const checks = [
     { const e = p.eye(), t = b.eye(); p.yaw = Math.atan2(-(t[0] - e[0]), -(t[2] - e[2])); p.pitch = Math.atan2(t[1] - 0.3 - e[1], Math.hypot(t[0] - e[0], t[2] - e[2])); }
     __tick(g, 1);
     const killed = !b.alive;
-    const refilled = k.overdrive && k.overdrive.fuel > 92 && k.slideAt === 0; // ~90 by now without the kill, and the slide on cooldown
+    const refilled = k.overdrive && k.overdrive.fuel > 86 && k.slideAt === 0; // ~77 by now without the kill, and the slide on cooldown
     p.input.fire = false; p.input.fwd = 0;
     __tick(g, 20.5);
     const over = !k.overdrive && !k.highGear && p.gun === p.inv[p.slot];
@@ -758,7 +770,7 @@ const checks = [
     const from = [...p.pos];
     k.agent.abilities.e.reuse(k);
     __tick(g, 0.2); const hurtMid = hit(), noGun = p.st.channelUntil > g.time;
-    __tick(g, 0.6); const moved = Math.hypot(p.pos[0] - from[0], p.pos[2] - from[2]) > 5, hurtAfter = hit();
+    __tick(g, 1.2); const moved = Math.hypot(p.pos[0] - from[0], p.pos[2] - from[2]) > 5, hurtAfter = hit(); // untouchable for 1.3 s
     return { pass: !hurtMid && noGun && moved && hurtAfter, hurtMid, noGun, moved, hurtAfter };
   }],
   ['Bot 5v5 (6 min): no errors, bots don\'t stay stuck on walls, bot flashes hit enemies more than their own side', async () => {

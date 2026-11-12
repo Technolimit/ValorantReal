@@ -480,7 +480,7 @@ export const AGENTS = {
         armHint: 'LEFT CLICK: THROW · RIGHT CLICK: LOB', throw: 'c2',
         use(kit, mode) {
           const o = kit.owner, g = o.game;
-          toss(o, mode === 'right' ? 'lob' : 'c2', { color: 0x4fd1a5, onStop: (d) => { d.removed = true; g.addDevice({ kind: 'swarm', owner: o, pos: floorUnder(g, d.pos), life: 90 }); } });
+          toss(o, mode === 'right' ? 'lob' : 'c2', { color: 0x4fd1a5, onStop: (d) => { d.removed = true; if (o.alive) g.addDevice({ kind: 'swarm', owner: o, pos: floorUnder(g, d.pos), life: 90 }); } }); // thrown as she dies: it lands dead
         },
         reuse(kit) {
           if (kit.charges.c > 0) return false;
