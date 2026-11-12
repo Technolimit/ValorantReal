@@ -17,16 +17,21 @@ import { PLAYER } from './config.js';
 const DEG = Math.PI / 180;
 const ABILITY_KEYS = ['q', 'e', 'c'];
 
-export const LIFT_VELOCITY = 12.5; // ~3.5 m rise
+// Numbers follow VALORANT_SPECS.md (the Valorant ability specs for patch 13.10) unless a comment says otherwise.
+export const LIFT_HEIGHT = 5; // Lift (Updraft) carries you about 5 m up
 export const DASH = { speed: 24.4, time: 0.45, exit: 7 }; // Tailwind: 11 m in 0.45 s, keep 7 m/s afterwards
-export const GLIDE_FALL = 2.3; // max fall speed while gliding, m/s
+export const GLIDE_FALL = 2.5; // max fall speed while gliding, m/s
+// Thrown abilities: the VALORANT wiki's projectile classes as [speed in m/s, gravity scale on 9.8 m/s²].
+export const THROW = { lob: [6.3, 0.3], c1: [16.5, 0.7], c2: [18, 0.3], c3: [29, 0.45], c4: [41.25, 0.3], c5: [41.25, 0.15] };
 export const SMOKE = { radius: 2.8, life: 4.5, range: 14, grow: 0.25 };
 export const BLADES = {
-  id: 'blades', name: 'Edgestorm', cat: 'Ability', model: 'blades', count: 5, cycle: 0.33,
+  id: 'blades', name: 'Edgestorm', cat: 'Ability', model: 'blades', count: 5, cycle: 0.17,
   dmg: [[50, 150, 50, 42]], spread: 0.15, fan: 2.2, // 50 body, x3 head, x0.85 legs
 };
-export const OVERDRIVE = { id: 'overload', name: 'Overload', cat: 'Ability', dmg: [[50, 54, 27, 22]] };
-export const BEAMS = { id: 'beams', name: 'Talon Strike', cat: 'Ability', count: 3, time: 6, dmg: 80, width: 0.88, range: 66, reveal: 1 }; // 66 m x 1.76 m
+// Overload (Overdrive): 18 to the body out to 20 m, falling to 10 at 43 m; head x3, legs x0.85. 20 shots a second
+// from a 40-round magazine that refills by itself.
+export const OVERDRIVE = { id: 'overload', name: 'Overload', cat: 'Ability', dmg: [[50, 54, 18, 15]], rate: 20, mag: 40, near: 20, far: 43, farBody: 10 };
+export const BEAMS = { id: 'beams', name: 'Talon Strike', cat: 'Ability', count: 3, time: 6, dmg: 80, width: 1.76, range: 66, reveal: 1.2 }; // a capsule 66 m long, 1.76 m in radius
 // Damage sources for the kill feed.
 const src = (id, name) => ({ id, name, cat: 'Ability', dmg: [[50, 0, 0, 0]] });
 
@@ -99,6 +104,13 @@ function flight(from, to, speed, via) {
   const len = via ? d(from, via) + d(via, to) : d(from, to);
   return Math.max(0.35, len / speed);
 }
+// Throw from the eye along the aim as a real projectile of a wiki class (game.throwProj).
+const toss = (o, cls, opts) => o.game.throwProj(o, THROW[cls][0], THROW[cls][1], opts);
+// The floor under p (within 6 m below it), or p itself.
+function floorUnder(g, p) {
+  const f = g.world.raycast([p[0], p[1] + 0.3, p[2]], [0, -1, 0], 6.3);
+  return f ? [p[0], p[1] + 0.3 - f.t, p[2]] : [...p];
+}
 const right = (yaw) => [Math.cos(yaw), -Math.sin(yaw)];
 const fwd2 = (yaw) => [-Math.sin(yaw), -Math.cos(yaw)];
 
@@ -148,7 +160,7 @@ function gasOff(kit, gr) {
 // Stars are recalled from anywhere you can look at them; everything else has to be within reach.
 export const PICKUPS = {
   wire: { k: 'c', cd: 0 },             // Trapwire
-  cam: { k: 'e', cd: 15 },             // Spycam
+  cam: { k: 'e', cd: 20 },             // Spycam (13.10)
   cage: { k: 'q', buyOnly: true },     // Cyber Cage
   alarm: { k: 'q', cd: 20 },           // Alarmbot
   turret: { k: 'e', cd: 20 },          // Turret
@@ -239,19 +251,19 @@ export const AGENTS = {
     passive: { name: 'Drift', desc: 'Hold Space while falling to glide down slowly.' },
     abilities: {
       c: {
-        name: 'Veil', desc: 'Throw a smoke orb that flies slowly where you look while you hold C; release C to burst it into a smoke (2.5 s).', charges: 2, cooldown: 16, instant: true,
+        name: 'Veil', desc: 'Throw a smoke orb (29 m/s). Hold C and it curves toward your crosshair; let go and it falls. It bursts into a 2.5 s smoke on the first surface it touches, or after 2 s in the air.', charges: 2, cooldown: 16, instant: true,
         use(kit) {
           const o = kit.owner, e = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
-          o.game.addDevice({ kind: 'cloud', owner: o, pos: [e[0] + d[0] * 0.6, e[1] + d[1] * 0.6, e[2] + d[2] * 0.6], dir: d, life: 2, speed: 7, key: 'abCHeld', radius: 3.35, smokeLife: 2.5, color: 0xcfdbe6 });
+          o.game.addDevice({ kind: 'cloud', owner: o, pos: [e[0] + d[0] * 0.6, e[1] + d[1] * 0.6, e[2] + d[2] * 0.6], dir: d, vel: d.map(v => v * THROW.c3[0]), life: 2, speed: THROW.c3[0], key: 'abCHeld', radius: 3.35, smokeLife: 2.5, color: 0xcfdbe6 });
         },
       },
       q: {
-        name: 'Lift', desc: 'After a short wind-up, launch yourself about 3.5 m straight up.', charges: 2, cooldown: 9, instant: true,
+        name: 'Lift', desc: 'Launch yourself about 5 m straight up.', charges: 1, cooldown: 9, instant: true,
         use(kit) {
           const o = kit.owner;
           o.game.emit('ability', { who: o, type: 'windup' });
-          mine(kit, 0.2, () => {
-            o.vel[1] = LIFT_VELOCITY;
+          mine(kit, 0.1, () => {
+            o.vel[1] = Math.sqrt(2 * PLAYER.gravity * LIFT_HEIGHT);
             o.grounded = false;
             o.airCap = Math.max(o.horizSpeed(), 1.5);
             o.game.emit('ability', { who: o, type: 'lift' });
@@ -280,9 +292,9 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Edgestorm', desc: 'Draw five throwing blades: left click throws one (150 head / 50 body), right click fans out all of them. Each kill refills the set.', points: 8,
+        name: 'Edgestorm', desc: 'Draw five throwing blades: left click throws one (150 head / 50 body / 42 legs), right click fans out all of them. Each kill refills the set. Switch to a gun and the blades you have left wait for you: press X to take them out again.', points: 8,
         use(kit) {
-          kit.blades = { left: BLADES.count, next: kit.now + 1.0 }; // 1 s to draw the blades
+          kit.blades = { left: BLADES.count, next: kit.now + 1.02 }; // 1.02 s to draw the blades
           kit.owner.gun.onHolster();
           kit.owner.game.emit('ability', { who: kit.owner, type: 'ult' });
         },
@@ -296,24 +308,27 @@ export const AGENTS = {
     passive: { name: 'Kindled', desc: 'Your own fire heals you instead of hurting you.' },
     abilities: {
       c: {
-        name: 'Firebreak', desc: 'Send out a wall of flame that grows forward (8 m/s, up to 15 m). Hold C and turn to bend it. It blocks sight for 8 s, burns enemies (30/s) and heals you (12.5/s).', charges: 1, cooldown: 25, instant: true,
+        item: 'orb', name: 'Firebreak', desc: 'Hold the flame, then left click: a wall of fire races out 13 m ahead (20 m/s). Keep the button held and turn to bend it. It stands 8 s, blocks sight, burns enemies (30/s) and heals you (up to 50).', charges: 1, cooldown: 25, equip: 0.8,
+        armHint: 'LEFT CLICK: CAST · KEEP HOLDING AND TURN TO BEND IT',
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
-          o.game.addDevice({ kind: 'blaze', owner: o, pos: [o.pos[0] + f[0] * 1.2, o.pos[1], o.pos[2] + f[1] * 1.2], yaw: o.yaw, life: 3.5, speed: 16, travelled: 0, nextSeg: 0, key: 'abCHeld' });
+          o.game.addDevice({ kind: 'blaze', owner: o, pos: [o.pos[0] + f[0] * 1.2, o.pos[1], o.pos[2] + f[1] * 1.2], yaw: o.yaw, life: 2, speed: 20, maxDist: 13.4, h: 6.75, pool: { left: 50 }, travelled: 0, nextSeg: 0, key: 'fire' });
           o.game.emit('ability', { who: o, type: 'fire' });
         },
       },
       q: {
-        item: 'grenade', name: 'Ember', desc: 'Hold a fireball, then left click to lob it. It leaves a 3.5 m pool of fire for 4 s (60/s to enemies; heals you).', charges: 1, cooldown: 18,
-        use(kit) {
-          const o = kit.owner, pos = aimPoint(o, 20, { floor: true, back: 0.4 });
-          const ft3 = flight(o.eye(), pos, 13);
-          o.game.emit('throw', { who: o, from: o.eye(), to: pos, time: ft3, color: 0xff7a2e });
-          later(kit, ft3, () => o.game.addZone({ kind: 'fire', owner: o, pos, r: 3.5, life: 4, dps: 60, heal: 12.5, def: src('ember', 'Ember') }, kit.now));
+        item: 'grenade', name: 'Ember', desc: 'Hold a fireball: left click throws it, right click lobs it short. It drops after 1.5 s in the air and bursts on the ground into a pool of fire that spreads to 4.5 m and burns for 4 s (60/s to enemies; heals you, up to 50).', charges: 1, cooldown: 18, equip: 0.8,
+        armHint: 'LEFT CLICK: THROW · RIGHT CLICK: LOB', throw: 'c2',
+        use(kit, mode) {
+          const o = kit.owner, g = o.game;
+          toss(o, mode === 'right' ? 'lob' : 'c2', { color: 0xff7a2e, drop: { at: 1.5, g: 2 }, onStop: (d) => {
+            d.removed = true;
+            g.addZone({ kind: 'fire', owner: o, pos: floorUnder(g, d.pos), r: 4.5, spread: 6, life: 4, dps: 60, heal: 12.5, healPool: { left: 50 }, def: src('ember', 'Ember') }, g.time);
+          } });
         },
       },
       e: {
-        item: 'flash', name: 'Sunflare', desc: 'Hold a flare in your hand (no gun), then left click to curve it left or right click to curve it right. It bursts around the corner, blinding anyone facing it for up to 1.5 s. In 5v5 one is free each round and two kills bring a used one back.', charges: 2, cooldown: 14, recharge: 'kills',
+        item: 'flash', name: 'Sunflare', desc: 'Hold a flare in your hand (no gun), then left click to curve it left or right click to curve it right. It bursts around the corner 0.7 s later, blinding anyone facing it for up to 1.5 s. In 5v5 one is free each round and two kills bring a used one back.', charges: 2, cooldown: 14, recharge: 'kills', equip: 0.8,
         arm: true, armHint: 'LEFT CLICK: CURVE LEFT · RIGHT CLICK: CURVE RIGHT',
         use(kit, mode) {
           const o = kit.owner, g = o.game, eye = o.eye();
@@ -322,13 +337,13 @@ export const AGENTS = {
           let pop = [mid[0] + r[0] * side * 3.2, mid[1], mid[2] + r[1] * side * 3.2];
           if (!g.world.lineOfSight(eye, mid)) pop = aimPoint(o, 3, { back: 0.5 });
           else if (!g.world.lineOfSight(mid, pop)) pop = mid;
-          const ft2 = flight(eye, pop, 11, mid);
+          const ft2 = 0.7; // it goes off 0.7 s after the throw
           g.emit('throw', { who: o, from: eye, via: mid, to: pop, time: ft2, color: 0xffc061 });
           later(kit, ft2, () => g.flash(o, pop, 1.5));
         },
       },
       x: {
-        name: 'Rekindle', desc: 'Mark where you stand. For 10 s you can fight freely: if you die, or when time runs out, you return to the mark at full health. The death does not count.', points: 7,
+        name: 'Rekindle', desc: 'Mark where you stand. For 10 s you can fight freely: if you die, or when time runs out, you burn away and re-form at the mark 2.4 s later at full health, with the shields you had. The death does not count.', points: 7,
         use(kit) {
           const o = kit.owner;
           kit.rebirth = { pos: [...o.pos], yaw: o.yaw, pitch: o.pitch, until: kit.now + 10, armor: o.armor };
@@ -1628,6 +1643,7 @@ export class Kit {
     this.held = { q: 0, e: 0, c: 0 }; // most charges held since spawning (5v5 recharges stop there)
     this.lastUse = { q: -10, e: -10, c: -10, x: -10 };
     this.blades = null;
+    this.bladesAway = 0;
     this.beams = null;
     this.armed = null;
     this.tailwind = null;
@@ -1797,7 +1813,7 @@ export class Kit {
     }
     const held = this.armed && ab[this.armed.k];
     this.previewPos = held?.preview ? held.preview(this) : null; // what the player sees is where it lands
-    if (this.armed && now - this.armed.at > 0.25) { // short draw before the ability can be used
+    if (this.armed && now - this.armed.at > (held.equip ?? 0.25)) { // its draw time, before it can be used
       const k = this.armed.k, a = ab[k];
       if (buyLock && !buyPhaseAllows(this.id, k) && (inp.firePressed || (a.charge ? !inp.fire && this.chargeT > 0 : inp.altPressed && !a.rotate && !a.distance))) {
         g.emit('abilityLocked', { who: o, key: k }); // held, not thrown: keep holding it
@@ -1833,6 +1849,13 @@ export class Kit {
       if (this.mapPick && this.mapPick.key === 'x') this.mapCancel();
       else if (this.drift) { this.drift = null; o.st.hiddenUntil = o.st.intangibleUntil = 0; g.emit('ability', { who: o, type: 'rekindled' }); }
       else if (this.launcher) this.launcher = null;
+      else if (this.bladesAway > 0 && !this.busy()) {
+        // Edgestorm blades put away by switching weapons come back out (0.5 s) with what was left.
+        this.armed = null;
+        this.blades = { left: this.bladesAway, next: now + 0.5 };
+        this.bladesAway = 0;
+        o.gun.onHolster();
+      }
       else if (this.ultPoints >= this.ultCost && !this.busy() && !this.rebirth) {
         this.armed = null;
         const r = ab.x.use(this, now);
@@ -1963,6 +1986,11 @@ export class Kit {
     for (const k of Object.keys(o.st)) if (k.endsWith('Until')) o.st[k] = 0;
     o.yaw = r.yaw; o.pitch = r.pitch;
     g.teleport(o, r.pos);
+    // Coming back takes 2.4 s: 1 s burning away (gone from sight), then 1.4 s re-forming at the mark. Nothing
+    // can touch him until it's done, and he can't move or shoot.
+    const now = this.now;
+    o.st.hiddenUntil = now + 1;
+    o.st.intangibleUntil = o.st.channelUntil = o.st.rootUntil = now + 2.4;
     g.emit('ability', { who: o, type: 'rekindled' });
   }
 
@@ -1981,7 +2009,7 @@ export class Kit {
         const off = (n === 1 ? 0 : (i / (n - 1) - 0.5) * 2) * BLADES.fan * DEG;
         this.throwBlade(o.yaw + off, o.pitch);
       }
-      b.next = now + (b.left > 0 ? BLADES.cycle : 0.5);
+      b.next = now + 0.45;
     } else if (inp.firePressed) {
       b.left--;
       this.throwBlade(o.yaw, o.pitch);

@@ -1592,11 +1592,28 @@ export class Renderer {
       const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.06, 12), mat(0x2b3440)); disc.position.y = 0.03;
       light = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mat(0x9be15d, 0x9be15d)); light.position.y = 0.08;
       g.add(disc, light);
+    } else if (d.kind === 'proj') {
+      // A thrown ability in flight (and where it comes to rest): its own model if it has one, else a glowing
+      // ball in its colour. Rockets and arrows point the way they fly.
+      if (d.model === 'paintshell') g.add(paintShellModel());
+      else if (d.model === 'bomblet') g.add(bombletModel());
+      else if (d.model === 'rocket') { const r = rocketModel(); g.add(r); g.userData.flame = r.userData.flame; g.userData.aim = true; }
+      else if (d.model === 'arrow') {
+        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.7, 6), mat(0x2b3440)); shaft.rotation.x = Math.PI / 2;
+        const tip = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.12, 8), mat(0xffffff, d.color)); tip.rotation.x = Math.PI / 2; tip.position.z = 0.4;
+        g.add(shaft, tip); g.userData.aim = true;
+      } else {
+        const r = d.size || 0.08;
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(r, 12, 9), new THREE.MeshBasicMaterial({ color: d.color })));
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(r * 2.2, 12, 9), new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: 0.25, depthWrite: false })));
+      }
     }
     this.fxAdd(g, () => (d.removed ? 0 : d.until), (now) => {
       g.position.set(...d.pos);
       g.visible = !(this.shadowSight && this.game.isEnemy(this.game.player, d.owner)); // shadow sight shows no enemy gadgets
       if (d.kind === 'drone') g.rotation.y = Math.atan2(-d.dir[0], -d.dir[2]);
+      if (g.userData.aim && !d.rest && (d.vel[0] || d.vel[1] || d.vel[2])) g.lookAt(d.pos[0] + d.vel[0], d.pos[1] + d.vel[1], d.pos[2] + d.vel[2]);
+      if (g.userData.flame) g.userData.flame.scale.set(1, 0.7 + Math.random() * 0.6, 1);
       if (d.kind === 'cloud') {
         const { size, trail, pts } = g.userData.cloud;
         size.visible = d.owner === this.game.player && !!d.owner.input[d.key]; // still steering: this is where it bursts
@@ -1616,7 +1633,7 @@ export class Renderer {
       if (d.kind === 'leer') { const e = this.camera.position; g.lookAt(e.x, e.y, e.z); }
       if (d.kind === 'alarm' && d.target) g.rotation.y = Math.atan2(-(d.target.pos[0] - d.pos[0]), -(d.target.pos[2] - d.pos[2]));
       if (head) head.rotation.y += Math.atan2(Math.sin(d.aimYaw - head.rotation.y), Math.cos(d.aimYaw - head.rotation.y)) * 0.2;
-      if (light) light.visible = Math.sin(now * (d.target ? 20 : 5)) > -0.3;
+      if (light) light.visible = !d.off && Math.sin(now * (d.target ? 20 : 5)) > -0.3; // dark while out of its owner's range
     });
   }
 

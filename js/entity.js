@@ -14,6 +14,14 @@ export function dirFromAngles(yaw, pitch) {
   return [-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp];
 }
 
+// How far into a concuss c is, 0 to 1.
+export const concussT = (c, now) => Math.min(1, Math.max(0, 1 - (c.st.stunUntil - now) / (c.st.stunLen || 2.5)));
+// Concussed movement slow, by Valorant's curve: 85% for the first tenth, easing to 25% at nine tenths, then gone.
+function concussSlow(c, now) {
+  const t = concussT(c, now);
+  return t <= 0.1 ? 0.85 : t <= 0.9 ? 0.85 - 0.6 * (t - 0.1) / 0.8 : 0.25 * (1 - (t - 0.9) / 0.1);
+}
+
 export class Combatant {
   constructor(game, { name, isBot = false, color = 0xffffff }) {
     this.game = game;
@@ -88,11 +96,13 @@ export class Combatant {
     else if (this.input.walk) m *= PLAYER.walkMult;
     const alt = g.def.alt;
     if (alt && alt.moveMult && g.adsT > 0) m *= lerp(1, alt.moveMult, g.adsT);
-    if (this.st.slowUntil > now) m *= 1 - this.st.slowAmt; // ability slows (traps, stuns, lockdown)
-    if (this.kit?.highGear) m = 9.1; // sprint
+    if (this.st.slowUntil > now) m *= 1 - this.st.slowAmt; // ability slows (traps, fields, detain)
+    if (this.st.stunUntil > now) m *= 1 - concussSlow(this, now);
+    if (this.st.rootUntil > now) return 0; // held in place (re-forming, being revived)
+    if (this.kit?.highGear) m = 9.11; // sprint: x1.35
     if (this.kit?.vanishUntil > now) m *= 1.75; // Vanish: much faster, any direction
     else if (this.st.intangibleUntil > now && !this.kit?.drift) m *= 1.5;
-    if (this.st.stimUntil > now) m *= 1.1; // Stim Beacon: +10% since patch 11.08
+    if (this.st.stimUntil > now) m *= 1.1; // Rally's Haste: +10%
     if (this.st.hasteUntil > now) m *= 1 + this.st.hasteAmt;
     if (this.st.castLockUntil > now) m *= 0.4; // casting an ult that holds you in place (Convergent Paths)
     if (this.st.hinderUntil > now) m *= 0.7; // Hindered: slower everything
@@ -106,7 +116,7 @@ export class Combatant {
   }
 
   equip(slot, now, force = false) {
-    if (this.kit?.blades) this.kit.blades = null; // switching weapons puts the blades away
+    if (this.kit?.blades) { this.kit.bladesAway = this.kit.blades.left; this.kit.blades = null; } // switching weapons puts the blades away (X takes them back out)
     if (this.kit?.armed && !force) this.kit.armed = null; // ...and any ability you were holding
     if (this.kit?.highGear && !force) this.kit.highGear = null;
     if (!this.inv[slot] || (slot === this.slot && !force)) return false;
