@@ -13,9 +13,11 @@
 // use abilities, but they are affected by them (blinded, nearsighted, revealed, vulnerable, detained...).
 import { dirFromAngles } from './entity.js';
 import { PLAYER } from './config.js';
+import { hyp } from './vmath.js';
 
 const DEG = Math.PI / 180;
 const ABILITY_KEYS = ['q', 'e', 'c'];
+const AB_INPUT = { q: 'abQ', e: 'abE', c: 'abC', x: 'abX' }; // the input flag of each ability key
 
 // Numbers follow VALORANT_SPECS.md (the Valorant ability specs for patch 13.10) unless a comment says otherwise.
 export const LIFT_HEIGHT = 5; // Lift (Updraft) carries you about 5 m up
@@ -79,7 +81,7 @@ function landing(o, range) {
   const hit = g.world.raycast(eye, d, range);
   if (hit && hit.n[1] === 0) {
     const p = [eye[0] + d[0] * hit.t, eye[1] + d[1] * hit.t, eye[2] + d[2] * hit.t];
-    const h = Math.hypot(d[0], d[2]) || 1, ix = p[0] + d[0] / h * 0.45, iz = p[2] + d[2] / h * 0.45;
+    const h = hyp(d[0], d[2]) || 1, ix = p[0] + d[0] / h * 0.45, iz = p[2] + d[2] / h * 0.45;
     const top = g.floorAt(ix, iz, p[1] + 1.25);
     if (top && top[1] > p[1] - 0.05) { const s = standSpot(o, top); if (s) return s; }
   }
@@ -100,7 +102,7 @@ const SHADOW_TIME = 4; // Nightwalk: how long the shade stands before you arrive
 const mine = (kit, delay, fn) => kit.timers.push({ at: kit.now + delay, fn, self: true });
 // Flight time for a thrown ability at `speed` m/s (through an optional bend point), never instant.
 function flight(from, to, speed, via) {
-  const d = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+  const d = (a, b) => hyp(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
   const len = via ? d(from, via) + d(via, to) : d(from, to);
   return Math.max(0.35, len / speed);
 }
@@ -202,7 +204,7 @@ function lookAt(kit, kind, maxDeg = 9) {
   let best = null, bestCos = Math.cos(maxDeg * DEG);
   for (const d of o.game.devices) {
     if (d.kind !== kind || d.owner !== o || d.removed) continue;
-    const c = [d.pos[0], d.pos[1] + 0.3, d.pos[2]], dx = c[0] - e[0], dy = c[1] - e[1], dz = c[2] - e[2], dist = Math.hypot(dx, dy, dz);
+    const c = [d.pos[0], d.pos[1] + 0.3, d.pos[2]], dx = c[0] - e[0], dy = c[1] - e[1], dz = c[2] - e[2], dist = hyp(dx, dy, dz);
     const cos = (f[0] * dx + f[1] * dy + f[2] * dz) / Math.max(dist, 0.01);
     if (cos > bestCos) { bestCos = cos; best = d; }
   }
@@ -218,7 +220,7 @@ function allyInView(kit, { dead = false, range = 20, maxDeg = 12, enemy = false,
     if (dead && maxAge && g.time - c.diedAt > maxAge) continue;
     const t = dead ? (c.deathPos ? [c.deathPos[0], c.deathPos[1] + 0.4, c.deathPos[2]] : null) : [c.pos[0], c.pos[1] + 1.1, c.pos[2]];
     if (!t) continue;
-    const dx = t[0] - e[0], dy = t[1] - e[1], dz = t[2] - e[2], dist = Math.hypot(dx, dy, dz);
+    const dx = t[0] - e[0], dy = t[1] - e[1], dz = t[2] - e[2], dist = hyp(dx, dy, dz);
     if (dist > range) continue;
     const cos = dist < 1.5 ? 1 : (f[0] * dx + f[1] * dy + f[2] * dz) / dist;
     if (cos > bestCos && g.canSee(e, t)) { bestCos = cos; best = c; }
@@ -229,7 +231,7 @@ function allyInView(kit, { dead = false, range = 20, maxDeg = 12, enemy = false,
 export const BLOOM = { pool: 100, rate: 20, range: 18 };
 export function bloomTargets(o) {
   const g = o.game, e = o.eye();
-  return g.combatants.filter(c => c !== o && c.alive && !g.isEnemy(o, c) && c.hp < PLAYER.hp && Math.hypot(c.pos[0] - o.pos[0], c.pos[2] - o.pos[2]) < BLOOM.range && g.canSee(e, c.eye()));
+  return g.combatants.filter(c => c !== o && c.alive && !g.isEnemy(o, c) && c.hp < PLAYER.hp && hyp(c.pos[0] - o.pos[0], c.pos[2] - o.pos[2]) < BLOOM.range && g.canSee(e, c.eye()));
 }
 // Heal a teammate over time (through their own kit's heal-over-time).
 function healAlly(c, amount, time) {
@@ -305,7 +307,7 @@ export const AGENTS = {
           if (kit.now < kit.tailwind.readyAt) return true; // still gathering
           const o = kit.owner, inp = o.input;
           let dx, dz;
-          const len = Math.hypot(inp.fwd, inp.side), sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
+          const len = hyp(inp.fwd, inp.side), sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
           if (len > 0) { dx = (-sy * inp.fwd + cy * inp.side) / len; dz = (-cy * inp.fwd - sy * inp.side) / len; }
           else { dx = -sy; dz = -cy; }
           o.dash = { until: kit.now + DASH.time, dir: [dx, dz] };
@@ -408,7 +410,7 @@ export const AGENTS = {
         preview(kit) { return smokeTarget(kit, 4.1); },
         use(kit) {
           const o = kit.owner, pos = [...target(kit, this)], e = o.eye();
-          const ft = Math.hypot(pos[0] - e[0], pos[1] - e[1], pos[2] - e[2]) / 64; // the orb flies there at 64 m/s...
+          const ft = hyp(pos[0] - e[0], pos[1] - e[1], pos[2] - e[2]) / 64; // the orb flies there at 64 m/s...
           o.game.emit('throw', { who: o, from: e, to: pos, time: Math.max(0.05, ft), color: 0xa67bff, straight: true });
           later(kit, ft + 0.3, () => o.game.addSmoke(o, pos, kit.now, { radius: 4.1, life: 14.7, color: 0x5b3f8f })); // ...and blooms 0.3 s after it arrives
         },
@@ -757,7 +759,7 @@ export const AGENTS = {
         use(kit) {
           const o = kit.owner, g = o.game, p = throughWall(o, 35, 0.3);
           if (!p) return false;
-          const e = o.eye(), yaw = o.yaw, f = fwd2(yaw), ft = Math.hypot(p[0] - e[0], p[2] - e[2]) / 25;
+          const e = o.eye(), yaw = o.yaw, f = fwd2(yaw), ft = hyp(p[0] - e[0], p[2] - e[2]) / 25;
           g.emit('throw', { who: o, from: e, to: p, time: Math.max(0.1, ft), color: 0xf28c38, wave: true });
           const a = [p[0], p[1] + 1, p[2]], b = [a[0] + f[0] * 10, a[1], a[2] + f[1] * 10];
           later(kit, ft, () => g.emit('quakeLine', { from: a, to: b, width: 6, life: 3.6 })); // the blast area lights up while it charges
@@ -773,7 +775,7 @@ export const AGENTS = {
           const o = kit.owner, g = o.game, p = throughWall(o, 35, 2.5);
           if (!p) return false;
           p[1] += 1.4;
-          const e = o.eye(), ft = Math.hypot(p[0] - e[0], p[2] - e[2]) / 24 + 0.5;
+          const e = o.eye(), ft = hyp(p[0] - e[0], p[2] - e[2]) / 24 + 0.5;
           g.emit('throw', { who: o, from: e, to: p, time: ft, color: 0xffd28a, wave: true });
           later(kit, ft, () => g.flash(o, p, 2.25));
         },
@@ -963,7 +965,7 @@ export const AGENTS = {
         name: 'Hunters', desc: 'Release three seekers (120 HP each) that track the three closest enemies for up to 15 s, through walls. Each one that reaches its target nearsights them for 3 s.', points: 8,
         use(kit) {
           const o = kit.owner, g = o.game;
-          const targets = g.combatants.filter(c => c.alive && g.isEnemy(o, c)).sort((a, b) => Math.hypot(a.pos[0] - o.pos[0], a.pos[2] - o.pos[2]) - Math.hypot(b.pos[0] - o.pos[0], b.pos[2] - o.pos[2])).slice(0, 3);
+          const targets = g.combatants.filter(c => c.alive && g.isEnemy(o, c)).sort((a, b) => hyp(a.pos[0] - o.pos[0], a.pos[2] - o.pos[2]) - hyp(b.pos[0] - o.pos[0], b.pos[2] - o.pos[2])).slice(0, 3);
           for (const t of targets) g.addDevice({ kind: 'seeker', owner: o, pos: o.eye(), target: t, life: 15 });
           g.emit('ability', { who: o, type: 'ult' });
         },
@@ -1002,7 +1004,7 @@ export const AGENTS = {
           let best = null, bestCos = Math.cos(9 * DEG);
           for (const d of g.devices) {
             if (d.kind !== 'cage' || d.owner !== o || d.removed) continue;
-            const c = [d.pos[0], d.pos[1] + 0.1, d.pos[2]], dx = c[0] - e[0], dy = c[1] - e[1], dz = c[2] - e[2], dist = Math.hypot(dx, dy, dz);
+            const c = [d.pos[0], d.pos[1] + 0.1, d.pos[2]], dx = c[0] - e[0], dy = c[1] - e[1], dz = c[2] - e[2], dist = hyp(dx, dy, dz);
             const cos = (f[0] * dx + f[1] * dy + f[2] * dz) / dist;
             if (cos > bestCos && dist < 80) { bestCos = cos; best = d; }
           }
@@ -1258,7 +1260,7 @@ export const AGENTS = {
         reuse(kit) {
           const a = kit.anchor, o = kit.owner;
           if (!a || a.removed) return false;
-          if (kit.now < (kit.tpReady || 0) || Math.hypot(o.pos[0] - a.pos[0], o.pos[2] - a.pos[2]) > 18) { o.game.emit('abilityFail', { who: o, key: 'e' }); return true; }
+          if (kit.now < (kit.tpReady || 0) || hyp(o.pos[0] - a.pos[0], o.pos[2] - a.pos[2]) > 18) { o.game.emit('abilityFail', { who: o, key: 'e' }); return true; }
           kit.tpReady = kit.now + 30;
           o.game.emit('ability', { who: o, type: 'step', pos: a.pos });
           o.st.invulnUntil = kit.now + 1.3; // can't be hurt from the press until he has arrived
@@ -1309,7 +1311,7 @@ export const AGENTS = {
           const o = kit.owner, g = o.game, e = o.eye(), pos = aimPoint(o, 80, { back: 0.6, bodies: false });
           const fl = floorUnder(g, pos);
           if (pos[1] < fl[1] + 1.4) pos[1] = fl[1] + 1.4; // not sunk into the floor
-          const ft = Math.max(0.05, Math.hypot(pos[0] - e[0], pos[1] - e[1], pos[2] - e[2]) / 64);
+          const ft = Math.max(0.05, hyp(pos[0] - e[0], pos[1] - e[1], pos[2] - e[2]) / 64);
           g.emit('throw', { who: o, from: e, to: pos, time: ft, color: 0x2fb3a8, straight: true });
           later(kit, ft, () => g.addSmoke(o, pos, kit.now, { radius: 4.6, life: 19.25, color: 0x2fb3a8, kind: 'cove' }));
         },
@@ -1381,7 +1383,7 @@ export const AGENTS = {
           later(kit, 0.8, () => {
             g.emit('throw', { who: o, from, to: [from[0] + f[0] * 40, from[1], from[2] + f[1] * 40], time: 4, color: 0x9b5cff, wave: true });
             g.sweep(o, from, [f[0], 0, f[1]], 10, 40, {
-              hit: (c, d) => Math.hypot(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 7,
+              hit: (c, d) => hyp(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 7,
               apply: (c) => {
                 if (!o.alive || g.contract) return 'stop';
                 g.startContract(o, c, 13 + 1.5);
@@ -1414,7 +1416,7 @@ export const AGENTS = {
         use(kit, mode) {
           const o = kit.owner;
           const go = (up) => {
-            const inp = o.input, len = Math.hypot(inp.fwd, inp.side), sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
+            const inp = o.input, len = hyp(inp.fwd, inp.side), sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
             const dir = len > 0 ? [(-sy * inp.fwd + cy * inp.side) / len, (-cy * inp.fwd - sy * inp.side) / len] : [-sy, -cy];
             o.dash = { until: kit.now + 0.45, dir, speed: 20, exit: 6.5 };
             if (up) { o.vel[1] = 5.2; o.grounded = false; }
@@ -1436,7 +1438,7 @@ export const AGENTS = {
           const b = kit.refract;
           if (!b || b.removed || kit.now - b.born < 1) return false; // it takes 1 s to arm
           const o = kit.owner, to = [...b.pos];
-          const dist = Math.hypot(to[0] - o.pos[0], to[1] - o.pos[1], to[2] - o.pos[2]);
+          const dist = hyp(to[0] - o.pos[0], to[1] - o.pos[1], to[2] - o.pos[2]);
           const travel = 0.35 + 1.65 * Math.min(1, Math.max(0, (dist - 2.5) / 47.5)); // 2.5 m: 0.35 s, 50 m: 2 s
           o.st.intangibleUntil = kit.now + travel;
           o.st.nearUntil = kit.now + travel; o.st.nearRange = 1; // she sees next to nothing on the way
@@ -1623,7 +1625,7 @@ export const AGENTS = {
             later(kit, 0.75, () => {
               d.removed = true;
               g.emit('pulse', { pos: [pos[0], pos[1] + 1, pos[2]], r: 4, type: 'decay', color: 0xe07bd0, owner: o });
-              for (const c of g.combatants) if (c.alive && g.isEnemy(o, c) && Math.hypot(c.pos[0] - pos[0], c.pos[2] - pos[2]) < 4 && Math.abs(c.pos[1] - pos[1]) < 3) g.decay(c, 90, { delay: 0, over: 5 });
+              for (const c of g.combatants) if (c.alive && g.isEnemy(o, c) && hyp(c.pos[0] - pos[0], c.pos[2] - pos[2]) < 4 && Math.abs(c.pos[1] - pos[1]) < 3) g.decay(c, 90, { delay: 0, over: 5 });
             });
           } });
         },
@@ -1793,8 +1795,8 @@ export class Kit {
     for (const d of g.devices) {
       const rule = PICKUPS[d.kind];
       if (!rule || d.owner !== o || d.removed || !this.canPickUp(d)) continue;
-      const c = [d.pos[0], d.pos[1] + 0.2, d.pos[2]], dx = c[0] - e[0], dy = c[1] - e[1], dz = c[2] - e[2], dist = Math.hypot(dx, dy, dz);
-      if (!rule.far && (Math.hypot(d.pos[0] - o.pos[0], d.pos[2] - o.pos[2]) > 2.6 || Math.abs(d.pos[1] - o.pos[1]) > 2.2 || !g.world.lineOfSight(e, c))) continue;
+      const c = [d.pos[0], d.pos[1] + 0.2, d.pos[2]], dx = c[0] - e[0], dy = c[1] - e[1], dz = c[2] - e[2], dist = hyp(dx, dy, dz);
+      if (!rule.far && (hyp(d.pos[0] - o.pos[0], d.pos[2] - o.pos[2]) > 2.6 || Math.abs(d.pos[1] - o.pos[1]) > 2.2 || !g.world.lineOfSight(e, c))) continue;
       const near = !rule.far && dist < 1.2; // standing over it counts as looking at it
       const cos = near ? 1 : (f[0] * dx + f[1] * dy + f[2] * dz) / Math.max(dist, 0.01);
       if (cos > bestCos) { bestCos = cos; best = d; }
@@ -1814,7 +1816,7 @@ export class Kit {
     let d = null, bestD = 1;
     for (const x of g.devices) {
       if (!PICKUPS[x.kind] || x.owner !== o || x.removed || !this.canPickUp(x)) continue;
-      const dd = Math.hypot(x.pos[0] - pos[0], x.pos[1] - pos[1], x.pos[2] - pos[2]);
+      const dd = hyp(x.pos[0] - pos[0], x.pos[1] - pos[1], x.pos[2] - pos[2]);
       if (dd < bestD) { bestD = dd; d = x; }
     }
     if (!d) return false;
@@ -1888,7 +1890,7 @@ export class Kit {
   tick(now) {
     this.now = now;
     const o = this.owner, inp = o.input, ab = this.agent.abilities, g = o.game;
-    for (const k of ABILITY_KEYS) this.recharge(k, now);
+    for (let i = 0; i < ABILITY_KEYS.length; i++) this.recharge(ABILITY_KEYS[i], now);
     if (this.tailwind && now > this.tailwind.until) this.tailwind = null; // unused dash fades
 
     const buyLock = g.mode?.phase === 'buy';
@@ -1902,8 +1904,9 @@ export class Kit {
       inp.abQ = inp.abE = inp.abC = inp.abX = false;
       if (this.armed) { this.armed = null; o.equip(o.slot, now, true); }
     }
-    for (const k of ABILITY_KEYS) {
-      if (!inp['ab' + k.toUpperCase()]) continue;
+    for (let i = 0; i < ABILITY_KEYS.length; i++) {
+      const k = ABILITY_KEYS[i];
+      if (!inp[AB_INPUT[k]]) continue;
       if (this.armed && this.armed.k === k) { this.armed = null; continue; } // press again to put it away
       if (buyLock && !buyPhaseAllows(this.id, k)) {
         // Buy phase: you can still take it out and line it up; using it waits for the round to start.
@@ -2047,10 +2050,12 @@ export class Kit {
   // Fire due delayed effects. After death only the ones that don't need the owner's body still go off.
   runTimers(now) {
     this.now = now;
-    if (!this.timers.length) return;
-    const due = this.timers.filter(t => now >= t.at);
-    if (!due.length) return;
-    this.timers = this.timers.filter(t => now < t.at);
+    const ts = this.timers;
+    let any = false; // most ticks nothing is due: look before building lists
+    for (let i = 0; i < ts.length; i++) if (now >= ts[i].at) { any = true; break; }
+    if (!any) return;
+    const due = ts.filter(t => now >= t.at);
+    this.timers = ts.filter(t => now < t.at);
     for (const t of due) if (this.owner.alive || !t.self) t.fn();
   }
 
@@ -2113,7 +2118,7 @@ export class Kit {
       }
       return;
     }
-    const helper = g.combatants.some(c => c !== o && c.alive && !g.isEnemy(o, c) && !(c.st.downedUntil > now) && Math.hypot(c.pos[0] - o.pos[0], c.pos[2] - o.pos[2]) < 3 && Math.abs(c.pos[1] - o.pos[1]) < 2 && (c.isBot || c.input.use));
+    const helper = g.combatants.some(c => c !== o && c.alive && !g.isEnemy(o, c) && !(c.st.downedUntil > now) && hyp(c.pos[0] - o.pos[0], c.pos[2] - o.pos[2]) < 3 && Math.abs(c.pos[1] - o.pos[1]) < 2 && (c.isBot || c.input.use));
     d.help = helper ? d.help + DT : 0;
     if (d.help >= 1.5) { d.upAt = now + 1.35; o.st.downedUntil = o.st.rootUntil = d.upAt; o.st.intangibleUntil = d.upAt; return; }
     if (now >= d.until) {
@@ -2227,9 +2232,9 @@ export class Kit {
     if (this.highGear) {
       if (!this.overdrive) this.energy -= 100 / 16 * DT; // a full bar is 16 s of sprint; in Overload it runs on Overload's meter
       if (this.energy <= 0) { this.energy = 0; this.highGear = null; }
-      else if (inp.altPressed && now >= this.slideAt && o.grounded && o.horizSpeed() >= 3 && Math.hypot(inp.fwd, inp.side) > 0) {
+      else if (inp.altPressed && now >= this.slideAt && o.grounded && o.horizSpeed() >= 3 && hyp(inp.fwd, inp.side) > 0) {
         // Slide: right click while moving at 3 m/s or more. 12 m/s for 0.6 s, about 7 m.
-        const len = Math.hypot(inp.fwd, inp.side), sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
+        const len = hyp(inp.fwd, inp.side), sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
         const dir = [(-sy * inp.fwd + cy * inp.side) / len, (-cy * inp.fwd - sy * inp.side) / len];
         o.dash = { until: now + 0.6, dir, speed: 12, exit: 8 };
         this.slideAt = g.mode ? Infinity : now + 8; // 5v5: one slide a round, back after two kills
@@ -2313,7 +2318,7 @@ export class Kit {
     const e = this.owner.eye();
     let i = -1, best = Infinity;
     this.orbs.forEach((b, j) => {
-      const dist = Math.hypot(b.pos[0] - e[0], b.pos[1] - e[1], b.pos[2] - e[2]);
+      const dist = hyp(b.pos[0] - e[0], b.pos[1] - e[1], b.pos[2] - e[2]);
       if (b.until > this.now && dist < best) { best = dist; i = j; }
     });
     if (i < 0) return false;
@@ -2335,7 +2340,7 @@ export class Kit {
       o.inv.ability = null;
       if (o.slot === 'ability') o.equip(o.inv.primary ? 'primary' : 'secondary', now, true);
     }
-    for (const z of g.zones) if (z.kind === 'stim' && o.alive && !g.isEnemy(z.owner, o) && Math.hypot(o.pos[0] - z.pos[0], o.pos[2] - z.pos[2]) < z.r) o.st.stimUntil = now + 4;
+    for (const z of g.zones) if (z.kind === 'stim' && o.alive && !g.isEnemy(z.owner, o) && hyp(o.pos[0] - z.pos[0], o.pos[2] - z.pos[2]) < z.r) o.st.stimUntil = now + 4;
     // Bloom channel: heal teammates in sight from the pool while C is held (bots: a few seconds).
     const rg = this.regrow;
     if (rg?.on) {
@@ -2357,19 +2362,19 @@ export class Kit {
     if (nz && now < nz.until) { // it spreads from 1.5 m to 9 m over 5 s
       nz.r = Math.min(9, 1.5 + 7.5 * (now - nz.born) / 5);
       if (this.nest) this.nest.radius = nz.r;
-      if (o.alive && Math.hypot(o.pos[0] - nz.pos[0], o.pos[2] - nz.pos[2]) < Math.max(nz.r, 2.5)) { nz.until = now + 8; if (this.nest) this.nest.until = now + 8; }
+      if (o.alive && hyp(o.pos[0] - nz.pos[0], o.pos[2] - nz.pos[2]) < Math.max(nz.r, 2.5)) { nz.until = now + 8; if (this.nest) this.nest.until = now + 8; }
     }
     if (this.launcher && now >= this.launcher.until) this.launcher = null; // Finale: 10 s to fire it
-    this.orbs = this.orbs.filter(b => b.until > now);
+    if (this.orbs.length) this.orbs = this.orbs.filter(b => b.until > now);
     // Viper fuel: drains while any gas is on, refills when it's all off
-    const groups = Object.values(this.gas.groups);
-    const on = groups.filter(gr => gr.active);
-    if (on.length) {
-      // 8.33 fuel a second with one source up, 12.5 with both; a source starts drawing 0.5 s after it comes on.
-      const drawing = on.filter(gr => now >= gr.onAt + 0.5).length;
+    const groups = this.gas.groups;
+    let on = 0, drawing = 0; // a source starts drawing 0.5 s after it comes on
+    for (const key in groups) { const gr = groups[key]; if (gr.active) { on++; if (now >= gr.onAt + 0.5) drawing++; } }
+    if (on) {
+      // 8.33 fuel a second with one source up, 12.5 with both.
       this.gas.fuel = Math.max(0, this.gas.fuel - (drawing >= 2 ? 12.5 : drawing ? 100 / 12 : 0) * DT);
-      if (this.gas.fuel <= 0) for (const gr of on) gasOff(this, gr);
-    } else this.gas.fuel = Math.min(100, this.gas.fuel + 100 / 30 * DT); // empty to full in 30 s
+      if (this.gas.fuel <= 0) for (const gr of Object.values(groups)) if (gr.active) gasOff(this, gr);
+    } else if (this.gas.fuel < 100) this.gas.fuel = Math.min(100, this.gas.fuel + 100 / 30 * DT); // empty to full in 30 s
     // Rocket launcher
     if (this.launcher && o.input.firePressed && now >= this.launcher.ready) {
       this.launcher = null;

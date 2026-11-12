@@ -4,7 +4,7 @@ import { HFOV, VIEW_RECOIL, HITBOX, GUN_HEIGHT } from './config.js';
 import { gunModel, handsModel, studioEnv, ownGlow, poseMeleeParts, rocketModel, paintShellModel, bombletModel } from './models.js';
 import { MELEE, GUN_INSPECT, MODEL_INSPECTS, EQUIP_ANIMS, SWINGS, meleeId, inspectPose } from './melee.js';
 import { SwingTrails } from './swingfx.js';
-import { skinFor, skinFits, meleeSkin, SKINS } from './skins.js';
+import { skinFor, skinFits, meleeSkin, SKINS, onSkinsChanged } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
 import { BLADES, SMOKE, bloomTargets } from './abilities.js';
 import { zoneRadius } from './game.js';
@@ -17,6 +17,7 @@ const FINISHERS = ['collapse', 'lastLight', 'lastStroke', 'coronation'];
 import { ROUND } from './rounds.js';
 import { materialOf } from './map.js';
 import { dirFromAngles } from './entity.js';
+import { hyp } from './vmath.js';
 
 const DEG = Math.PI / 180;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -226,6 +227,24 @@ function flattenModel(model, castShadow = false) {
   model.traverse(o => o.geometry?.dispose());
   return out;
 }
+
+// Guns as other players hold them and as they lie on the floor: one flattened model per weapon and skin, built
+// the first time it is needed and shared from then on (copies use the same geometry and materials). Building
+// one takes a millisecond or two, and it used to happen on every weapon switch of every player and every drop.
+const worldGuns = new Map();
+function worldGun(id, skin) {
+  const key = id + ':' + skin;
+  let model = worldGuns.get(key);
+  if (!model) {
+    const built = gunModel(id, skin, { noHands: true });
+    if (built.userData.hands) for (const h of built.userData.hands) h.visible = false;
+    model = flattenModel(built, true);
+    worldGuns.set(key, model);
+  }
+  return model.clone();
+}
+// An edited or deleted custom skin is rebuilt the next time it is shown.
+onSkinsChanged((id) => { for (const k of worldGuns.keys()) if (k.endsWith(':' + id)) worldGuns.delete(k); });
 
 // Swaps two corners of every triangle of a non-indexed geometry.
 function flipWinding(g) {
@@ -781,9 +800,7 @@ export class Renderer {
   // A dropped gun: arcs from the hand (or the body) to the floor, then lies on its side, slowly glinting.
   fxDrop(d) {
     const skin = d.by !== this.game.player && d.skin && SKINS[d.skin] ? d.skin : this.skinOf(d.by, d.gun.def.id);
-    const model = gunModel(d.gun.def.id, skin, { noHands: true });
-    if (model.userData.hands) for (const h of model.userData.hands) h.visible = false;
-    const m = flattenModel(model, true);
+    const m = worldGun(d.gun.def.id, skin);
     const g = new THREE.Group();
     g.add(m);
     m.rotation.set(0, 0, Math.PI / 2); // on its side
@@ -941,7 +958,7 @@ export class Renderer {
 
   // A jolt of the camera that dies away over `dur` seconds, weaker the further you are from `pos`.
   shakeCamera(pos, amp, dur) {
-    const c = this.camera.position, d = Math.hypot(c.x - pos[0], c.y - pos[1], c.z - pos[2]);
+    const c = this.camera.position, d = hyp(c.x - pos[0], c.y - pos[1], c.z - pos[2]);
     const a = amp / (1 + d / 12);
     if (!this.finShake || a > this.finShake.amp * (1 - (this.game.time - this.finShake.t0) / this.finShake.dur)) this.finShake = { t0: this.game.time, amp: a, dur };
   }
@@ -1312,7 +1329,7 @@ export class Renderer {
       : new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color }));
     if (wave) m.lookAt(to[0] - from[0], 0, to[2] - from[2]);
     const t0 = this.game.time;
-    const d = Math.hypot(to[0] - from[0], to[2] - from[2]);
+    const d = hyp(to[0] - from[0], to[2] - from[2]);
     const lerp3 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
     this.fxAdd(m, t0 + time, (now) => {
       const k = Math.min(1, (now - t0) / time);
@@ -1354,7 +1371,7 @@ export class Renderer {
   // it goes off `stay` seconds after the throw.
   fxGrenade(from, to, time, model, stay) {
     const m = model === 'paintshell' ? paintShellModel(1) : bombletModel(), t0 = this.game.time;
-    const d = Math.hypot(to[0] - from[0], to[2] - from[2]), spin = 9 + Math.random() * 4;
+    const d = hyp(to[0] - from[0], to[2] - from[2]), spin = 9 + Math.random() * 4;
     m.position.set(...from);
     this.fxAdd(m, t0 + Math.max(time, stay), (now) => {
       const k = Math.min(1, (now - t0) / time);
@@ -1366,7 +1383,7 @@ export class Renderer {
 
   // Wall-piercing beam: a bright line that fades out.
   fxBeam({ from, to }) {
-    const len = Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
+    const len = hyp(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
     const m = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, len, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0x8fd3ff, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
     m.position.set((from[0] + to[0]) / 2, (from[1] + to[1]) / 2 - 0.15, (from[2] + to[2]) / 2);
     m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(to[0] - from[0], to[1] - from[1], to[2] - from[2]).normalize());
@@ -1397,7 +1414,7 @@ export class Renderer {
       this.fxAdd(m, t0 + 1.0, (now) => { const k = (now - t0) / 1.0; m.scale.setScalar(Math.min(1, k * 2)); m.material.opacity = 0.4 * (1 - k); });
       return;
     }
-    const len = Math.hypot(to[0] - from[0], to[2] - from[2]);
+    const len = hyp(to[0] - from[0], to[2] - from[2]);
     const m = new THREE.Mesh(new THREE.PlaneGeometry(width, len), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
     m.rotation.set(-Math.PI / 2, 0, Math.atan2(to[0] - from[0], to[2] - from[2]));
     m.position.set((from[0] + to[0]) / 2, from[1] - 0.95, (from[2] + to[2]) / 2);
@@ -1547,7 +1564,7 @@ export class Renderer {
       if (d.kind === 'hawk') for (const sd of [-1, 1]) { const w = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.02, 0.18), mat(0xffffff, col)); w.position.x = sd * 0.3; g.add(w); }
       light = body; g.add(body);
     } else if (d.kind === 'wire') {
-      const len = Math.hypot(d.b[0] - d.pos[0], d.b[2] - d.pos[2]);
+      const len = hyp(d.b[0] - d.pos[0], d.b[2] - d.pos[2]);
       const w = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, len, 6), new THREE.MeshBasicMaterial({ color: 0xd8dde6, transparent: true, opacity: 0.6 }));
       w.rotation.z = Math.PI / 2; w.rotation.y = -Math.atan2(d.b[2] - d.pos[2], d.b[0] - d.pos[0]);
       w.position.set((d.b[0] - d.pos[0]) / 2, 0, (d.b[2] - d.pos[2]) / 2);
@@ -1624,7 +1641,7 @@ export class Renderer {
       if (d.kind === 'cloud') {
         const { size, trail, pts } = g.userData.cloud;
         size.visible = d.owner === this.game.player && !!d.owner.input[d.key]; // still steering: this is where it bursts
-        if (!pts.length || Math.hypot(pts[0][0] - d.pos[0], pts[0][1] - d.pos[1], pts[0][2] - d.pos[2]) > 0.25) { pts.unshift([...d.pos]); pts.length = Math.min(pts.length, 16); }
+        if (!pts.length || hyp(pts[0][0] - d.pos[0], pts[0][1] - d.pos[1], pts[0][2] - d.pos[2]) > 0.25) { pts.unshift([...d.pos]); pts.length = Math.min(pts.length, 16); }
         const a = trail.geometry.attributes.position;
         for (let i = 0; i < 16; i++) a.setXYZ(i, ...(pts[Math.min(i, pts.length - 1)]));
         a.needsUpdate = true;
@@ -1698,7 +1715,7 @@ export class Renderer {
       const shell = sm.group.userData.shell;
       if (shell && !sm.fire) {
         const R = (sm.s.radius || SMOKE.radius) * sm.group.scale.x, cp = this.camera.position;
-        const inside = Math.hypot(cp.x - sm.s.pos[0], cp.y - sm.s.pos[1], cp.z - sm.s.pos[2]) < R * 0.95;
+        const inside = hyp(cp.x - sm.s.pos[0], cp.y - sm.s.pos[1], cp.z - sm.s.pos[2]) < R * 0.95;
         shell.visible = inside;
         shell.material.opacity = op * fade; // from inside you see the pocket, not the world beyond the cloud
         for (const m of sm.group.children) if (m !== shell) m.visible = !inside;
@@ -2233,7 +2250,7 @@ export class Renderer {
     this.setShadowSight(!!sight);
     if (sight) {
       const t = p.kit.previewPos, d = dirFromAngles(p.yaw, p.pitch);
-      const back = Math.min(Math.hypot(t[0] - x, t[1] - eyeY, t[2] - z), held.smokePreview * 3.5 + 4);
+      const back = Math.min(hyp(t[0] - x, t[1] - eyeY, t[2] - z), held.smokePreview * 3.5 + 4);
       cam.position.set(t[0] - d[0] * back, t[1] - d[1] * back + 0.6, t[2] - d[2] * back);
       this.scene.fog.near = back + 6; this.scene.fog.far = back + 55; // outlines fade with distance from the smoke
       this.updateSilhouettes(true);
@@ -2258,7 +2275,7 @@ export class Renderer {
       const k = this.deathCam.killer;
       if (k && k !== p) {
         const dx = k.pos[0] - x, dy = k.eye()[1] - eyeY, dz = k.pos[2] - z;
-        const ty = Math.atan2(-dx, -dz), tp = Math.atan2(dy, Math.hypot(dx, dz));
+        const ty = Math.atan2(-dx, -dz), tp = Math.atan2(dy, hyp(dx, dz));
         const f = 1 - Math.exp(-dt * 6);
         this.deathCam.yaw += Math.atan2(Math.sin(ty - this.deathCam.yaw), Math.cos(ty - this.deathCam.yaw)) * f;
         this.deathCam.pitch += (tp - this.deathCam.pitch) * f;
@@ -2490,7 +2507,7 @@ export class Renderer {
       // Spectating: don't render the body we're looking out of, or anyone pressed right up against the camera.
       // Shadow sight sees through walls, so it shows nobody.
       const st = this.specTarget;
-      ch.group.visible = !this.shadowSight && (!st || (c !== st && Math.hypot(c.pos[0] - st.pos[0], c.pos[2] - st.pos[2]) > 1.3));
+      ch.group.visible = !this.shadowSight && (!st || (c !== st && hyp(c.pos[0] - st.pos[0], c.pos[2] - st.pos[2]) > 1.3));
       const x = lerp(c.prevPos[0], c.pos[0], alpha), y = lerp(c.prevPos[1], c.pos[1], alpha), z = lerp(c.prevPos[2], c.pos[2], alpha);
       ch.group.position.set(x, y, z);
       ch.group.rotation.set(0, c.yaw, 0);
@@ -2516,11 +2533,9 @@ export class Renderer {
       const hk = heldDef ? heldId + ':' + heldSkin : '';
       if (hk !== ch.heldKey) {
         ch.heldKey = hk;
-        for (const o of [...ch.held.children]) { ch.held.remove(o); o.traverse(m => m.geometry?.dispose()); }
+        ch.held.clear(); // the model's geometry is shared (worldGun), so nothing to free
         if (heldDef && !heldDef.hands) {
-          const model = gunModel(heldId, heldSkin, { noHands: true });
-          if (model.userData.hands) for (const hh of model.userData.hands) hh.visible = false;
-          const m = flattenModel(model, true);
+          const m = worldGun(heldId, heldSkin);
           m.scale.setScalar(1.15);
           ch.held.add(m);
         }

@@ -6,6 +6,7 @@
 // at any aspect ratio. Each stroke's head runs along its path from t0 to t1 (seconds after the swing starts), and
 // every point it passes fades out over `linger` seconds, so the ribbon thins from the tail as the head moves on.
 import * as THREE from '../vendor/three.module.min.js';
+import { hyp } from './vmath.js';
 
 const SEG = 64;
 const DEPTH = 0.55;
@@ -150,7 +151,7 @@ export class SwingTrails {
         // Thin at both ends of the cut, and thinning as it fades.
         const w = s.w * Math.pow(Math.sin(Math.PI * Math.min(1, Math.max(0.02, u * (s.taper ?? 1)))), 0.6) * (0.35 + 0.65 * life);
         let dx = q[0] - o[0], dy = q[1] - o[1];
-        const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+        const len = hyp(dx, dy) || 1; dx /= len; dy /= len;
         const nx = -dy * w, ny = dx * w; // the ribbon is twice `w` wide: a soft halo round a `w`-wide stroke
         pos.set([(p[0] - nx) * UNIT, (p[1] - ny) * UNIT, -DEPTH, (p[0] + nx) * UNIT, (p[1] + ny) * UNIT, -DEPTH], i * 6);
         const a = Number.isFinite(age) ? life * life * (s.alpha ?? 1) : 0;

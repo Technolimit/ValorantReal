@@ -1,4 +1,5 @@
 // Axis-aligned box world: overlap tests for movement and ray casts for bullets and line of sight.
+import { hyp } from './vmath.js';
 
 export function rayAABB(o, d, min, max) {
   let tmin = -Infinity, tmax = Infinity, axis = -1;
@@ -73,6 +74,13 @@ export class World {
     this.extra = [];
     this.extraKey = null;
     this.nextOrder = boxes.length;
+    // lineOfSight's working state, kept here so a sight check (bots make thousands a second) allocates nothing.
+    this._losD = [0.5, 0.5, 0.5]; this._losA = null; this._losLen = 0; this._losClear = true;
+    this._losTest = (box) => {
+      const t = rayHit(this._losA, this._losD, box.min, box.max);
+      if (t >= 0 && t < this._losLen - 0.05) this._losClear = false;
+      return !this._losClear;
+    };
   }
 
   cellOf(x, z) {
@@ -131,7 +139,8 @@ export class World {
       let nextZ = Math.abs(dz) < 1e-12 ? Infinity : t0 + ((sz > 0 ? cz + 1 - pz : pz - cz) * stepZ);
       for (;;) {
         const exit = Math.min(nextX, nextZ, t1);
-        for (const b of this.cells[cz * this.nx + cx]) { if (b._seen === st) continue; b._seen = st; if (fn(b)) return; }
+        const cell = this.cells[cz * this.nx + cx];
+        for (let i = 0; i < cell.length; i++) { const b = cell[i]; if (b._seen === st) continue; b._seen = st; if (fn(b)) return; }
         if (exit >= t1 || (done && done(exit))) break;
         if (nextX < nextZ) { cx += sx; nextX += stepX; if (cx < 0 || cx >= this.nx) break; }
         else { cz += sz; nextZ += stepZ; if (cz < 0 || cz >= this.nz) break; }
@@ -198,18 +207,14 @@ export class World {
   }
 
   lineOfSight(a, b) {
-    const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    const len = Math.hypot(d[0], d[1], d[2]);
+    const d = this._losD, test = this._losTest;
+    d[0] = b[0] - a[0]; d[1] = b[1] - a[1]; d[2] = b[2] - a[2];
+    const len = hyp(d[0], d[1], d[2]);
     if (len < 1e-6) return true;
     d[0] /= len; d[1] /= len; d[2] /= len;
-    let clear = true;
-    const test = (box) => {
-      const t = rayHit(a, d, box.min, box.max);
-      if (t >= 0 && t < len - 0.05) clear = false;
-      return !clear;
-    };
+    this._losA = a; this._losLen = len; this._losClear = true;
     this.along(a, d, len, test);
-    if (clear) for (const b of this.temps()) if (test(b)) break;
-    return clear;
+    if (this._losClear) { const t = this.temps(); for (let i = 0; i < t.length; i++) if (test(t[i])) break; }
+    return this._losClear;
   }
 }

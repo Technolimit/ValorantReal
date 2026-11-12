@@ -10,6 +10,7 @@ import { Kit, AGENT_ORDER, smokeBlocks, SMOKE, SLAB } from './abilities.js';
 import { dirFromAngles as dirOf } from './entity.js';
 import { netStep } from './net.js';
 import { SKINS, SKIN_ORDER, variantsOf } from './skins.js';
+import { hyp } from './vmath.js';
 
 const TURRET = { id: 'sentry', name: 'Sentry', cat: 'Ability', dmg: [[50, 0, 0, 0]] };
 const BOOMER = { id: 'boomer', name: 'Boomer', cat: 'Ability', dmg: [[50, 0, 0, 0]] };
@@ -201,13 +202,13 @@ export class Game {
     // Venom sees enemies inside her own Nest.
     for (const s of this.smokes) {
       if (!s.nest || now >= s.until) continue;
-      for (const c of this.combatants) if (this.affectable(c) && this.isEnemy(s.owner, c) && Math.hypot(c.pos[0] - s.pos[0], c.pos[1] + 1 - s.pos[1], c.pos[2] - s.pos[2]) < s.radius) c.st.revealUntil = now + 0.15;
+      for (const c of this.combatants) if (this.affectable(c) && this.isEnemy(s.owner, c) && hyp(c.pos[0] - s.pos[0], c.pos[1] + 1 - s.pos[1], c.pos[2] - s.pos[2]) < s.radius) c.st.revealUntil = now + 0.15;
     }
     for (const w of this.walls) {
       if (now >= w.until) this.removeWall(w);
       else if (w.fortify && now >= w.born + 2) { w.hp += w.fortify; w.fortify = 0; } // Frost Wall hardens 2 s after it rises
     }
-    if (this.walls.some(w => w.removed)) this.walls = this.walls.filter(w => !w.removed);
+    if (this.walls.length && this.walls.some(w => w.removed)) this.walls = this.walls.filter(w => !w.removed);
     if (this.eventide && now >= this.eventide.until) this.eventide = null;
     this.time += DT;
     if (!this.mode && !this.netClient && this.state === 'playing' && this.time >= this.timeLimit) this.end();
@@ -249,7 +250,7 @@ export class Game {
       if (now >= z.until) continue;
       for (const c of this.combatants) {
         if (!c.alive) continue;
-        const d = Math.hypot(c.pos[0] - z.pos[0], c.pos[2] - z.pos[2]);
+        const d = hyp(c.pos[0] - z.pos[0], c.pos[2] - z.pos[2]);
         const dy = c.pos[1] - z.pos[1];
         if (d > zoneRadius(z, now) || dy < -1.0 || dy > 3) continue;
         const enemy = this.isEnemy(z.owner, c) || (z.burnsOwner && c === z.owner);
@@ -288,14 +289,14 @@ export class Game {
         z.fired = true;
         for (const c of this.combatants) {
           if (!this.affectable(c) || !this.isEnemy(z.owner, c)) continue;
-          if (Math.hypot(c.pos[0] - z.pos[0], c.pos[2] - z.pos[2]) > z.r) continue;
+          if (hyp(c.pos[0] - z.pos[0], c.pos[2] - z.pos[2]) > z.r) continue;
           c.st.disarmUntil = now + z.dur;
           c.st.slowUntil = now + z.dur; c.st.slowAmt = z.slow;
         }
         this.emit('lockdown', { zone: z });
       }
     }
-    this.zones = this.zones.filter(z => now < z.until);
+    for (let i = 0; i < this.zones.length; i++) if (now >= this.zones[i].until) { this.zones = this.zones.filter(z => now < z.until); break; } // a new list only when one ran out
   }
 
   // Blind everyone who can see `pos`. How long depends on distance and on how far off the centre of their view it
@@ -309,10 +310,10 @@ export class Game {
       if (!this.affectable(c)) continue;
       if (c.isBot && !this.isEnemy(owner, c)) continue;
       const e = c.eye(), dx = pos[0] - e[0], dy = pos[1] - e[1], dz = pos[2] - e[2];
-      const dist = Math.hypot(dx, dy, dz);
+      const dist = hyp(dx, dy, dz);
       if (!this.canSee(e, pos)) continue;
       const yawOff = Math.abs(Math.atan2(Math.sin(Math.atan2(-dx, -dz) - c.yaw), Math.cos(Math.atan2(-dx, -dz) - c.yaw))) * R2D;
-      const pitchOff = Math.abs(Math.atan2(dy, Math.hypot(dx, dz)) - c.pitch) * R2D;
+      const pitchOff = Math.abs(Math.atan2(dy, hyp(dx, dz)) - c.pitch) * R2D;
       const k = Math.min(1, (dist >= 60 ? 0.1 : 1.3 - 1.2 * dist / 60) * angle(yawOff, 50, 80) * angle(pitchOff, 34, 75));
       if (dur * k < 0.1) continue; // looking away, or too far for more than a flicker
       c.st.blindUntil = Math.max(c.st.blindUntil, now + dur * k);
@@ -328,7 +329,7 @@ export class Game {
     const now = this.time, hit = [], flat = opts.flat || 1;
     for (const c of this.combatants) {
       if (!this.affectable(c) || !(opts.all || this.isEnemy(owner, c))) continue;
-      if (Math.hypot(c.pos[0] - pos[0], (c.pos[1] + 1 - pos[1]) / flat, c.pos[2] - pos[2]) > r) continue;
+      if (hyp(c.pos[0] - pos[0], (c.pos[1] + 1 - pos[1]) / flat, c.pos[2] - pos[2]) > r) continue;
       if (needSight && !this.world.lineOfSight(pos, c.eye()) && !this.world.lineOfSight(pos, [c.pos[0], c.pos[1] + 1, c.pos[2]])) continue;
       hit.push(c);
       for (const type of types.split('+')) this.status(c, type, dur, opts);
@@ -393,7 +394,7 @@ export class Game {
     for (const c of this.combatants) {
       if (!c.alive || (!this.isEnemy(owner, c) && !(hitSelf && c === owner))) continue;
       const body = [c.pos[0], c.pos[1] + 1, c.pos[2]];
-      const d = Math.hypot(body[0] - pos[0], body[1] - pos[1], body[2] - pos[2]);
+      const d = hyp(body[0] - pos[0], body[1] - pos[1], body[2] - pos[2]);
       if (d > r || (!throughWalls && !this.world.lineOfSight(pos, body))) continue;
       this.damage(c, owner, Math.round(d <= inner ? max : max - (max - min) * (d - inner) / (r - inner)), { part: 'body', def, dist: d, point: body, wallbang: false });
     }
@@ -411,7 +412,7 @@ export class Game {
       let t = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / len2;
       t = Math.max(0, Math.min(1, t));
       const dy = a[1] + ab[1] * t - p[1];
-      const d = Math.hypot(a[0] + ab[0] * t - p[0], height ? 0 : dy, a[2] + ab[2] * t - p[2]);
+      const d = hyp(a[0] + ab[0] * t - p[0], height ? 0 : dy, a[2] + ab[2] * t - p[2]);
       if (d > width || (height && Math.abs(dy) > height)) continue;
       for (const t of type.split('+')) this.status(c, t, dur);
     }
@@ -421,7 +422,7 @@ export class Game {
   pull(owner, pos, r, speed) {
     for (const c of this.combatants) {
       if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
-      const dx = pos[0] - c.pos[0], dz = pos[2] - c.pos[2], d = Math.hypot(dx, dz);
+      const dx = pos[0] - c.pos[0], dz = pos[2] - c.pos[2], d = hyp(dx, dz);
       if (d > r || d < 0.3) continue;
       c.vel[0] = dx / d * speed; c.vel[2] = dz / d * speed;
       c.st.slowUntil = this.time + 0.3; c.st.slowAmt = 0.7;
@@ -483,7 +484,7 @@ export class Game {
   cone(owner, range, half, fn) {
     for (const c of this.combatants) {
       if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
-      const dx = c.pos[0] - owner.pos[0], dz = c.pos[2] - owner.pos[2], d = Math.hypot(dx, dz);
+      const dx = c.pos[0] - owner.pos[0], dz = c.pos[2] - owner.pos[2], d = hyp(dx, dz);
       if (d > range) continue;
       const ang = Math.atan2(-dx, -dz), off = Math.abs(Math.atan2(Math.sin(ang - owner.yaw), Math.cos(ang - owner.yaw)));
       if (off <= half) fn(c);
@@ -495,15 +496,15 @@ export class Game {
     for (const c of this.combatants) {
       if (!c.alive) continue;
       const dx = c.pos[0] - pos[0], dz = c.pos[2] - pos[2], dy = c.pos[1] + 1 - pos[1];
-      const d = Math.hypot(dx, dy, dz);
+      const d = hyp(dx, dy, dz);
       if (d > r) continue;
-      const h = Math.hypot(dx, dz) || 1;
+      const h = hyp(dx, dz) || 1;
       const k = 1 - 0.5 * d / r;
       c.vel[0] = dx / h * power * k;
       c.vel[2] = dz / h * power * k;
       c.vel[1] = up * (0.6 + 0.4 * k);
       c.grounded = false;
-      c.airCap = Math.hypot(c.vel[0], c.vel[2]);
+      c.airCap = hyp(c.vel[0], c.vel[2]);
       c.dash = null;
     }
     this.emit('pulse', { pos, r, type: 'blast', color: 0xffb547, owner });
@@ -517,7 +518,7 @@ export class Game {
       const p = [c.pos[0], c.pos[1] + 1.1, c.pos[2]];
       const t = (p[0] - o[0]) * d[0] + (p[1] - o[1]) * d[1] + (p[2] - o[2]) * d[2];
       if (t < 0 || t > (B.range || Infinity)) continue;
-      const dist = Math.hypot(o[0] + d[0] * t - p[0], (o[1] + d[1] * t - p[1]) * 0.6, o[2] + d[2] * t - p[2]);
+      const dist = hyp(o[0] + d[0] * t - p[0], (o[1] + d[1] * t - p[1]) * 0.6, o[2] + d[2] * t - p[2]);
       if (dist > B.width) continue;
       if (this.affectable(c)) c.st.revealUntil = now + (B.reveal ?? 2);
       this.damage(c, owner, B.dmg, { part: 'body', def: B, dist: t, point: p, wallbang: true });
@@ -560,7 +561,7 @@ export class Game {
       if (d.removed) continue;
       if (d.flight) { // thrown and still in the air: it follows the same arc a thrown ability is drawn on
         const f = d.flight, k = Math.min(1, (now - d.born) / f.time);
-        const lift = Math.sin(k * Math.PI) * Math.min(2, Math.hypot(f.to[0] - f.from[0], f.to[2] - f.from[2]) * 0.12);
+        const lift = Math.sin(k * Math.PI) * Math.min(2, hyp(f.to[0] - f.from[0], f.to[2] - f.from[2]) * 0.12);
         d.pos = [f.from[0] + (f.to[0] - f.from[0]) * k, f.from[1] + (f.to[1] - f.from[1]) * k + lift, f.from[2] + (f.to[2] - f.from[2]) * k];
         if (k >= 1) d.flight = null;
       }
@@ -574,7 +575,7 @@ export class Game {
         for (const c of this.combatants) {
           // d.all: teammates in the way are caught too (allied bots know to step aside, as with flashes).
           if (d.seen.has(c) || !this.affectable(c) || !(this.isEnemy(d.owner, c) || (d.all && c !== d.owner && !c.isBot))) continue;
-          if (d.hit ? !d.hit(c, d) : Math.hypot(c.pos[0] - d.pos[0], c.pos[1] + 1 - d.pos[1], c.pos[2] - d.pos[2]) > d.r) continue;
+          if (d.hit ? !d.hit(c, d) : hyp(c.pos[0] - d.pos[0], c.pos[1] + 1 - d.pos[1], c.pos[2] - d.pos[2]) > d.r) continue;
           d.seen.add(c);
           if (d.apply(c, d) === 'stop') { d.removed = true; break; }
         }
@@ -588,7 +589,7 @@ export class Game {
         if (now >= d.next) {
           d.next = now + 0.25;
           for (const c of enemiesOf(d)) {
-            if (Math.hypot(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 25 && this.world.lineOfSight(d.pos, c.eye())) {
+            if (hyp(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 25 && this.world.lineOfSight(d.pos, c.eye())) {
               if (c.st.revealUntil < now + 0.5) this.emit('tag', { pos: c.eye() });
               c.st.revealUntil = now + 3;
             }
@@ -598,12 +599,12 @@ export class Game {
         if (now < d.armAt || this.sentinelOff(d, now)) continue;
         if (!d.target) {
           for (const c of enemiesOf(d)) {
-            if (Math.hypot(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 6 && this.world.lineOfSight([d.pos[0], d.pos[1] + 0.4, d.pos[2]], c.eye())) {
+            if (hyp(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 6 && this.world.lineOfSight([d.pos[0], d.pos[1] + 0.4, d.pos[2]], c.eye())) {
               d.target = c; d.chaseUntil = now + 4; this.emit('alarm', { pos: d.pos }); break;
             }
           }
         } else {
-          const c = d.target, dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = Math.hypot(dx, dz);
+          const c = d.target, dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = hyp(dx, dz);
           if (!c.alive || now > d.chaseUntil) { d.removed = true; continue; }
           if (dist < 2.5) {
             c.st.vulnUntil = now + 4;
@@ -622,13 +623,13 @@ export class Game {
         if (now < d.born + 0.5) continue;
         if (!d.target) {
           for (const c of enemiesOf(d)) {
-            const dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = Math.hypot(dx, dz);
+            const dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = hyp(dx, dz);
             if (dist < 15 && (dx * d.dir[0] + dz * d.dir[2]) / dist > 0.5 && this.world.lineOfSight([d.pos[0], d.pos[1] + 0.3, d.pos[2]], c.eye())) { d.target = c; this.emit('alarm', { pos: d.pos }); break; }
           }
         }
         let sp = 6;
         if (d.target) {
-          const c = d.target, dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = Math.hypot(dx, dz);
+          const c = d.target, dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = hyp(dx, dz);
           if (!c.alive) d.target = null;
           else {
             if (dist < 2.5 && Math.abs(c.pos[1] - d.pos[1]) < 5) { d.removed = true; this.explode(d.owner, [d.pos[0], d.pos[1] + 0.4, d.pos[2]], 6, 80, 30, BOOMER, 0xffb547, false, false, 2); continue; }
@@ -652,12 +653,12 @@ export class Game {
         if (held) {
           const want = dirOf(d.owner.yaw, d.owner.pitch);
           for (let i = 0; i < 3; i++) d.dir[i] += (want[i] - d.dir[i]) * Math.min(1, 6 * DT);
-          const l = Math.hypot(...d.dir); d.dir = d.dir.map(v => v / l);
+          const l = hyp(d.dir[0], d.dir[1], d.dir[2]); d.dir = d.dir.map(v => v / l);
           d.vel = d.dir.map(v => v * d.speed);
         } else {
           d.released = true;
           d.vel[1] -= 9.8 * 0.45 * DT;
-          const l = Math.hypot(...d.vel) || 1; d.dir = d.vel.map(v => v / l);
+          const l = hyp(d.vel[0], d.vel[1], d.vel[2]) || 1; d.dir = d.vel.map(v => v / l);
         }
         const np = [d.pos[0] + d.vel[0] * DT, d.pos[1] + d.vel[1] * DT, d.pos[2] + d.vel[2] * DT];
         const hit = !this.world.lineOfSight(d.pos, [np[0] + d.dir[0] * 0.4, np[1] + d.dir[1] * 0.4, np[2] + d.dir[2] * 0.4]);
@@ -672,7 +673,7 @@ export class Game {
         if (now < d.armAt) continue;
         if (!d.seenAt) {
           const eye = [d.pos[0], d.pos[1] + 0.4, d.pos[2]];
-          const c = enemiesOf(d).find(c => Math.hypot(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 10 && c.pos[1] - d.pos[1] < 4 && d.pos[1] - c.pos[1] < 10 && this.world.lineOfSight(eye, c.eye()));
+          const c = enemiesOf(d).find(c => hyp(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 10 && c.pos[1] - d.pos[1] < 4 && d.pos[1] - c.pos[1] < 10 && this.world.lineOfSight(eye, c.eye()));
           if (c) { d.seenAt = now; this.emit('alarm', { pos: d.pos }); }
         } else if (now >= d.seenAt + 0.9) {
           d.seenAt = 0;
@@ -723,13 +724,13 @@ export class Game {
           // 10 m, seen or not (15 m/s). It bites from 2.5 m: nearsighted for 2.75 s.
           if (!d.target) {
             for (const c of enemiesOf(d)) {
-              const dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = Math.hypot(dx, dz);
+              const dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = hyp(dx, dz);
               const trail = c.st.trailUntil > now && dist < 10;
               if (trail || (dist < 15 && (dx * d.dir[0] + dz * d.dir[2]) / dist > 0.5 && this.world.lineOfSight([d.pos[0], d.pos[1] + 0.4, d.pos[2]], c.eye()))) { d.target = c; d.onTrail = trail; d.steer = false; d.until = now + 4; break; }
             }
           }
           if (d.target) {
-            const c = d.target, dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = Math.hypot(dx, dz);
+            const c = d.target, dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = hyp(dx, dz);
             if (!c.alive) { d.removed = true; continue; }
             if (dist < 2.5) {
               if (!d.biteAt) d.biteAt = now + 0.6; // winds up before it bites
@@ -744,7 +745,7 @@ export class Game {
           // Shooting the decoy sets it off (breakUtil). Bots take the bait: one that looks at it "shoots" it.
           for (const c of enemiesOf(d)) {
             if (!c.isBot) continue;
-            const e = c.eye(), body = [d.pos[0], d.pos[1] + 1, d.pos[2]], dx = body[0] - e[0], dy = body[1] - e[1], dz = body[2] - e[2], dist = Math.hypot(dx, dy, dz);
+            const e = c.eye(), body = [d.pos[0], d.pos[1] + 1, d.pos[2]], dx = body[0] - e[0], dy = body[1] - e[1], dz = body[2] - e[2], dist = hyp(dx, dy, dz);
             if (dist > 25 || !this.world.lineOfSight(e, body)) continue;
             const f = dirOf(c.yaw, c.pitch);
             if ((f[0] * dx + f[1] * dy + f[2] * dz) / dist > 0.6) { this.breakUtil(d); break; }
@@ -762,12 +763,12 @@ export class Game {
           for (const c of enemiesOf(d)) {
             const along = (c.pos[0] - from[0]) * d.dir[0] + (c.pos[2] - from[2]) * d.dir[2];
             if (along < 0 || along > reach || Math.abs(c.pos[1] - d.pos[1]) > 1.5) continue;
-            if (Math.hypot(c.pos[0] - from[0] - d.dir[0] * along, c.pos[2] - from[2] - d.dir[2] * along) < 0.9) { reach = along; struck = c; }
+            if (hyp(c.pos[0] - from[0] - d.dir[0] * along, c.pos[2] - from[2] - d.dir[2] * along) < 0.9) { reach = along; struck = c; }
           }
           const p = [from[0] + d.dir[0] * reach, from[1], from[2] + d.dir[2] * reach];
           if (struck) this.damage(struck, d.owner, 30, { part: 'body', def: { id: 'stalker', name: 'Stalker', cat: 'Ability', dmg: [[50, 0, 0, 0]] }, dist: reach, point: struck.eye(), wallbang: false });
           for (const c of enemiesOf(d)) {
-            const dist = Math.hypot(c.pos[0] - p[0], c.pos[1] + 0.6 - p[1], c.pos[2] - p[2]);
+            const dist = hyp(c.pos[0] - p[0], c.pos[1] + 0.6 - p[1], c.pos[2] - p[2]);
             if (dist <= 3.5) this.concuss(c, 4 - 1.5 * dist / 3.5);
           }
           this.emit('pulse', { pos: p, r: 3.5, type: 'stun', color: 0x9be15d, owner: d.owner });
@@ -788,7 +789,7 @@ export class Game {
         const v = [0, 0, 0];
         for (let i = 0; i < 3; i++) v[i] = f[i] * (pin.fwd || 0) + r[i] * (pin.side || 0);
         v[1] += (pin.jumpHeld ? 1 : 0) - (pin.crouch ? 1 : 0);
-        const l = Math.hypot(...v);
+        const l = hyp(v[0], v[1], v[2]);
         if (l > 0) {
           const sp = 7 * DT, np = [d.pos[0] + v[0] / l * sp, d.pos[1] + v[1] / l * sp, d.pos[2] + v[2] / l * sp];
           if (!this.world.overlap(np[0] - 0.2, np[1] - 0.15, np[2] - 0.2, np[0] + 0.2, np[1] + 0.15, np[2] + 0.2)) d.pos = np;
@@ -798,7 +799,7 @@ export class Game {
         if (d.owner.alive) {
           const want = dirOf(d.owner.yaw, d.owner.pitch);
           for (let i = 0; i < 3; i++) d.dir[i] += (want[i] - d.dir[i]) * Math.min(1, 4 * DT);
-          const l = Math.hypot(...d.dir); d.dir = d.dir.map(v => v / l);
+          const l = hyp(d.dir[0], d.dir[1], d.dir[2]); d.dir = d.dir.map(v => v / l);
         }
         const np = [d.pos[0] + d.dir[0] * d.speed * DT, d.pos[1] + d.dir[1] * d.speed * DT, d.pos[2] + d.dir[2] * d.speed * DT];
         if (this.world.lineOfSight(d.pos, np)) d.pos = np;
@@ -806,7 +807,7 @@ export class Game {
       } else if (d.kind === 'seeker') {
         const c = d.target;
         if (!c.alive) { d.removed = true; continue; }
-        const t = c.eye(), dx = t[0] - d.pos[0], dy = t[1] - 0.4 - d.pos[1], dz = t[2] - d.pos[2], dist = Math.hypot(dx, dy, dz);
+        const t = c.eye(), dx = t[0] - d.pos[0], dy = t[1] - 0.4 - d.pos[1], dz = t[2] - d.pos[2], dist = hyp(dx, dy, dz);
         if (dist < 1.2) { this.status(c, 'near', 3, { near: 7.5 }); d.removed = true; this.emit('pulse', { pos: t, r: 1.5, type: 'near', color: 0x9be15d, owner: d.owner }); continue; }
         const sp = 6.4 * DT;
         d.pos = [d.pos[0] + dx / dist * sp, d.pos[1] + dy / dist * sp, d.pos[2] + dz / dist * sp];
@@ -819,7 +820,7 @@ export class Game {
         const v = d.victim;
         if (v) {
           if (!this.affectable(v)) { d.victim = null; d.armAt = now + 1; continue; }
-          if (Math.hypot(v.pos[0] - d.hold[0], v.pos[2] - d.hold[2]) > 6.2) { zap(v); d.victim = null; d.armAt = now + 1; continue; }
+          if (hyp(v.pos[0] - d.hold[0], v.pos[2] - d.hold[2]) > 6.2) { zap(v); d.victim = null; d.armAt = now + 1; continue; }
           if (!d.zapped && now >= d.caughtAt + 0.7) { d.zapped = true; zap(v); }
           if (d.zapped) v.st.revealUntil = Math.max(v.st.revealUntil, now + 0.3);
           if (!(v.st.slowUntil > now + 0.15)) { v.st.slowUntil = now + 0.15; v.st.slowAmt = 0.5; }
@@ -830,7 +831,7 @@ export class Game {
           let t = ((c.pos[0] - d.pos[0]) * ax + (c.pos[2] - d.pos[2]) * az) / len2;
           if (t < 0 || t > 1) continue;
           const px = d.pos[0] + ax * t - c.pos[0], pz = d.pos[2] + az * t - c.pos[2];
-          if (Math.hypot(px, pz) > 0.45 || d.pos[1] < c.pos[1] - 0.05 || d.pos[1] > c.pos[1] + c.height) continue; // the wire has to cross the body
+          if (hyp(px, pz) > 0.45 || d.pos[1] < c.pos[1] - 0.05 || d.pos[1] > c.pos[1] + c.height) continue; // the wire has to cross the body
           d.victim = c; d.caughtAt = now; d.zapped = false;
           d.hold = [d.pos[0] + ax * t, d.pos[1], d.pos[2] + az * t];
           this.emit('alarm', { pos: d.pos });
@@ -839,7 +840,7 @@ export class Game {
       } else if (d.kind === 'cam') {
         const ownerView = d.owner.kit?.view === d;
         if (ownerView) {
-          for (const c of enemiesOf(d)) if (Math.hypot(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 40 && this.world.lineOfSight(d.pos, c.eye())) c.st.revealUntil = now + 0.25;
+          for (const c of enemiesOf(d)) if (hyp(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 40 && this.world.lineOfSight(d.pos, c.eye())) c.st.revealUntil = now + 0.25;
         }
         if (d.dart) {
           if (now >= d.dart.until || !d.dart.target.alive) d.dart = null;
@@ -849,7 +850,7 @@ export class Game {
         // Nearsights anyone looking at it from up to 47.5 m, once it has opened (0.4 s after it arrives).
         if (now < d.born + 0.4) continue;
         for (const c of enemiesOf(d)) {
-          const e = c.eye(), dx = d.pos[0] - e[0], dy = d.pos[1] - e[1], dz = d.pos[2] - e[2], dist = Math.hypot(dx, dy, dz);
+          const e = c.eye(), dx = d.pos[0] - e[0], dy = d.pos[1] - e[1], dz = d.pos[2] - e[2], dist = hyp(dx, dy, dz);
           if (dist > 47.5 || !this.world.lineOfSight(e, d.pos)) continue;
           const f = dirOf(c.yaw, c.pitch);
           if ((f[0] * dx + f[1] * dy + f[2] * dz) / dist > 0.35) this.status(c, 'near', 0.4, { near: 6 });
@@ -862,7 +863,7 @@ export class Game {
         let best = null, bestD = 40;
         for (const c of enemiesOf(d)) {
           const body = [c.pos[0], c.pos[1] + 1.1, c.pos[2]];
-          const dx = body[0] - head[0], dz = body[2] - head[2], dist = Math.hypot(dx, dz);
+          const dx = body[0] - head[0], dz = body[2] - head[2], dist = hyp(dx, dz);
           if (dist > bestD) continue;
           const ang = Math.atan2(-dx, -dz), off = Math.abs(Math.atan2(Math.sin(ang - d.yaw), Math.cos(ang - d.yaw)));
           if (off > 50 * Math.PI / 180 || !this.world.lineOfSight(head, body)) continue;
@@ -895,7 +896,7 @@ export class Game {
     const stop = (n, body) => { d.rest = true; d.vel = [0, 0, 0]; d.onStop?.(d, n, body); };
     let left = DT;
     for (let i = 0; i < 4 && left > 1e-6; i++) {
-      const sp = Math.hypot(d.vel[0], d.vel[1], d.vel[2]);
+      const sp = hyp(d.vel[0], d.vel[1], d.vel[2]);
       if (sp < 1e-4) break;
       const dir = [d.vel[0] / sp, d.vel[1] / sp, d.vel[2] / sp], len = sp * left;
       const move = (m) => { d.pos = [d.pos[0] + dir[0] * m, d.pos[1] + dir[1] * m, d.pos[2] + dir[2] * m]; };
@@ -918,7 +919,7 @@ export class Game {
       if (d.rule === 'bounce') d.bounces--;
       d.onBounce?.(d, n);
       if (d.removed || d.rest) return;
-      if (n[1] > FLOOR_NY && Math.hypot(d.vel[0], d.vel[1], d.vel[2]) < 1.2) { stop(n); return; } // out of bounce: it lies there
+      if (n[1] > FLOOR_NY && hyp(d.vel[0], d.vel[1], d.vel[2]) < 1.2) { stop(n); return; } // out of bounce: it lies there
     }
   }
 
@@ -930,7 +931,7 @@ export class Game {
 
   // Bastion's gadgets switch off while she is more than 40 m away, and take 2 s to come back on.
   sentinelOff(d, now) {
-    if (Math.hypot(d.owner.pos[0] - d.pos[0], d.owner.pos[2] - d.pos[2]) > 40) d.offUntil = now + 2;
+    if (hyp(d.owner.pos[0] - d.pos[0], d.owner.pos[2] - d.pos[2]) > 40) d.offUntil = now + 2;
     d.off = now < (d.offUntil || 0);
     return d.off;
   }
@@ -1038,7 +1039,7 @@ export class Game {
     for (const sp of this.map.spawns) {
       let minD = 60, seen = false, crowded = false;
       for (const e of enemies) {
-        const d = Math.hypot(e.pos[0] - sp.x, e.pos[2] - sp.z);
+        const d = hyp(e.pos[0] - sp.x, e.pos[2] - sp.z);
         minD = Math.min(minD, d);
         if (d < 2) crowded = true;
         if (!seen && d < 60 && this.world.lineOfSight(e.eye(), [sp.x, PLAYER.standEye, sp.z])) seen = true;
@@ -1059,7 +1060,7 @@ export class Game {
       if (orb.kind !== 'focusorb' || orb.owner !== shooter || orb.removed) continue;
       for (const d of dirs) {
         const vx = orb.pos[0] - o[0], vy = orb.pos[1] - o[1], vz = orb.pos[2] - o[2], t = vx * d[0] + vy * d[1] + vz * d[2];
-        if (t <= 0 || Math.hypot(vx - d[0] * t, vy - d[1] * t, vz - d[2] * t) > 0.35 || !this.world.lineOfSight(o, orb.pos)) continue;
+        if (t <= 0 || hyp(vx - d[0] * t, vy - d[1] * t, vz - d[2] * t) > 0.35 || !this.world.lineOfSight(o, orb.pos)) continue;
         orb.removed = true;
         shooter.kit.shield = true;
         shooter.kit.focusUntil = this.time + 12;
@@ -1150,7 +1151,7 @@ export class Game {
 
   // A device, zone or dome by owner, kind and rough position (for online messages).
   findUtil(owner, kind, pos) {
-    const near = (x) => x.owner === owner && x.kind === kind && Math.hypot(x.pos[0] - pos[0], x.pos[1] - pos[1], x.pos[2] - pos[2]) < 2.5;
+    const near = (x) => x.owner === owner && x.kind === kind && hyp(x.pos[0] - pos[0], x.pos[1] - pos[1], x.pos[2] - pos[2]) < 2.5;
     return this.devices.find(x => !x.removed && near(x)) || this.zones.find(near) || this.smokes.find(near) || this.walls.find(x => x.pos && !x.removed && near(x)) || null;
   }
 
@@ -1291,8 +1292,8 @@ export class Game {
     const e = c.eye(), f = dirOf(c.yaw, c.pitch);
     let best = null, bestS = -1;
     for (const d of this.drops) {
-      const dx = d.pos[0] - e[0], dy = d.pos[1] + 0.05 - e[1], dz = d.pos[2] - e[2], len = Math.hypot(dx, dy, dz);
-      const flat = Math.hypot(d.pos[0] - c.pos[0], d.pos[2] - c.pos[2]);
+      const dx = d.pos[0] - e[0], dy = d.pos[1] + 0.05 - e[1], dz = d.pos[2] - e[2], len = hyp(dx, dy, dz);
+      const flat = hyp(d.pos[0] - c.pos[0], d.pos[2] - c.pos[2]);
       if (flat > 2.6 || Math.abs(d.pos[1] - c.pos[1]) > 1.6) continue;
       const cos = (dx * f[0] + dy * f[1] + dz * f[2]) / (len || 1);
       if (flat > 1.1 && cos < 0.93) continue; // look at it unless you're standing on it
@@ -1316,10 +1317,12 @@ export class Game {
       if (pressed && !c.isBot && c.kit) { const d = c.kit.pickupInView(); if (d && c.kit.pickUp([...d.pos])) continue; }
       if (!this.drops.length) continue;
       // Walk over a gun with that slot empty: it's picked up automatically (not your own fresh drop).
-      for (const d of this.drops) { // a pickup ends the loop, so the list can't change under it
+      const drops = this.drops;
+      for (let i = 0; i < drops.length; i++) { // a pickup ends the loop, so the list can't change under it
+        const d = drops[i], dx = d.pos[0] - c.pos[0], dz = d.pos[2] - c.pos[2];
+        if (dx * dx + dz * dz > 1 || Math.abs(d.pos[1] - c.pos[1]) > 1.2) continue; // not standing on it (nearly always)
         if (now - d.at < (d.by === c ? 1.5 : 0.3)) continue;
         if (d.for && d.for !== c && d.for.alive && now - d.at < 10) continue; // bought for a teammate: theirs for a moment
-        if (Math.hypot(d.pos[0] - c.pos[0], d.pos[2] - c.pos[2]) > 1.0 || Math.abs(d.pos[1] - c.pos[1]) > 1.2) continue;
         const slot = d.gun.def.slot, mine = c.inv[slot];
         const better = c.isBot && slot === 'primary' && (!mine || (d.gun.def.cost || 0) > (mine.def.cost || 0) + 400);
         if (!mine || (better && d.by !== c)) { this.pickUp(c, d); break; }
@@ -1364,7 +1367,7 @@ export class Game {
     // ones swing on the killer right away to trade before the killer can reset.
     if (this.mode && killer !== victim) for (const b of this.bots) {
       if (!b.alive || b === victim || this.isEnemy(b, victim)) continue;
-      const d = Math.hypot(b.pos[0] - victim.pos[0], b.pos[2] - victim.pos[2]);
+      const d = hyp(b.pos[0] - victim.pos[0], b.pos[2] - victim.pos[2]);
       if (d >= 30) continue;
       b.brain.alert(killer.pos, this.time);
       if (d < 16 && this.time - b.brain.lastSeen > 0.5 && !b.brain.goal?.action && Math.random() < 0.4 + b.brain.aggr * 0.6) {
@@ -1391,7 +1394,7 @@ export class Game {
         if (!r) continue;
         const f = dirFromAngles(c.yaw, 0);
         const hx = c.pos[0] - attacker.pos[0], hz = c.pos[2] - attacker.pos[2];
-        const hl = Math.hypot(hx, hz) || 1;
+        const hl = hyp(hx, hz) || 1;
         const back = (f[0] * hx + f[2] * hz) / hl > 0.5;
         const point = [o[0] + d[0] * r.t, o[1] + d[1] * r.t, o[2] + d[2] * r.t];
         this.damage(c, attacker, back ? mode.back : mode.dmg, { part: 'body', def: WEAPONS.knife, dist: r.t, point, wallbang: false });
@@ -1406,7 +1409,7 @@ export class Game {
   noise(source, radius) {
     for (const b of this.bots) {
       if (b === source || !b.alive) continue;
-      const d = Math.hypot(b.pos[0] - source.pos[0], b.pos[2] - source.pos[2]);
+      const d = hyp(b.pos[0] - source.pos[0], b.pos[2] - source.pos[2]);
       if (d < radius) b.brain.hear(source, this.time);
     }
   }

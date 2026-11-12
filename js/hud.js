@@ -8,6 +8,7 @@ import { MELEE } from './melee.js';
 import { KillBanner, bannerColors } from './killbanner.js';
 import { keyLabel } from './keybinds.js';
 import { AGENTS, SMOKE, BLADES, BEAMS, insideSlab, bloomTargets, BLOOM, PICKUPS } from './abilities.js';
+import { hyp } from './vmath.js';
 
 const DEG = Math.PI / 180;
 const $ = (id) => document.getElementById(id);
@@ -419,7 +420,7 @@ export class Hud {
       if (now < s.born || s.kind === 'fire' || (s.nest && s.owner === p)) continue; // your own Nest doesn't blind you
       const grow = Math.min(1, (now - s.born) / SMOKE.grow), fade = Math.min(1, (s.until - now) / 0.4);
       if (s.slab) { if (insideSlab(s, eye, 0.1)) inside = Math.max(inside, 0.85 * fade); continue; }
-      const d = Math.hypot(eye[0] - s.pos[0], eye[1] - s.pos[1], eye[2] - s.pos[2]);
+      const d = hyp(eye[0] - s.pos[0], eye[1] - s.pos[1], eye[2] - s.pos[2]);
       const r = s.radius * grow;
       if (d < r) inside = Math.max(inside, Math.min(1, (r - d) / 0.6) * fade * 0.16); // inside a smoke is a clear pocket; only a light haze
     }
@@ -531,7 +532,7 @@ export class Hud {
 
   inRange(p, wx, wz) {
     const r = p.kit.mapPick?.range, o = this.mapOrigin(p);
-    return !r || Math.hypot(wx - o[0], wz - o[2]) <= r;
+    return !r || hyp(wx - o[0], wz - o[2]) <= r;
   }
 
   pickShadow(p) {

@@ -1,8 +1,9 @@
 // Headless performance profile: plays offline 5v5 on Divide with ten bots and reports what a frame costs.
 //   node tools/profile.mjs [seconds] [--dm]     (needs playwright, like check-abilities.mjs)
 // --dm plays deathmatch on Divide instead (bots carry rifles from the start).
-// Prints the simulation cost per 128 Hz tick, the CPU cost of a render call, draw calls and triangles, how often
-// shaders were compiled mid-match, and how much garbage the simulation makes. Headless Chromium draws in software,
+// Prints the simulation cost per 128 Hz tick, the CPU cost of a render call and of the HUD, round HUD and minimap,
+// draw calls and triangles, how often shaders were compiled mid-match, and how much garbage a second each part of
+// a frame makes (simulation, render, HUD). Headless Chromium draws in software,
 // so render times are only good for comparing runs on the same machine.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -46,7 +47,7 @@ else {
   await page.click('#sel-lock');
 }
 await page.waitForFunction((dm) => (dm || window.__game.game.mode) && window.__game.game.state === 'playing', DM, { timeout: 20000 });
-await page.evaluate(() => { window.__game.frozen = true; });
+await page.evaluate(() => { window.__game.frozen = true; window.__game.noDraw = true; }); // the page's own loop neither ticks nor draws
 // --cpu: also print the functions that take the most time, and where the most garbage is allocated.
 const deep = process.argv.includes('--cpu');
 const cdp = deep && await page.context().newCDPSession(page);
@@ -68,7 +69,7 @@ if (process.argv.includes('--spikes')) await page.evaluate(async () => {
   wrap(Object.getPrototypeOf(g.map), 'findPath', 'map.findPath');
   wrap(g.map, 'findPath', 'map.findPath');
   for (const k of ['tick', 'tickDevices', 'tickZones', 'tickDrops', 'fire', 'hitscan', 'noise', 'canSee']) wrap(Object.getPrototypeOf(g), k, 'game.' + k);
-  wrap(Object.getPrototypeOf(g.mode), 'tick', 'mode.tick');
+  if (g.mode) wrap(Object.getPrototypeOf(g.mode), 'tick', 'mode.tick'); // none in deathmatch
   wrap(Object.getPrototypeOf(kit), 'tick', 'kit.tick');
   wrap(Object.getPrototypeOf(c), 'move', 'combatant.move');
   wrap(Object.getPrototypeOf(g.world), 'lineOfSight', 'world.lineOfSight');
@@ -80,10 +81,12 @@ const out = await page.evaluate(async ([SECONDS, NO_RENDER, GPU]) => {
   const DT = 1 / 128;
   // The player is a bot-proof spectator so the round plays out; bots fight each other.
   const p = g.player; p.hp = 1e9;
-  const tickMs = [], renderMs = [], calls = [], tris = [], hitches = [];
+  const tickMs = [], renderMs = [], hudMs = [], rhudMs = [], mapMs = [], calls = [], tris = [], hitches = [];
   let programs0 = gl.info.programs.length, compiles = 0;
   const heap = () => performance.memory?.usedJSHeapSize || 0;
   let alloc = 0, prevHeap = heap();
+  const by = { sim: 0, render: 0, hud: 0 }; // garbage made by each part of a frame
+  const grew = (k) => { const hz = heap(); if (hz > prevHeap) { alloc += hz - prevHeap; by[k] += hz - prevHeap; } prevHeap = hz; };
   const px = new Uint8Array(4);
   const frames = Math.round(SECONDS * 60);
   for (let f = 0; f < frames; f++) {
@@ -94,10 +97,20 @@ const out = await page.evaluate(async ([SECONDS, NO_RENDER, GPU]) => {
     const t0 = performance.now();
     for (let i = 0; i < want; i++) { h.playerInput(); g.tick(); h.net.tick(); }
     const t1 = performance.now();
+    grew('sim');
     gl.info.reset();
     if (!NO_RENDER) { r.render(0.5, 1 / 60, { dx: 0, dy: 0 }); if (GPU) gl.getContext().readPixels(0, 0, 1, 1, 0x1908, 0x1401, px); }
     const t2 = performance.now();
-    const hz = heap(); if (hz > prevHeap) alloc += hz - prevHeap; prevHeap = hz;
+    grew('render');
+    // The rest of a frame (main.js): the HUD, the round HUD and the minimap.
+    h.hud.specTarget = r.specTarget; h.hud.update(1 / 60, { dx: 0, dy: 0 });
+    const t3 = performance.now();
+    h.rhud.update(1 / 60);
+    const t4 = performance.now();
+    h.minimap.update(true);
+    const t5 = performance.now();
+    hudMs.push(t3 - t2); rhudMs.push(t4 - t3); mapMs.push(t5 - t4);
+    grew('hud');
     tickMs.push((t1 - t0) / want); renderMs.push(t2 - t1);
     calls.push(gl.info.render.calls); tris.push(gl.info.render.triangles);
     const np = gl.info.programs.length;
@@ -114,7 +127,7 @@ const out = await page.evaluate(async ([SECONDS, NO_RENDER, GPU]) => {
     top.traverseVisible(o => { if (o.isMesh || o.isLine || o.isPoints || o.isSprite) n++; });
     if (n) byGroup[name] = (byGroup[name] || 0) + n;
   }
-  return { settings: { shadows: gl.shadowMap.enabled, pixelRatio: gl.getPixelRatio() }, byGroup, frames, simSeconds: +(g.time).toFixed(1), tickMs: stat(tickMs), renderCpuMs: stat(renderMs), drawCalls: stat(calls), triangles: stat(tris), midMatchShaderCompiles: compiles, hitches: hitches.slice(0, 12), allocMBPerSec: +(alloc / 1048576 / SECONDS).toFixed(2), programs: gl.info.programs.length, geometries: gl.info.memory.geometries, textures: gl.info.memory.textures, sceneObjects: (() => { let n = 0; r.scene.traverse(() => n++); return n; })() };
+  return { settings: { shadows: gl.shadowMap.enabled, pixelRatio: gl.getPixelRatio() }, byGroup, frames, simSeconds: +(g.time).toFixed(1), tickMs: stat(tickMs), renderCpuMs: stat(renderMs), hudMs: stat(hudMs), roundHudMs: stat(rhudMs), minimapMs: stat(mapMs), drawCalls: stat(calls), triangles: stat(tris), midMatchShaderCompiles: compiles, hitches: hitches.slice(0, 12), allocMBPerSecBy: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, +(v / 1048576 / SECONDS).toFixed(2)])), allocMBPerSec: +(alloc / 1048576 / SECONDS).toFixed(2), programs: gl.info.programs.length, geometries: gl.info.memory.geometries, textures: gl.info.memory.textures, sceneObjects: (() => { let n = 0; r.scene.traverse(() => n++); return n; })() };
 }, [SECONDS, NO_RENDER, GPU]);
 console.log(JSON.stringify(out, null, 1));
 const slow = await page.evaluate(() => window.__slow);

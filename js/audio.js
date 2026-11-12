@@ -1,4 +1,5 @@
 // Synthesized sound: gunshots, footsteps, hit confirmations. Other players' sounds are positional.
+import { hyp } from './vmath.js';
 
 // Firing sounds, one recipe per weapon, built from synthesized layers (no recorded or game audio):
 //   crack  bright muzzle snap: highpassed noise   { hp, lp, decay, gain }
@@ -377,7 +378,7 @@ export class Sound {
   // bypasses the panner).
   distGain(pos, kind) {
     const f = FALLOFF[kind] || FALLOFF.other, l = this.listenerPos;
-    const d = Math.max(f.ref, Math.hypot(pos[0] - l[0], pos[1] - l[1], pos[2] - l[2]));
+    const d = Math.max(f.ref, hyp(pos[0] - l[0], pos[1] - l[1], pos[2] - l[2]));
     if (f.model === 'linear') return Math.max(0, 1 - (d - f.ref) / (f.max - f.ref));
     return f.ref / (f.ref + f.roll * (d - f.ref));
   }
@@ -397,7 +398,7 @@ export class Sound {
     if (pos) {
       // Far shots lose their top end and sit further back in the reverb: the tail fades with distance too,
       // only more slowly than the direct sound (it used to stay full volume at any range).
-      const l = this.listenerPos, dist = Math.hypot(pos[0] - l[0], pos[1] - l[1], pos[2] - l[2]);
+      const l = this.listenerPos, dist = hyp(pos[0] - l[0], pos[1] - l[1], pos[2] - l[2]);
       const far = c.createBiquadFilter();
       far.type = 'lowpass';
       far.frequency.value = 20000 / (1 + dist / 12);

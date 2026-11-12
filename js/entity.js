@@ -5,6 +5,7 @@ import { WEAPONS } from './weapons.js';
 import { Gun } from './gun.js';
 import { MELEE_ORDER } from './melee.js';
 import { applyDash, applyGlide } from './abilities.js';
+import { hyp } from './vmath.js';
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const CROUCH_DIFF = PLAYER.standHeight - PLAYER.crouchHeight;
@@ -21,6 +22,8 @@ function concussSlow(c, now) {
   const t = concussT(c, now);
   return t <= 0.1 ? 0.85 : t <= 0.9 ? 0.85 - 0.6 * (t - 0.1) / 0.8 : 0.25 * (1 - (t - 0.9) / 0.1);
 }
+
+const HB_PARTS = ['head', 'body', 'legs'];
 
 export class Combatant {
   constructor(game, { name, isBot = false, color = 0xffffff }) {
@@ -70,7 +73,7 @@ export class Combatant {
 
   eye() { return [this.pos[0], this.pos[1] + this.eyeOff + this.stepSmooth, this.pos[2]]; }
 
-  horizSpeed() { return Math.hypot(this.vel[0], this.vel[2]); }
+  horizSpeed() { return hyp(this.vel[0], this.vel[2]); }
 
   // 0 = standing, 1 = fully crouched; follows the eye so hitboxes and camera move together.
   crouchAmount() {
@@ -183,14 +186,17 @@ export class Combatant {
   }
 
   // Hitboxes in world space; interpolate between standing and crouched shapes.
+  // The three boxes are this player's own and are reused on every call (bots ask every tick, bullets on every
+  // shot), so read them before asking again.
   hitboxes() {
     const c = this.crouchAmount();
-    const out = [];
-    for (const part of ['head', 'body', 'legs']) {
-      const s = HITBOX.stand[part], k = HITBOX.crouch[part];
-      const y0 = lerp(s[0], k[0], c), y1 = lerp(s[1], k[1], c), hw = lerp(s[2], k[2], c);
-      const base = this.pos[1];
-      out.push({ part, min: [this.pos[0] - hw, base + y0, this.pos[2] - hw], max: [this.pos[0] + hw, base + y1, this.pos[2] + hw] });
+    const out = this._hb ||= HB_PARTS.map(part => ({ part, min: [0.5, 0.5, 0.5], max: [0.5, 0.5, 0.5] }));
+    const x = this.pos[0], base = this.pos[1], z = this.pos[2];
+    for (let i = 0; i < 3; i++) {
+      const hb = out[i], s = HITBOX.stand[hb.part], k = HITBOX.crouch[hb.part];
+      const hw = lerp(s[2], k[2], c);
+      hb.min[0] = x - hw; hb.min[1] = base + lerp(s[0], k[0], c); hb.min[2] = z - hw;
+      hb.max[0] = x + hw; hb.max[1] = base + lerp(s[1], k[1], c); hb.max[2] = z + hw;
     }
     return out;
   }
@@ -203,8 +209,9 @@ export class Combatant {
     const px = cx - d[0] * along, py = cy - d[1] * along, pz = cz - d[2] * along;
     if (px * px + py * py + pz * pz > 1.4 * 1.4) return null;
     let best = null;
-    for (const hb of this.hitboxes()) {
-      const h = rayAABB(o, d, hb.min, hb.max);
+    const hbs = this.hitboxes();
+    for (let i = 0; i < 3; i++) {
+      const hb = hbs[i], h = rayAABB(o, d, hb.min, hb.max);
       if (h && h.tIn <= maxT && (!best || h.tIn < best.t)) best = { t: h.tIn, part: hb.part };
     }
     return best;
@@ -219,7 +226,7 @@ export class Combatant {
     this.updateCrouch(inp.crouch, world);
 
     let wx = 0, wz = 0;
-    const len = Math.hypot(inp.fwd, inp.side);
+    const len = hyp(inp.fwd, inp.side);
     if (len > 0) {
       const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
       wx = (-sy * inp.fwd + cy * inp.side) / len;
@@ -233,7 +240,7 @@ export class Combatant {
     if (this.grounded) {
       const tx = wx * maxS, tz = wz * maxS;
       const dvx = tx - this.vel[0], dvz = tz - this.vel[2];
-      const dl = Math.hypot(dvx, dvz);
+      const dl = hyp(dvx, dvz);
       const rate = (len > 0 ? PLAYER.accel : PLAYER.decel) * dt;
       if (dl <= rate) { this.vel[0] = tx; this.vel[2] = tz; }
       else { this.vel[0] += (dvx / dl) * rate; this.vel[2] += (dvz / dl) * rate; }
@@ -251,7 +258,7 @@ export class Combatant {
       const cap = Math.max(Math.min(this.airCap, maxS), maxS * PLAYER.airStandFrac);
       const tcap = Math.max(cap, Math.min(this.horizSpeed(), this.airCap)); // don't bleed speed from a dash or blast
       const tx = wx * tcap, tz = wz * tcap;
-      const dvx = tx - this.vel[0], dvz = tz - this.vel[2], dl = Math.hypot(dvx, dvz), rate = PLAYER.airAccel * dt;
+      const dvx = tx - this.vel[0], dvz = tz - this.vel[2], dl = hyp(dvx, dvz), rate = PLAYER.airAccel * dt;
       if (dl <= rate) { this.vel[0] = tx; this.vel[2] = tz; }
       else { this.vel[0] += (dvx / dl) * rate; this.vel[2] += (dvz / dl) * rate; }
     }
@@ -329,16 +336,17 @@ export class Combatant {
   collideMove(dt, world, wasGrounded, jumped) {
     const p = this.pos, v = this.vel, r = PLAYER.radius;
     const hits = this._moveHits ||= []; // reused: this runs for every player every tick
-    const box = () => world.overlapAll(p[0] - r, p[1], p[2] - r, p[0] + r, p[1] + this.height, p[2] + r, hits);
+    const h = this.height;
 
     // Vertical
     this.grounded = false;
     const dy = v[1] * dt;
     p[1] += dy;
-    box();
-    for (const b of hits) {
+    world.overlapAll(p[0] - r, p[1], p[2] - r, p[0] + r, p[1] + h, p[2] + r, hits);
+    for (let i = 0; i < hits.length; i++) {
+      const b = hits[i];
       if (dy <= 0) { p[1] = Math.max(p[1], b.max[1]); this.grounded = true; }
-      else p[1] = Math.min(p[1], b.min[1] - this.height);
+      else p[1] = Math.min(p[1], b.min[1] - h);
     }
     if (hits.length) v[1] = 0;
 
@@ -347,21 +355,22 @@ export class Combatant {
       const d = v[axis] * dt;
       if (!d) continue;
       p[axis] += d;
-      box();
+      world.overlapAll(p[0] - r, p[1], p[2] - r, p[0] + r, p[1] + h, p[2] + r, hits);
       if (!hits.length) continue;
       if (this.grounded || wasGrounded) {
         let top = -Infinity;
-        for (const b of hits) top = Math.max(top, b.max[1]);
+        for (let i = 0; i < hits.length; i++) top = Math.max(top, hits[i].max[1]);
         const rise = top - p[1];
         if (rise > 0 && rise <= PLAYER.stepHeight &&
-            !world.overlap(p[0] - r, top, p[2] - r, p[0] + r, top + this.height, p[2] + r)) {
+            !world.overlap(p[0] - r, top, p[2] - r, p[0] + r, top + h, p[2] + r)) {
           p[1] = top;
           this.stepSmooth -= rise;
           this.grounded = true;
           continue;
         }
       }
-      for (const b of hits) {
+      for (let i = 0; i < hits.length; i++) {
+        const b = hits[i];
         if (d > 0) p[axis] = Math.min(p[axis], b.min[axis] - r - 1e-4);
         else p[axis] = Math.max(p[axis], b.max[axis] + r + 1e-4);
       }
@@ -372,7 +381,7 @@ export class Combatant {
     if (!this.grounded && wasGrounded && !jumped && v[1] <= 0) {
       world.overlapAll(p[0] - r, p[1] - PLAYER.stepHeight - 0.01, p[2] - r, p[0] + r, p[1], p[2] + r, hits);
       let top = -Infinity;
-      for (const b of hits) if (b.max[1] <= p[1] + 1e-4) top = Math.max(top, b.max[1]);
+      for (let i = 0; i < hits.length; i++) { const b = hits[i]; if (b.max[1] <= p[1] + 1e-4) top = Math.max(top, b.max[1]); }
       if (top > -Infinity) {
         this.stepSmooth += p[1] - top;
         p[1] = top;
