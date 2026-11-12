@@ -775,6 +775,10 @@ export class RoundMode {
         if (body) { if (br.goal?.kind !== 'revive' || br.goal.who !== body) br.goal = { kind: 'revive', pos: [...body.deathPos], look: body.deathPos, who: body }; continue; }
       }
       if (br.goal?.kind === 'revive') br.goal = null;
+      // Anyone close walks over to a teammate who is down in Overload, to get them back up.
+      const down = this.phase !== 'buy' && g.combatants.find(c => c !== b && c.alive && c.kit?.downed && !g.isEnemy(b, c) && dist(b.pos, c.pos) < 25);
+      if (down) { if (br.goal?.kind !== 'help' || br.goal.who !== down) br.goal = { kind: 'help', pos: [...down.pos], look: down.pos, who: down }; continue; }
+      if (br.goal?.kind === 'help') br.goal = null;
       if (side === 'def') {
         if (sp.state === 'planted') {
           const tleft = sp.plantedAt + ROUND.spike - now, need = sp.halfDone ? ROUND.defuseHalf : ROUND.defuse;

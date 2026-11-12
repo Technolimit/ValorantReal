@@ -7,6 +7,7 @@ import { SwingTrails } from './swingfx.js';
 import { skinFor, skinFits, meleeSkin, SKINS } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
 import { BLADES, SMOKE, bloomTargets } from './abilities.js';
+import { zoneRadius } from './game.js';
 import { VM_SHINE, shineMaterial, fitShine, updateShine, sweepAt, ViewmodelPost } from './shine.js';
 
 // Blitz's Finale launcher, shown in the hands (and on her body) while the ultimate is out.
@@ -825,6 +826,7 @@ export class Renderer {
 
   // Ground disc + rim for fire pools, traps and lockdown.
   fxZone(z) {
+    z.r0 = z.r; // the size it is drawn at; zones that spread or shrink are scaled from it
     const col = z.color || (z.kind === 'fire' ? 0xff6a1a : 0x4fd1a5);
     const flames = z.kind === 'fire' && !z.gas && !z.acid && !z.color;
     const g = new THREE.Group();
@@ -855,7 +857,7 @@ export class Renderer {
     g.position.set(z.pos[0], z.pos[1] + 0.03, z.pos[2]);
     this.fxAdd(g, () => z.until, (now) => {
       const age = now - z.born;
-      g.scale.setScalar(Math.min(1, age / 0.25));
+      g.scale.setScalar(z.spread || z.fade || z.grows ? Math.max(0.05, zoneRadius(z, now) / z.r0) : Math.min(1, age / 0.25)); // fire spreads, Sky Hammer shrinks away
       if (z.kind === 'lockdown') { rim.material.opacity = 0.4 + 0.4 * Math.abs(Math.sin(now * 6)); disc.material.opacity = 0.08 + 0.1 * Math.min(1, age / 2.5); }
       if (z.kind === 'trap') rim.material.opacity = 0.35 + 0.25 * Math.sin(now * 3);
       if (z.kind === 'stim') { rim.material.opacity = 0.5 + 0.3 * Math.sin(now * 4); disc.material.opacity = 0.1; }
@@ -1592,6 +1594,11 @@ export class Renderer {
       const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.06, 12), mat(0x2b3440)); disc.position.y = 0.03;
       light = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mat(0x9be15d, 0x9be15d)); light.position.y = 0.08;
       g.add(disc, light);
+    } else if (d.kind === 'recon') {
+      // Sonar Bolt stuck where it landed, pulsing.
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), mat(0xffffff, 0x6ab7ff));
+      const halo = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 9), new THREE.MeshBasicMaterial({ color: 0x6ab7ff, transparent: true, opacity: 0.25, depthWrite: false }));
+      g.add(tip, halo); light = halo;
     } else if (d.kind === 'proj') {
       // A thrown ability in flight (and where it comes to rest): its own model if it has one, else a glowing
       // ball in its colour. Rockets and arrows point the way they fly.
@@ -1683,7 +1690,7 @@ export class Renderer {
         sm.group.userData.slab.scale.y = 0.92 + 0.08 * Math.sin(now * 7 + sm.s.pos[2]);
         return true;
       }
-      sm.group.scale.setScalar(0.2 + 0.8 * (1 - (1 - grow) ** 3));
+      sm.group.scale.setScalar((0.2 + 0.8 * (1 - (1 - grow) ** 3)) * (sm.s.radius / (sm.r0 ||= sm.s.radius))); // Nest spreads out
       sm.group.position.set(sm.s.pos[0], sm.s.pos[1], sm.s.pos[2]); // rolling water moves
       let op = sm.fire ? 0.38 + 0.08 * Math.sin(now * 23 + sm.s.pos[0]) : 1; // smokes can't be seen through
       if (sm.s.nest && sm.s.owner === this.game.player && this.camera.position.distanceTo(new THREE.Vector3(...sm.s.pos)) < sm.s.radius) op = 0.12; // Venom sees through her own Nest

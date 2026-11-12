@@ -172,6 +172,7 @@ export class Hud {
     $('armorbar').style.width = `${Math.max(0, sv.armor) / PLAYER.armor * 100}%`;
     const blades = p.kit?.blades, beams = p.kit?.beams;
     if (blades) { this.set('mag', blades.left); this.set('reserve', ` / ${BLADES.count}`); }
+    else if (p.kit?.overdrive) { this.set('mag', p.kit.overdrive.mag); this.set('reserve', ' / 40'); }
     else if (beams) { this.set('mag', beams.left); this.set('reserve', ` / ${BEAMS.count}`); }
     else if (def.melee) { this.set('mag', '—'); this.set('reserve', ''); }
     else { this.set('mag', gun.mag); this.set('reserve', ` / ${gun.reserve}`); }
@@ -195,15 +196,15 @@ export class Hud {
     const kit = p.kit;
     if (blades) mode = 'LEFT CLICK ONE · RIGHT CLICK ALL';
     else if (beams) mode = `LEFT CLICK TO FIRE · ${Math.max(0, beams.until - g.time).toFixed(1)}s`;
-    else if (kit?.armed) { const a = kit.agent.abilities[kit.armed.k]; mode = `${a.name.toUpperCase()} · ${a.armHint || 'LEFT CLICK TO USE'} · ${kit.armed.k.toUpperCase()} TO PUT AWAY`; }
-    else if (g.devices.some(d => d.kind === 'cloud' && d.owner === p)) mode = 'VEIL · STEER WITH MOUSE · RELEASE C TO BURST';
-    else if (g.devices.some(d => d.kind === 'blaze' && d.owner === p)) mode = kit?.id === 'marina' ? 'RIPTIDE · HOLD E AND TURN TO STEER IT' : 'FIREBREAK · HOLD C AND TURN TO BEND IT';
+    else if (kit?.armed) { const a = kit.agent.abilities[kit.armed.k]; mode = `${a.name.toUpperCase()} · ${(typeof a.armHint === 'function' ? a.armHint(kit) : a.armHint) || 'LEFT CLICK TO USE'} · ${kit.armed.k.toUpperCase()} TO PUT AWAY`; }
+    else if (g.devices.some(d => d.kind === 'cloud' && d.owner === p && !d.released)) mode = 'VEIL · HOLD C TO CURVE IT · LET GO AND IT FALLS';
+    else if (g.devices.some(d => d.kind === 'blaze' && d.owner === p)) mode = kit?.id === 'marina' ? 'RIPTIDE · HOLD LEFT CLICK AND TURN TO STEER · RIGHT CLICK STOPS IT' : 'FIREBREAK · HOLD LEFT CLICK AND TURN TO BEND IT';
     else if (kit?.tailwind) mode = g.time >= kit.tailwind.readyAt ? `SLIPSTREAM READY · PRESS E · ${(kit.tailwind.until - g.time).toFixed(1)}s` : 'GATHERING WIND…';
     else if (kit?.shadow?.phase === 'channel') mode = `NIGHTWALK · ${(kit.shadow.until - g.time).toFixed(1)}s`;
     else if (kit?.rebirth) mode = `REKINDLE · ${(kit.rebirth.until - g.time).toFixed(1)}s`;
     else if (kit?.launcher) mode = 'FINALE · LEFT CLICK TO FIRE · X TO PUT AWAY';
-    else if (kit?.overdrive) mode = `OVERLOAD · HOLD LEFT CLICK · ${Math.ceil(kit.overdrive.fuel / 5)}s${kit.highGear ? ' · CROUCH TO SLIDE' + slideWait(kit, g.time) : ''}`;
-    else if (kit?.highGear) mode = `OVERCLOCK · ENERGY ${Math.round(kit.energy)}% · CROUCH TO SLIDE${slideWait(kit, g.time)}`;
+    else if (kit?.overdrive) mode = `OVERLOAD · HOLD LEFT CLICK · ${Math.ceil(kit.overdrive.fuel / 10)}s${kit.highGear ? ' · RIGHT CLICK TO SLIDE' + slideWait(kit, g.time) : ''}`;
+    else if (kit?.highGear) mode = `OVERCLOCK · ENERGY ${Math.round(kit.energy)}% · RIGHT CLICK TO SLIDE${slideWait(kit, g.time)}`;
     else if (kit?.drift) mode = `PHASED OUT · ${(kit.drift.until - g.time).toFixed(1)}s · X TO RETURN`;
     else if (kit?.pilot?.kind === 'tiger') mode = `STALKER · STEER WITH MOUSE · LEFT CLICK TO POUNCE · ${(kit.pilot.until - g.time).toFixed(1)}s`;
     else if (kit?.view) mode = g.time >= (kit.view.dartReady || 0) ? 'WATCHER · LEFT CLICK: TRACKING DART · E TO LEAVE' : 'WATCHER · E TO LEAVE';
@@ -214,7 +215,7 @@ export class Hud {
     else if (p.st.deafUntil > g.time) mode = `DEAFENED · ${(p.st.deafUntil - g.time).toFixed(1)}s`;
     else if (kit?.vanishUntil > g.time) mode = `VANISHED · NO GUN · ${(kit.vanishUntil - g.time).toFixed(1)}s`;
     else if (p.st.intangibleUntil > g.time) mode = 'VANISHED';
-    else if (kit && g.time < kit.empressUntil) mode = `RAVENOUS · ${(kit.empressUntil - g.time).toFixed(0)}s`;
+    else if (kit && g.time < kit.empressUntil) mode = 'RAVENOUS · KILLS FEAST · E VANISH';
     else if (kit?.orbs?.length) mode = 'SOUL ORB · Q FEAST · E VANISH';
     else if (kit?.regrow?.on) mode = `BLOOM · ${kit.regrow.healing?.length ? 'HEALING ' + kit.regrow.healing.map(c => esc(c.name)).join(', ') : 'NO ONE TO HEAL'} · POOL ${Math.ceil(kit.regrow.pool)}`;
     else if (kit?.id === 'fawn' && sv === p && (kit.regrow || kit.charges.c > 0) && bloomTargets(p).length) { const n = bloomTargets(p).length; mode = `BLOOM CAN HEAL ${n} TEAMMATE${n > 1 ? 'S' : ''} · HOLD C`; }
@@ -222,6 +223,7 @@ export class Hud {
     else if (kit?.id === 'lattice' && g.devices.some(d => d.kind === 'cage' && d.owner === p)) mode = 'LOOK AT A CAGE AND PRESS Q TO TRIGGER IT';
     else if (kit?.id === 'stella') mode = g.devices.some(d => d.kind === 'star' && d.owner === p) ? `LOOK AT A STAR: C GRAVITY WELL · Q NOVA PULSE · E NEBULA · ${kit.starsLeft} TO PLACE` : `${kit.starsLeft} STARS · E TO PLACE THEM`;
     else if (kit?.pilot?.kind === 'sdrone') mode = `SCOUT DRONE · FLY WITH MOUSE · LEFT CLICK TO PULSE · ${(kit.pilot.until - g.time).toFixed(1)}s`;
+    else if (kit?.downed) mode = kit.downed.upAt ? 'GETTING BACK UP' : `DOWN · A TEAMMATE CAN REVIVE YOU (HOLD ${fk}) · ${(kit.downed.until - g.time).toFixed(0)}s`;
     else if (p.st.downedUntil > g.time) mode = `DOWN · GETTING UP IN ${(p.st.downedUntil - g.time).toFixed(1)}s`;
     else if (kit && g.time < kit.secondLife) mode = `SECOND DAWN · ${(kit.secondLife - g.time).toFixed(0)}s`;
     else if (kit && g.time < kit.nullUntil) mode = `OVERLOADED · ${(kit.nullUntil - g.time).toFixed(0)}s`;
@@ -378,7 +380,7 @@ export class Hud {
     if (kit.rebirth) add('Rekindle', kit.rebirth.until, 10);
     add('Second Dawn', kit.secondLife, 40);
     add('Overload', kit.nullUntil, 12);
-    add('Ravenous', kit.empressUntil, 30);
+    if (now < kit.empressUntil) rows.push({ name: 'Ravenous', frac: 1, text: 'on' });
     if (kit.shadow?.phase === 'channel') add('Nightwalk', kit.shadow.until, 3);
     if (kit.pilot) add({ tiger: 'Stalker', sdrone: 'Scout Drone', owl: 'Kestrel' }[kit.pilot.kind] || 'Drone', kit.pilot.until, kit.pilot.life);
     if (kit.pilot?.kind === 'owl' && now < kit.pilot.dartReady) add('Dart reload', kit.pilot.dartReady, 5);
@@ -386,7 +388,7 @@ export class Hud {
     if (g.contract && (g.contract.a === p || g.contract.b === p)) add('Duel', g.contract.until, 15);
     if (kit.nest) add('Nest', kit.nest.until, 15);
     for (const o of kit.orbs || []) add('Soul orb', o.until, 3);
-    if (now < (kit.tpReady || 0)) add('Anchor cooldown', kit.tpReady, 20);
+    if (now < (kit.tpReady || 0)) add('Anchor cooldown', kit.tpReady, 30);
     // Your own smokes, fields, walls and gadgets, grouped by type (longest remaining shown).
     const best = new Map();
     const keep = (name, until, total) => { const b = best.get(name); if (!b || until > b.until) best.set(name, { until, total }); };
@@ -394,7 +396,7 @@ export class Hud {
     for (const s of g.smokes) if (s.owner === p && !s.nest && s.until - s.born < 60) keep(SM[s.kind] || 'Smoke', s.until, s.until - s.born);
     for (const z of g.zones) if (z.owner === p && z.until - z.born < 60 && z.kind !== 'trap' && !z.gas) keep(z.def?.name || { slowfield: 'Slow field', stim: 'Rally', lockdown: 'Clampdown' }[z.kind] || 'Field', z.until, z.until - z.born);
     for (const w of g.walls) if (w.owner === p && !w.removed && w.style !== 'arena') keep(w.style === 'cosmic' ? 'Rift Line' : 'Wall', w.until, w.until - w.born);
-    const DV = { gate: 'Riftwalk', hawk: 'Lantern Hawk', focusorb: 'Focus orb', cascade: 'Breaker', cloud: 'Veil', blaze: p.kit?.id === 'marina' ? 'Riptide' : 'Firebreak', turret: 'Sentry', decoy: 'Double', leer: 'Glare', drone: 'Drone', boombot: 'Boomer', satchel: 'Charge', prowler: 'Hound', seeker: 'Hunters' };
+    const DV = { gate: 'Riftwalk', hawk: 'Lantern Hawk', focusorb: 'Focus orb', cloud: 'Veil', blaze: p.kit?.id === 'marina' ? 'Riptide' : 'Firebreak', turret: 'Sentry', decoy: 'Double', leer: 'Glare', drone: 'Drone', boombot: 'Boomer', satchel: 'Charge', prowler: 'Hound', seeker: 'Hunters' };
     for (const d of g.devices) if (d.owner === p && !d.removed && DV[d.kind] && d.until - d.born < 60) keep(DV[d.kind], d.until, d.until - d.born);
     for (const [name, b] of best) add(name, b.until, b.total);
     return rows.slice(0, 8);
