@@ -5,6 +5,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { SKINS, TEXTURES, onSkinsChanged, designFor } from './skins.js';
 import { MELEE, MODEL_INSPECTS, inspectPose } from './melee.js';
 import { shineUniforms, shineMaterial, fitShine, updateShine, sweepAt } from './shine.js';
+import { hyp } from './vmath.js';
 
 const PI = Math.PI;
 
@@ -217,7 +218,7 @@ function wrap(k, n, y0, z0, y1, z1, w, d, slot, tilt = 0) {
 
 // A straight bar of square section w x t from (z0, y0) to (z1, y1) in the side plane: Apogee's skeletal stocks.
 function bar(k, z0, y0, z1, y1, w, t, slot, x = 0) {
-  const len = Math.hypot(z1 - z0, y1 - y0);
+  const len = hyp(z1 - z0, y1 - y0);
   k.box(w, t, len, slot, x, (y0 + y1) / 2, (z0 + z1) / 2, Math.atan2(-(y1 - y0), z1 - z0));
 }
 // Apogee's gilded skeleton stock behind the receiver at z0: a top bar, a bottom bar, a brace, and a white butt

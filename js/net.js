@@ -25,6 +25,7 @@ import { TEAM_COLORS } from './rounds.js';
 import { sanitizeSkin, registerSkin, SKINS } from './skins.js';
 import { MELEE, meleeId } from './melee.js';
 import { takenAgents } from './agentselect.js';
+import { hyp } from './vmath.js';
 
 // TIMEOUT: silence that counts as gone (a closed connection or a 'bye' is noticed at once; this is for a crashed
 // tab or a dead network, and has to ride out a few seconds of wifi trouble). LOAD_TIMEOUT: a joiner's first
@@ -501,7 +502,7 @@ export class NetSession {
       // Light sanity checks: a known weapon, plausible damage, the target close to where the shooter says.
       const amount = Math.max(0, Math.min(Number(m.amount) || 0, 160 * (def.pellets || 1)));
       const part = ['head', 'body', 'legs'].includes(m.part) ? m.part : 'body';
-      const dist = Math.hypot(target.pos[0] - c.pos[0], target.pos[2] - c.pos[2]);
+      const dist = hyp(target.pos[0] - c.pos[0], target.pos[2] - c.pos[2]);
       if (Math.abs(dist - (Number(m.dist) || 0)) > 6) return;
       g.damage(target, c, amount, { part, def, dist, point: target.eye(), wallbang: !!m.wb });
     } else if (m.k === 'fx') {
@@ -1128,7 +1129,7 @@ export function netStep(c, dt) {
   c.crouched = t.ca > 0.5;
   c.height = c.crouched ? PLAYER.crouchHeight : PLAYER.standHeight;
   // Footsteps for running remote players, like Combatant.move would.
-  const sp = Math.hypot(c.vel[0], c.vel[2]);
+  const sp = hyp(c.vel[0], c.vel[2]);
   if (sp > 3.6 && c.pos[1] - (c.lastFootY ?? c.pos[1]) < 0.5) {
     c.stepDist = (c.stepDist || 0) + sp * dt;
     if (c.stepDist > 2.2) { c.stepDist = 0; c.game.emit('footstep', { who: c }); }

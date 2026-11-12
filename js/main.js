@@ -1687,7 +1687,7 @@ function frame(t) {
   if (dt > 0.25) dt = 0.25;
   if (dt < 0) dt = 0;
   if (simulating()) simulate(dt);
-  if (running) {
+  if (running && !hooks.noDraw) { // noDraw: tools/profile.mjs draws its own frames
     renderer.render(Math.min(1, acc / DT), dt, look);
     hud.specTarget = renderer.specTarget;
     hud.update(dt, look);
@@ -1697,7 +1697,7 @@ function frame(t) {
     const ear = ears();
     sound.setListener(ear.eye(), ear.yaw);
     sound.setDeaf(game.player.alive && game.player.st.deafUntil > game.time);
-  } else if (!lobbyCovered) {
+  } else if (!lobbyCovered && !running) {
     renderer.renderIdle(t / 1000); // the home screen and its tabs cover the view, so the scene behind them rests
   }
   look.dx = look.dy = 0;
@@ -1705,5 +1705,5 @@ function frame(t) {
 requestAnimationFrame(frame);
 
 // Exposed for automated checks in a headless browser; `frozen` stops the loop from ticking.
-const hooks = { game, renderer, rhud, hud, sound, settings, startMatch, playerInput, openAgents, switchAgent, toggleBuy, clickBuy, net, hostOnline, joinOnline, servers, peerOptions, frozen: false };
+const hooks = { game, renderer, rhud, hud, minimap, sound, settings, startMatch, playerInput, openAgents, switchAgent, toggleBuy, clickBuy, net, hostOnline, joinOnline, servers, peerOptions, frozen: false };
 window.__game = hooks;

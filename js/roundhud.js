@@ -5,6 +5,7 @@ import { ROUND, ECON, SHIELDS, abilityPrice } from './rounds.js';
 import { AGENTS } from './abilities.js';
 import { emblem } from './agentselect.js';
 import { gunIcons, warmGunIcons } from './gunicons.js';
+import { hyp } from './vmath.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -127,7 +128,7 @@ export class RoundHud {
       else if (m.phase === 'buy') hint = sp?.carrier === p ? 'Press B to buy · you have the spike' : 'Press B to buy';
       else if (nearSpike) hint = 'The spike is on the ground — walk over it to pick it up';
       else if (sp?.state === 'carried' && sp.carrier === p) hint = m.inSite(p.pos) ? 'Hold F to plant the spike' : 'You have the spike — plant it on A or B';
-      else if (sp?.state === 'planted' && m.side(p) === 'def' && Math.hypot(p.pos[0] - sp.pos[0], p.pos[2] - sp.pos[2]) < 1.8) hint = 'Hold F to defuse';
+      else if (sp?.state === 'planted' && m.side(p) === 'def' && hyp(p.pos[0] - sp.pos[0], p.pos[2] - sp.pos[2]) < 1.8) hint = 'Hold F to defuse';
       else if (m.orbNear?.(p)) hint = p.kit && p.kit.ultPoints >= p.kit.ultCost ? 'Ultimate orb · your ultimate is already full' : 'Hold F to take the ultimate orb (+1 ultimate point)';
     } else {
       const s = this.spectating && this.spectating.alive ? this.spectating : null;

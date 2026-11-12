@@ -2,6 +2,7 @@
 // ADS/scopes, bursts, spin-up, reload and equip.
 import { DT, CROUCH_SPREAD, PLAYER } from './config.js';
 import { dirFromAngles, concussT } from './entity.js';
+import { hyp } from './vmath.js';
 
 const DEG = Math.PI / 180;
 const ADS_RECOIL = 0.8; // share of hip recoil while aimed down sights
@@ -324,7 +325,7 @@ export function coneDir(yaw, pitch, deg) {
   const th = Math.random() * Math.PI * 2;
   const ca = a * Math.cos(th), sa = a * Math.sin(th);
   const x = f[0] + rx * ca + ux * sa, y = f[1] + uy * sa, z = f[2] + rz * ca + uz * sa;
-  const l = Math.hypot(x, y, z);
+  const l = hyp(x, y, z);
   return [x / l, y / l, z / l];
 }
 

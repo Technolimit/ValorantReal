@@ -27,6 +27,7 @@ export const ECON = { start: 800, max: 9000, win: 3000, loss: [1900, 2400, 2900]
 export const SHIELDS = { light: { name: 'Light Shields', cost: 400, armor: 25 }, regen: { name: 'Regen Shield', cost: 650, armor: 25, pool: 50 }, heavy: { name: 'Heavy Shields', cost: 1000, armor: 50 } };
 export const REGEN = { delay: 5, rate: 6 }; // seconds without taking damage, then shield per second
 import { priceOf, PRICES } from './prices.js';
+import { hyp } from './vmath.js';
 // Price, max charges and free charges for one of a combatant's ability slots.
 export const abilityPrice = (c, k) => priceOf(c.kit.id, c.kit.agent.abilities[k], k);
 
@@ -286,7 +287,7 @@ export class RoundMode {
       } else sp.plantProg = 0;
     } else if (sp.state === 'dropped') {
       for (const c of this.alive('atk')) {
-        if (Math.hypot(c.pos[0] - sp.pos[0], c.pos[2] - sp.pos[2]) < 1.2 && Math.abs(c.pos[1] - sp.pos[1]) < 1.5) {
+        if (hyp(c.pos[0] - sp.pos[0], c.pos[2] - sp.pos[2]) < 1.2 && Math.abs(c.pos[1] - sp.pos[1]) < 1.5) {
           sp.state = 'carried'; sp.carrier = c; sp.pos = null; this.emit('spikePickup', { who: c });
           if (c.brain && c.brain.goal?.kind === 'pickup') { c.brain.goal = null; this.planBots(false); } // don't stand where the spike was
           break;
@@ -296,7 +297,7 @@ export class RoundMode {
       // Defuse: hold Use next to it. Progress past the halfway mark is kept.
       let any = false;
       for (const c of this.alive('def')) {
-        if (!c.input.use || Math.hypot(c.pos[0] - sp.pos[0], c.pos[2] - sp.pos[2]) > 1.8 || Math.abs(c.pos[1] - sp.pos[1]) > 1.5) continue;
+        if (!c.input.use || hyp(c.pos[0] - sp.pos[0], c.pos[2] - sp.pos[2]) > 1.8 || Math.abs(c.pos[1] - sp.pos[1]) > 1.5) continue;
         if (sp.defuser && sp.defuser !== c && sp.defuser.alive && sp.defuser.input.use) continue;
         any = true;
         if (sp.defuser !== c || now >= (this.defuseHeardAt || 0)) {
@@ -335,7 +336,7 @@ export class RoundMode {
     const g = this.game, p = this.spike.pos;
     for (const c of g.combatants) {
       if (!c.alive) continue;
-      const d = Math.hypot(c.pos[0] - p[0], c.pos[1] - p[1], c.pos[2] - p[2]);
+      const d = hyp(c.pos[0] - p[0], c.pos[1] - p[1], c.pos[2] - p[2]);
       if (d < 30) {
         const dmg = d < 20 ? 999 : Math.round(150 * (30 - d) / 10);
         g.damage(c, c, dmg, { part: 'body', def: { id: 'spike', name: 'Spike', cat: 'Ability' }, dist: d, point: c.eye(), wallbang: true, spike: true });
@@ -415,7 +416,7 @@ export class RoundMode {
 
   // The orb c is close enough to take (none once it's been taken).
   orbNear(c) {
-    return this.orbs?.find(o => !o.taken && Math.hypot(c.pos[0] - o.pos[0], c.pos[2] - o.pos[2]) < 1.5 && Math.abs(c.pos[1] - o.pos[1]) < 1.5) || null;
+    return this.orbs?.find(o => !o.taken && hyp(c.pos[0] - o.pos[0], c.pos[2] - o.pos[2]) < 1.5 && Math.abs(c.pos[1] - o.pos[1]) < 1.5) || null;
   }
 
   // Hold Use on an orb for ROUND.orb seconds (standing still, gun down) to take it. One player at a time.
@@ -662,7 +663,7 @@ export class RoundMode {
     if (!path) return [pos[0], pos[1], pos[2]];
     for (let i = path.length - 1; i >= 0; i--) {
       const [cx, cz] = path[i], c = map.cellCenter(cx, cz);
-      if (Math.hypot(c.x - pos[0], c.z - pos[2]) >= back) return [c.x, map.heights[cz][cx], c.z];
+      if (hyp(c.x - pos[0], c.z - pos[2]) >= back) return [c.x, map.heights[cz][cx], c.z];
     }
     const [cx, cz] = path[0], c = map.cellCenter(cx, cz);
     return [c.x, map.heights[cz][cx], c.z];
@@ -904,7 +905,7 @@ export class RoundMode {
   }
 }
 
-function dist(a, b) { return Math.hypot(a[0] - b[0], a[2] - b[2]); }
+function dist(a, b) { return hyp(a[0] - b[0], a[2] - b[2]); }
 
 // ---------- online client ----------
 // The host runs the real RoundMode. A client mirrors it: phase, timers, score and spike come from the
@@ -1018,7 +1019,7 @@ export class NetRoundMode extends RoundMode {
     if (this.orbNear(p) && (this.phase === 'live' || this.phase === 'planted')) this.channel(p, now);
     if (!sp) return;
     if (sp.state === 'carried' && sp.carrier === p && this.phase === 'live' && this.inSite(p.pos) && p.grounded) this.channel(p, now);
-    else if (sp.state === 'planted' && this.side(p) === 'def' && Math.hypot(p.pos[0] - sp.pos[0], p.pos[2] - sp.pos[2]) < 1.8) this.channel(p, now);
+    else if (sp.state === 'planted' && this.side(p) === 'def' && hyp(p.pos[0] - sp.pos[0], p.pos[2] - sp.pos[2]) < 1.8) this.channel(p, now);
   }
 
   // Purchases go through the host, which owns credits; the result comes back to applyPurchase.

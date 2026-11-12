@@ -11,6 +11,7 @@
 //   ultFight / ultSelf / ultRecon / ultPlace / ultMap / bodyRead – ultimates
 // Abilities a bot would have to steer or pilot (drones, cameras, teleports, ability guns) are left alone.
 import { buyPhaseAllows, THROW } from './abilities.js';
+import { hyp } from './vmath.js';
 
 const R = {
   zephyr: { x: 'ultGun' },
@@ -41,7 +42,7 @@ const R = {
 // Second press needed to set some of them off (swarm grenades, the hawk).
 const REUSE = { 'bastion:c': 1.1, 'fawn:e': 0.9 };
 
-const dist = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
+const dist = (a, b) => hyp(a[0] - b[0], a[2] - b[2]);
 
 export function castable(bot, k, drawing = false) {
   const me = bot.me, kit = me.kit, g = bot.game, now = g.time;
@@ -58,7 +59,7 @@ export function cast(bot, k, target, { picks = null, yOff = 0.2 } = {}) {
   if (target) {
     const e = me.eye(), dx = target[0] - e[0], dy = target[1] + yOff - e[1], dz = target[2] - e[2];
     me.yaw = Math.atan2(-dx, -dz) + (Math.random() - 0.5) * 0.04;
-    me.pitch = Math.max(-1.3, Math.min(1.3, Math.atan2(dy, Math.hypot(dx, dz))));
+    me.pitch = Math.max(-1.3, Math.min(1.3, Math.atan2(dy, hyp(dx, dz))));
   }
   const d = target ? dist(me.pos, target) : 10;
   const floors = [];
@@ -67,7 +68,7 @@ export function cast(bot, k, target, { picks = null, yOff = 0.2 } = {}) {
   if (target && ab.throw) {
     // Thrown abilities fly in an arc: aim up by what it takes to land it on the target (the low arc).
     const [v, gs] = THROW[typeof ab.throw === 'function' ? ab.throw({ power: params.power }) : ab.throw];
-    const e = me.eye(), dx = Math.hypot(target[0] - e[0], target[2] - e[2]), dy = target[1] - e[1], G = 9.8 * gs, disc = v ** 4 - G * (G * dx * dx + 2 * dy * v * v);
+    const e = me.eye(), dx = hyp(target[0] - e[0], target[2] - e[2]), dy = target[1] - e[1], G = 9.8 * gs, disc = v ** 4 - G * (G * dx * dx + 2 * dy * v * v);
     if (dx > 0.5) me.pitch = Math.max(-1.3, Math.min(1.3, disc >= 0 ? Math.atan((v * v - Math.sqrt(disc)) / (G * dx)) : Math.PI / 4));
   }
   const r = applyCast(me, k, params);
@@ -176,7 +177,7 @@ export function botAbilities(bot, now) {
         break;
       case 'trap':
         if (side === 'def' && gl?.kind === 'hold' && gl.look && dist(me.pos, gl.pos) < 2 && !used.has('trap' + k)) {
-          const dx = gl.look[0] - me.pos[0], dz = gl.look[2] - me.pos[2], l = Math.hypot(dx, dz) || 1, r = Math.min(7, l);
+          const dx = gl.look[0] - me.pos[0], dz = gl.look[2] - me.pos[2], l = hyp(dx, dz) || 1, r = Math.min(7, l);
           target = [me.pos[0] + dx / l * r, gl.look[1], me.pos[2] + dz / l * r];
           used.add('trap' + k);
         } else if (!m && !visible && seenAgo > 5) target = [me.pos[0] - Math.sin(me.yaw) * 5, me.pos[1], me.pos[2] - Math.cos(me.yaw) * 5];

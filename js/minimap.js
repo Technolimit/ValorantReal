@@ -1,6 +1,7 @@
 // Mini-map (top left). Teammates always show; enemies only while you or a teammate can actually see them
 // (in their field of view, with no wall or smoke in the way), or while revealed by an ability. An enemy
 // that drops out of sight leaves a fading "last seen" marker for a couple of seconds.
+import { hyp } from './vmath.js';
 const SMALL = 210; // CSS pixels (corner minimap)
 const bigSize = () => Math.round(Math.min(innerHeight * 0.86, innerWidth * 0.62, 820)); // M: the full map
 const SEEN_FADE = 2.5; // seconds a last-seen marker lingers
@@ -14,6 +15,7 @@ export class Minimap {
     this.base = null; // pre-rendered layout for the current map
     this.seen = new Map(); // enemy -> { pos, at }
     this.nextScan = 0;
+    this.drawnAt = 0; this.drawnBig = false; // when it was last redrawn (update)
     this.big = false; // toggled with M
     this.size = SMALL;
     game.on('map', () => { this.base = null; this.seen.clear(); });
@@ -75,7 +77,7 @@ export class Minimap {
       if (!vis && e.st.hiddenUntil <= now) {
         const ee = e.eye();
         for (const a of allies) {
-          const ae = a.eye(), dx = ee[0] - ae[0], dz = ee[2] - ae[2], d = Math.hypot(dx, dz);
+          const ae = a.eye(), dx = ee[0] - ae[0], dz = ee[2] - ae[2], d = hyp(dx, dz);
           if (d > 0.5) { const fx = -Math.sin(a.yaw), fz = -Math.cos(a.yaw); if ((dx * fx + dz * fz) / d < FOV) continue; }
           if (d > g.sightRange(a)) continue;
           if (g.canSee(ae, ee) || g.canSee(ae, [e.pos[0], e.pos[1] + 0.9, e.pos[2]])) { vis = true; break; }
@@ -86,13 +88,18 @@ export class Minimap {
     }
   }
 
-  update() {
+  // Redrawn at most 60 times a second: on a 144 or 240 Hz screen the rest of the frames keep the last picture.
+  // `force` draws regardless (tools/profile.mjs).
+  update(force = false) {
     const g = this.game, me = g.player;
     const on = !!(me && g.map?.heights && g.state === 'playing' && !me.kit?.mapPick); // hidden under the big map
     this.canvas.hidden = !on;
     if (!on) return;
     const want = this.big ? bigSize() : SMALL;
     if (want !== this.size) { this.size = want; this.base = null; this.canvas.classList.toggle('big', this.big); this.canvas.style.width = this.canvas.style.height = want + 'px'; }
+    const t = performance.now();
+    if (!force && this.base && t - this.drawnAt < 15.5 && this.drawnBig === this.big) return;
+    this.drawnAt = t; this.drawnBig = this.big;
     const SIZE = this.size, k = Math.min(2.4, SIZE / SMALL); // marker scale
     this.k = k;
     if (!this.base || this.base.id !== g.map.id) this.buildBase();

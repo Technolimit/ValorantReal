@@ -11,6 +11,7 @@
 // from a file or sent by an online host are kept in memory (and imported ones in localStorage) next to the
 // catalog. maps/materials.json is the shared material library; a map can add or override materials.
 import { CELL, PLAYER } from './config.js';
+import { hyp } from './vmath.js';
 
 const INDEX_URL = 'maps/index.json';
 const MATERIALS_FILE = 'materials.json'; // next to index.json
@@ -379,7 +380,7 @@ function buildV2(j) {
     return { text: String(l.text ?? ''), ...p, y: l.y ?? (floorY(p.x, p.z) ?? 0) + 0.02, size: l.size };
   });
   const ropes = (j.ropes || []).filter(r => num(r.x) && num(r.z) && num(r.top)).map(r => {
-    const t = vec(r.toward, 2) ? r.toward : [0, 1], l = Math.hypot(t[0], t[1]) || 1;
+    const t = vec(r.toward, 2) ? r.toward : [0, 1], l = hyp(t[0], t[1]) || 1;
     return { x: r.x, z: r.z, bottom: num(r.bottom) ? r.bottom : floorY(r.x, r.z) ?? 0, top: r.top, toward: [t[0] / l, t[1] / l], ...(r.color !== undefined && { color: colorNum(r.color) }) };
   });
   const props = [...(j.signs || []), ...(j.props || []).filter(p => p.type === 'sign')].filter(p => vec(p.pos, 3)).map(p => ({
@@ -682,7 +683,7 @@ export function findPath(heights, W, H, start, goal, stairCell = null, dropCost 
   const n = W * H, sc = scratchFor(n), gen = ++sc.gen;
   const { g, came, seen, shut } = sc;
   let heap = sc.heap;
-  const h = (x, z) => Math.hypot(x - goal[0], z - goal[1]);
+  const h = (x, z) => hyp(x - goal[0], z - goal[1]);
   let size = 0, order = 0;
   // Heap entries: cell, f, and an insertion counter so equal f pops first-in first.
   const less = (i, j) => heap.f[i] < heap.f[j] || (heap.f[i] === heap.f[j] && heap.o[i] < heap.o[j]);

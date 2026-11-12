@@ -3,6 +3,7 @@
 import { dirFromAngles } from './entity.js';
 import { PLAYER } from './config.js';
 import { botAbilities } from './botkit.js';
+import { hyp } from './vmath.js';
 
 export const BOT_NAMES = ['Kestrel', 'Rook', 'Ember', 'Quill', 'Talon', 'Vesper', 'Drift', 'Nova', 'Hex', 'Moth'];
 
@@ -129,7 +130,7 @@ export class Bot {
     for (const z of g.zones) {
       if (now >= z.until || z.gas || z.r < 1.5 || !g.isEnemy(z.owner, me)) continue;
       if (!(z.kind === 'fire' && z.dps > 0) && z.kind !== 'lockdown') continue;
-      if (Math.hypot(me.pos[0] - z.pos[0], me.pos[2] - z.pos[2]) < z.r + 0.6 && Math.abs(me.pos[1] - z.pos[1]) < 3) return z;
+      if (hyp(me.pos[0] - z.pos[0], me.pos[2] - z.pos[2]) < z.r + 0.6 && Math.abs(me.pos[1] - z.pos[1]) < 3) return z;
     }
     return null;
   }
@@ -140,7 +141,7 @@ export class Bot {
     inp.crouch = this.crouchSpray;
     const mode = this.game.mode;
     // A teammate bought us the gun we asked for: go and pick it up (it dropped where we stood).
-    const gift = mode && mode.phase !== 'end' && this.game.drops.find(d => d.for === me && d.gun.def.id !== me.inv[d.gun.def.slot]?.def.id);
+    const gift = mode && mode.phase !== 'end' && this.game.drops.length && this.game.drops.find(d => d.for === me && d.gun.def.id !== me.inv[d.gun.def.slot]?.def.id);
     if (gift && (mode.phase === 'buy' || now - this.lastSeen > 2)) {
       this.moveTo(gift.pos, now, dt);
       if (!this.path) this.steer(gift.pos[0] - me.pos[0], gift.pos[2] - me.pos[2], now);
@@ -159,7 +160,7 @@ export class Bot {
     if (me.kit?.busy() || me.kit?.armed) return; // mid-ability (map open, etc.)
     const t = this.target;
     // Out of time on the spike: keep defusing even under fire.
-    if (this.goal?.commit && Math.hypot(me.pos[0] - this.goal.pos[0], me.pos[2] - this.goal.pos[2]) < 1.2) { inp.use = true; return; }
+    if (this.goal?.commit && hyp(me.pos[0] - this.goal.pos[0], me.pos[2] - this.goal.pos[2]) < 1.2) { inp.use = true; return; }
     if (t && t.alive && now - this.lastSeen < 0.2) {
       this.engage(now, dt);
       return;
@@ -181,14 +182,14 @@ export class Bot {
     // the assigned position — attackers almost always, defenders depending on temperament.
     const gl = this.goal, side = mode?.side(me), lsp = this.lastSeenPos, ago = now - this.lastSeen;
     // A free ultimate orb a few steps away and nobody around: go take it.
-    const orb = mode?.orbs && ago > 4 && !gl?.commit && me.kit && me.kit.ultPoints < me.kit.ultCost && mode.orbs.find(o => !o.taken && Math.hypot(me.pos[0] - o.pos[0], me.pos[2] - o.pos[2]) < 10 && Math.abs(me.pos[1] - o.pos[1]) < 1.5);
+    const orb = mode?.orbs && ago > 4 && !gl?.commit && me.kit && me.kit.ultPoints < me.kit.ultCost && mode.orbs.find(o => !o.taken && hyp(me.pos[0] - o.pos[0], me.pos[2] - o.pos[2]) < 10 && Math.abs(me.pos[1] - o.pos[1]) < 1.5);
     if (orb) {
       if (mode.orbNear(me) === orb) { inp.use = true; return; }
       this.moveTo(orb.pos, now, dt);
       if (!this.path) this.steer(orb.pos[0] - me.pos[0], orb.pos[2] - me.pos[2], now);
       return;
     }
-    if (gl && lsp && !gl.action && !gl.commit && Math.hypot(me.pos[0] - lsp[0], me.pos[2] - lsp[2]) > 2 &&
+    if (gl && lsp && !gl.action && !gl.commit && hyp(me.pos[0] - lsp[0], me.pos[2] - lsp[2]) > 2 &&
         (now < this.pushUntil || (ago > 0.4 && ago < 3.5 && this.aggr > (side === 'atk' ? 0.3 : 0.6)))) {
       this.moveTo(lsp, now, dt);
       if (!this.path) this.steer(lsp[0] - me.pos[0], lsp[2] - me.pos[2], now);
@@ -198,7 +199,7 @@ export class Bot {
     if (this.goal) { this.pursueGoal(now, dt); return; }
 
     const inv = this.investigate;
-    if (inv && now < inv.until && Math.hypot(me.pos[0] - inv.pos[0], me.pos[2] - inv.pos[2]) > 1.5) {
+    if (inv && now < inv.until && hyp(me.pos[0] - inv.pos[0], me.pos[2] - inv.pos[2]) > 1.5) {
       this.moveTo(inv.pos, now, dt);
       if (!this.path) { const t = fitNear(this.game, inv.pos); this.steer(t[0] - me.pos[0], t[2] - me.pos[2], now); }
       if (this.lookAt) this.turnToward(this.lookAt, PLAYER.standEye, dt, 0.5);
@@ -220,11 +221,11 @@ export class Bot {
     for (const o of g.combatants) {
       if (!o.alive || !g.isEnemy(me, o) || o.st.hiddenUntil > now) continue; // allies and phased-out players are ignored
       const dx = o.pos[0] - me.pos[0], dz = o.pos[2] - me.pos[2];
-      const dist = Math.hypot(dx, dz);
+      const dist = hyp(dx, dz);
       if (dist > 90 || dist > sight) continue;
       if (dist > 2 && (fwd[0] * dx + fwd[2] * dz) / dist < cosFov) continue;
       const hb = o.hitboxes();
-      const head = center(hb[0]), body = center(hb[1]);
+      const head = center(hb[0], this._head ||= [0.5, 0.5, 0.5]), body = center(hb[1], this._body ||= [0.5, 0.5, 0.5]);
       const seesHead = g.canSee(eye, head);
       const seesBody = g.canSee(eye, body);
       if (!seesHead && !seesBody) continue;
@@ -259,16 +260,20 @@ export class Bot {
     // and once the target is fully behind cover or smoke, hold on the last spot seen instead of tracking
     // them through the wall.
     const hb = t.hitboxes();
-    const head = center(hb[0]), body = center(hb[1]);
+    const head = center(hb[0], this._head ||= [0.5, 0.5, 0.5]), body = center(hb[1], this._body ||= [0.5, 0.5, 0.5]); // reused every tick
     head[1] -= 0.06; // head aim tends to sit a little low (neck / collar)
     body[1] -= 0.12; // body aim sits around the stomach, so recoil climbs into the chest rather than the head
     const headVis = g.canSee(eye, head), bodyVis = g.canSee(eye, body);
     const visible = headVis || bodyVis;
     const useHead = visible ? (this.aimHead ? headVis : !bodyVis) : this.lastAimHead;
     const aim = visible ? (useHead ? head : body) : this.lastAim || (useHead ? head : body);
-    if (visible) { this.lastAim = aim; this.lastAimHead = useHead; }
+    if (visible) { // kept in its own array: head and body are overwritten next tick
+      const la = this._aimBuf ||= [0.5, 0.5, 0.5];
+      la[0] = aim[0]; la[1] = aim[1]; la[2] = aim[2];
+      this.lastAim = la; this.lastAimHead = useHead;
+    }
     const dx = aim[0] - eye[0], dy = aim[1] - eye[1], dz = aim[2] - eye[2];
-    const dist = Math.hypot(dx, dz, dy);
+    const dist = hyp(dx, dz, dy);
 
     // Aim error shrinks while tracking, as a player settles their crosshair, but never fully: a small
     // wandering offset (mean-reverting random walk) stays on top.
@@ -280,7 +285,7 @@ export class Bot {
     this.wobP += -this.wobP * 2 * dt + (Math.random() * 2 - 1) * amp;
     if (me.st.stunUntil > now) { this.wobY += (Math.random() - 0.5) * 0.08; this.wobP += (Math.random() - 0.5) * 0.06; }
     const wantYaw = Math.atan2(-dx, -dz) + this.errY + this.wobY - gun.offY * this.d.comp;
-    const wantPitch = Math.atan2(dy, Math.hypot(dx, dz)) + this.errP + this.wobP - gun.offP * this.d.comp;
+    const wantPitch = Math.atan2(dy, hyp(dx, dz)) + this.errP + this.wobP - gun.offP * this.d.comp;
     this.turnTo(wantYaw, wantPitch, dt, 1);
 
     if (this.mode === 'passive') { this.strafe(now); return; }
@@ -300,8 +305,8 @@ export class Bot {
 
     // Error between where the bullets will go and the aim point, against the size of what we're aiming at.
     const aimYaw = me.yaw + gun.offY, aimPitch = me.pitch + gun.offP;
-    const tYaw = Math.atan2(-dx, -dz), tPitch = Math.atan2(dy, Math.hypot(dx, dz));
-    const off = Math.hypot(wrap(aimYaw - tYaw) * Math.cos(tPitch), aimPitch - tPitch);
+    const tYaw = Math.atan2(-dx, -dz), tPitch = Math.atan2(dy, hyp(dx, dz));
+    const off = hyp(wrap(aimYaw - tYaw) * Math.cos(tPitch), aimPitch - tPitch);
     const size = Math.atan((useHead ? 0.11 : 0.2) / Math.max(dist, 0.5));
     const onTarget = off < size * this.d.tol;
 
@@ -359,7 +364,7 @@ export class Bot {
     const me = this.me, gl = this.goal, inp = me.input;
     // Head for a spot a body fits in (a planned spot can touch a crate); the spike itself for a defuse.
     const t = gl.action === 'defuse' ? gl.pos : (gl.fit && gl.fitFor === gl.pos ? gl.fit : (gl.fitFor = gl.pos, gl.fit = fitNear(this.game, gl.pos)));
-    const d = Math.hypot(me.pos[0] - t[0], me.pos[2] - t[2]);
+    const d = hyp(me.pos[0] - t[0], me.pos[2] - t[2]);
     // A plant only needs the site: a few steps short of the spot is close enough when a crate is in the way.
     const there = d <= (gl.action === 'defuse' ? 1.0 : 1.3) || (gl.action === 'plant' && d < 3 && this.game.mode?.inSite(me.pos));
     if (!there) {
@@ -409,7 +414,7 @@ export class Bot {
       const here = map.nearestWalkable(...map.cellOf(me.pos[0], me.pos[2]));
       for (let tries = 0; tries < 10 && !this.path; tries++) {
         const goal = map.walkable[Math.floor(Math.random() * map.walkable.length)];
-        if (Math.hypot(goal[0] - here[0], goal[1] - here[1]) < 6) continue;
+        if (hyp(goal[0] - here[0], goal[1] - here[1]) < 6) continue;
         this.path = map.findPath(here, goal);
         this.pathIdx = 1;
       }
@@ -436,7 +441,7 @@ export class Bot {
     // Aim for a spot in the next cell that a body actually fits in: a cell centre can sit right against a wall.
     const c = clearSpot(this.game, this.path[this.pathIdx]);
     const dx = c[0] - me.pos[0], dz = c[2] - me.pos[2];
-    if (Math.hypot(dx, dz) < 0.8) { this.pathIdx++; return; }
+    if (hyp(dx, dz) < 0.8) { this.pathIdx++; return; }
     // Look where we're going, keeping the crosshair at head height.
     this.turnTo(Math.atan2(-dx, -dz), 0, dt, 0.35);
     this.steer(dx, dz, now);
@@ -447,7 +452,7 @@ export class Bot {
   steer(dx, dz, now) {
     const me = this.me;
     if (now < this.unstickUntil) { this.moveDir(...this.unstickDir); me.input.jump = this.unstickJump; return; }
-    const l = Math.hypot(dx, dz) || 1, ux = dx / l, uz = dz / l;
+    const l = hyp(dx, dz) || 1, ux = dx / l, uz = dz / l;
     if (blockedAhead(this.game, me, ux, uz)) {
       // Turn along the wall: try angles either side of the way we want to go, closest first.
       for (const a of [0.5, -0.5, 1.0, -1.0, 1.4, -1.4]) {
@@ -457,7 +462,7 @@ export class Bot {
     }
     this.moveDir(dx, dz);
     if (now >= this.stuckCheck.t) {
-      const moved = Math.hypot(me.pos[0] - this.stuckCheck.pos[0], me.pos[2] - this.stuckCheck.pos[2]);
+      const moved = hyp(me.pos[0] - this.stuckCheck.pos[0], me.pos[2] - this.stuckCheck.pos[2]);
       if (moved < 0.5) {
         const side = Math.random() < 0.5 ? 1 : -1;
         this.unstickDir = [-uz * side - ux * 0.5, ux * side - uz * 0.5];
@@ -471,7 +476,7 @@ export class Bot {
 
   // Convert a world-space direction to forward/side input relative to where the bot faces.
   moveDir(dx, dz) {
-    const me = this.me, l = Math.hypot(dx, dz) || 1;
+    const me = this.me, l = hyp(dx, dz) || 1;
     const sy = Math.sin(me.yaw), cy = Math.cos(me.yaw);
     const fx = -sy, fz = -cy, rx = cy, rz = -sy;
     me.input.fwd = (dx * fx + dz * fz) / l;
@@ -481,7 +486,7 @@ export class Bot {
   turnToward(p, eyeH, dt, speed) {
     const e = this.me.eye();
     const dx = p[0] - e[0], dy = p[1] + eyeH - e[1], dz = p[2] - e[2];
-    this.turnTo(Math.atan2(-dx, -dz), Math.atan2(dy, Math.hypot(dx, dz)), dt, speed);
+    this.turnTo(Math.atan2(-dx, -dz), Math.atan2(dy, hyp(dx, dz)), dt, speed);
   }
 
   // Ease toward the wanted angles with a capped turn rate, like a flick that settles.
@@ -490,14 +495,15 @@ export class Bot {
     const maxStep = this.d.turn * DEG * dt * speed;
     const f = 1 - Math.exp(-dt * 18 * speed);
     let dy = wrap(yaw - me.yaw) * f, dp = (pitch - me.pitch) * f;
-    const m = Math.hypot(dy, dp);
+    const m = hyp(dy, dp);
     if (m > maxStep) { dy *= maxStep / m; dp *= maxStep / m; }
     me.yaw = wrap(me.yaw + dy);
     me.pitch = Math.max(-1.4, Math.min(1.4, me.pitch + dp));
   }
 }
 
-function center(hb) {
-  return [(hb.min[0] + hb.max[0]) / 2, (hb.min[1] + hb.max[1]) / 2, (hb.min[2] + hb.max[2]) / 2];
+function center(hb, out) {
+  out[0] = (hb.min[0] + hb.max[0]) / 2; out[1] = (hb.min[1] + hb.max[1]) / 2; out[2] = (hb.min[2] + hb.max[2]) / 2;
+  return out;
 }
 
