@@ -6,7 +6,7 @@ import { World } from './world.js';
 import { Combatant, dirFromAngles } from './entity.js';
 import { damageAt, WEAPONS, BUY_GROUPS } from './weapons.js';
 import { Bot, BOT_NAMES } from './bot.js';
-import { Kit, AGENT_ORDER, smokeBlocks, SMOKE, SLAB, insideSlab } from './abilities.js';
+import { Kit, AGENT_ORDER, smokeBlocks, SMOKE, SLAB } from './abilities.js';
 import { dirFromAngles as dirOf } from './entity.js';
 import { netStep } from './net.js';
 import { SKINS, SKIN_ORDER, variantsOf } from './skins.js';
@@ -203,7 +203,10 @@ export class Game {
       if (!s.nest || now >= s.until) continue;
       for (const c of this.combatants) if (this.affectable(c) && this.isEnemy(s.owner, c) && Math.hypot(c.pos[0] - s.pos[0], c.pos[1] + 1 - s.pos[1], c.pos[2] - s.pos[2]) < s.radius) c.st.revealUntil = now + 0.15;
     }
-    for (const w of this.walls) if (now >= w.until) this.removeWall(w);
+    for (const w of this.walls) {
+      if (now >= w.until) this.removeWall(w);
+      else if (w.fortify && now >= w.born + 2) { w.hp += w.fortify; w.fortify = 0; } // Frost Wall hardens 2 s after it rises
+    }
     if (this.walls.some(w => w.removed)) this.walls = this.walls.filter(w => !w.removed);
     if (this.eventide && now >= this.eventide.until) this.eventide = null;
     this.time += DT;
@@ -372,13 +375,14 @@ export class Game {
   // the aim at `speed` m/s, falling at 9.8 m/s² times `g`. What a surface does to it is `rule`:
   //   'stick'  stops on the first thing it touches
   //   'floor'  bounces off walls and steep slopes, comes to rest on a floor
-  //   'bounce' bounces off anything `bounces` times, then sticks
+  //   'bounce' bounces off anything `bounces` times, then sticks (Infinity: until it runs out of bounce)
+  // opts.kind gives it another device kind's look and rules while it flies the same way (a satchel).
   // drop: { at, g } lets it fall straight down after `at` seconds in the air. hitBodies stops it on an enemy.
   // onStop(d, n), onBounce(d, n) and onFuse(d) (after `fuse` seconds, flying or not) are the ability's own.
   throwProj(owner, speed, g, opts = {}) {
     const e = owner.eye(), dir = opts.dir || dirOf(owner.yaw, owner.pitch);
     return this.addDevice({
-      kind: 'proj', owner, pos: opts.from ? [...opts.from] : [e[0], e[1] - 0.05, e[2]], vel: [dir[0] * speed, dir[1] * speed, dir[2] * speed], g,
+      kind: 'proj', physics: true, owner, pos: opts.from ? [...opts.from] : [e[0], e[1] - 0.05, e[2]], vel: [dir[0] * speed, dir[1] * speed, dir[2] * speed], g,
       rule: 'floor', bounces: 0, life: 12, color: 0xffffff, ...opts,
     });
   }
@@ -560,7 +564,7 @@ export class Game {
         d.pos = [f.from[0] + (f.to[0] - f.from[0]) * k, f.from[1] + (f.to[1] - f.from[1]) * k + lift, f.from[2] + (f.to[2] - f.from[2]) * k];
         if (k >= 1) d.flight = null;
       }
-      if (d.kind === 'proj') { this.tickProj(d, now); continue; }
+      if (d.physics) { this.tickProj(d, now); if (d.kind === 'proj') continue; } // thrown: flies by throwProj's rules
       if (d.kind === 'sweep') {
         // Something that travels through walls and touches each player once as it passes (waves, bolts, columns).
         const step = d.speed * DT;
@@ -568,7 +572,8 @@ export class Game {
         d.travelled += step;
         d.onMove?.(d);
         for (const c of this.combatants) {
-          if (d.seen.has(c) || !this.affectable(c) || !(d.all ? c !== d.owner : this.isEnemy(d.owner, c))) continue;
+          // d.all: teammates in the way are caught too (allied bots know to step aside, as with flashes).
+          if (d.seen.has(c) || !this.affectable(c) || !(this.isEnemy(d.owner, c) || (d.all && c !== d.owner && !c.isBot))) continue;
           if (d.hit ? !d.hit(c, d) : Math.hypot(c.pos[0] - d.pos[0], c.pos[1] + 1 - d.pos[1], c.pos[2] - d.pos[2]) > d.r) continue;
           d.seen.add(c);
           if (d.apply(c, d) === 'stop') { d.removed = true; break; }
@@ -674,19 +679,9 @@ export class Game {
           d.armAt = now + 10;
           this.addZone({ kind: 'slowfield', color: 0xe8c26a, owner: d.owner, pos: [...d.pos], r: 6, life: 6, slowField: 0.5 }, now);
         }
-      } else if (d.kind === 'cascade') {
-        // Rolling water: moves forward through walls, slowing whoever it passes through.
-        if (d.travelled < 18) {
-          const step = d.speed * DT;
-          d.pos[0] += d.dir[0] * step; d.pos[2] += d.dir[2] * step; d.travelled += step;
-          const f = this.floorAt(d.pos[0], d.pos[2], d.pos[1] - SLAB.h / 2 + 1.5);
-          if (f && Math.abs(f[1] - (d.pos[1] - SLAB.h / 2)) < 1.5) d.pos[1] = f[1] + SLAB.h / 2;
-          d.smoke.pos[0] = d.pos[0]; d.smoke.pos[1] = d.pos[1]; d.smoke.pos[2] = d.pos[2];
-        }
-        for (const c of enemiesOf(d)) if (insideSlab(d.smoke, [c.pos[0], d.pos[1], c.pos[2]], 0.5)) { c.st.slowUntil = now + 0.4; c.st.slowAmt = 0.3; }
       } else if (d.kind === 'pushwall') {
         // Contingency: the wall slides forward until it hits something.
-        const b = d.wall.box, step = 4 * DT;
+        const b = d.wall.box, step = (d.speed || 4) * DT;
         if (d.wall.removed) { d.removed = true; continue; }
         const nmin = [b.min[0] + d.dir[0] * step, b.min[1], b.min[2] + d.dir[2] * step], nmax = [b.max[0] + d.dir[0] * step, b.max[1], b.max[2] + d.dir[2] * step];
         const e = 0.02;
@@ -703,7 +698,7 @@ export class Game {
         let f = this.floorAt(nx, nz, d.pos[1] + 0.6);
         if (d.through) { const g0 = this.world.raycast([nx, d.pos[1] + 0.5, nz], [0, -1, 0], 6); f = g0 ? [nx, d.pos[1] + 0.5 - g0.t, nz] : null; } // flows along the ground, through walls
         const blocked = !f || (!d.through && (f[1] > d.pos[1] + 0.5 || this.world.overlap(nx - 0.2, d.pos[1] + 0.5, nz - 0.2, nx + 0.2, d.pos[1] + 1.5, nz + 0.2)));
-        if (blocked || d.travelled >= (d.maxDist || 15)) { d.removed = true; continue; }
+        if (blocked || d.travelled >= (d.maxDist || 15) || (d.stopKey && d.travelled > 2 && d.owner.input[d.stopKey])) { d.removed = true; continue; } // Riptide: right click stops it
         d.pos = [nx, f[1], nz];
         d.travelled += step;
         if (d.seg && d.travelled >= d.nextSeg) {
@@ -923,6 +918,7 @@ export class Game {
       if (d.rule === 'bounce') d.bounces--;
       d.onBounce?.(d, n);
       if (d.removed || d.rest) return;
+      if (n[1] > FLOOR_NY && Math.hypot(d.vel[0], d.vel[1], d.vel[2]) < 1.2) { stop(n); return; } // out of bounce: it lies there
     }
   }
 
@@ -971,7 +967,9 @@ export class Game {
   // A solid wall across the aim direction (axis-aligned, like the rest of the map).
   // Walls are thin (0.3 m, about half a player) and tall (3.9 m, about twice a player).
   // Solid deployable walls. `lift`: anyone standing where it rises is carried up onto it (boosting).
-  addWall(owner, pos, yaw, life, { half = 2.5, th = 0.2, h = 3, style = 'bulwark', lift = false, passable = false } = {}) {
+  // `segments`: built as that many pieces side by side, each with `hp` health that enemy bullets wear down
+  // (Frost Wall); `fortify` more health is added to each piece still standing 2 s after it rises.
+  addWall(owner, pos, yaw, life, { half = 2.5, th = 0.2, h = 3, style = 'bulwark', lift = false, passable = false, segments = 0, hp = 0, fortify = 0 } = {}) {
     const alongX = Math.abs(Math.cos(yaw)) > Math.abs(Math.sin(yaw)); // facing along z -> wall spans x
     const min = [pos[0] - (alongX ? half : th), pos[1], pos[2] - (alongX ? th : half)];
     const max = [pos[0] + (alongX ? half : th), pos[1] + h, pos[2] + (alongX ? th : half)];
@@ -990,12 +988,20 @@ export class Game {
       if (this.world.overlap(c.pos[0] - PLAYER.radius, max[1] + 0.02, c.pos[2] - PLAYER.radius, c.pos[0] + PLAYER.radius, max[1] + c.height, c.pos[2] + PLAYER.radius)) return false;
     }
     for (const c of lifted) { c.stepSmooth -= max[1] - c.pos[1]; c.pos[1] = max[1]; c.prevPos[1] = max[1]; c.vel[1] = 0; c.grounded = true; }
-    const box = { min, max, pen: false, mat: 'wall', temp: true, passable };
-    const w = { box, owner, until: this.time + life, born: this.time, style };
-    this.world.boxes.push(box);
-    this.walls.push(w);
-    this.emit('wall', w);
-    return w;
+    let first = null;
+    const ax = alongX ? 0 : 2, n = segments || 1, len = (max[ax] - min[ax]) / n;
+    for (let i = 0; i < n; i++) {
+      const bmin = [...min], bmax = [...max];
+      bmin[ax] = min[ax] + i * len; bmax[ax] = min[ax] + (i + 1) * len;
+      const box = { min: bmin, max: bmax, pen: false, mat: 'wall', temp: true, passable };
+      const w = { box, owner, until: this.time + life, born: this.time, style };
+      if (hp) { w.kind = 'icewall'; w.hp = hp; w.fortify = fortify; w.pos = [(bmin[0] + bmax[0]) / 2, bmin[1], (bmin[2] + bmax[2]) / 2]; box.wall = w; }
+      this.world.boxes.push(box);
+      this.walls.push(w);
+      this.emit('wall', w);
+      first ||= w;
+    }
+    return first;
   }
 
   removeWall(w) {
@@ -1077,6 +1083,9 @@ export class Game {
       }
       const end = [o[0] + d[0] * res.endT, o[1] + d[1] * res.endT, o[2] + d[2] * res.endT];
       this.emit('tracer', { who: shooter, gun, from: o, to: end });
+      // A shot stopped by a wall that has health (Frost Wall) wears that piece down.
+      const stopped = !res.hit && res.impacts.length ? res.impacts[res.impacts.length - 1].box.wall : null;
+      if (stopped?.hp > 0 && this.isEnemy(shooter, stopped.owner)) this.hitUtil(stopped, damageAt(def, res.endT)[2], shooter);
       for (const imp of res.impacts) {
         this.emit('impact', { who: shooter, point: [o[0] + d[0] * imp.t, o[1] + d[1] * imp.t, o[2] + d[2] * imp.t], normal: imp.n, box: imp.box });
       }
@@ -1142,7 +1151,7 @@ export class Game {
   // A device, zone or dome by owner, kind and rough position (for online messages).
   findUtil(owner, kind, pos) {
     const near = (x) => x.owner === owner && x.kind === kind && Math.hypot(x.pos[0] - pos[0], x.pos[1] - pos[1], x.pos[2] - pos[2]) < 2.5;
-    return this.devices.find(x => !x.removed && near(x)) || this.zones.find(near) || this.smokes.find(near) || null;
+    return this.devices.find(x => !x.removed && near(x)) || this.zones.find(near) || this.smokes.find(near) || this.walls.find(x => x.pos && !x.removed && near(x)) || null;
   }
 
   trace(shooter, o, d, budget) {
@@ -1186,6 +1195,7 @@ export class Game {
     if (target.kit) target.kit.onDamaged();
     if (target.decay > 0) target.decayRegenAt = now + 2.5; // getting hit pauses Decay recovery
     (target.damagedBy ||= new Set()).add(attacker);
+    (target.hurtAt ||= new Map()).set(attacker, now);
     if (attacker !== target && attacker.kit) attacker.kit.onDealt?.();
     const dealt = target.takeDamage(amount);
     const s = attacker.stats;
@@ -1202,7 +1212,7 @@ export class Game {
     target.lastHitFrom = attacker.eye();
     target.lastHitTime = now;
     let killed = target.hp <= 0;
-    if (killed && !info.spike && target.kit?.saveFromDeath()) {
+    if (killed && !info.spike && (target.lastDowner = attacker) && target.kit?.saveFromDeath()) {
       this.emit('hit', { attacker, target, part: info.part, amount, dealt, point: info.point, killed: false, def: info.def, wallbang: info.wallbang, dot: !!info.dot });
       return;
     }
@@ -1335,6 +1345,7 @@ export class Game {
     victim.deathPos = [...victim.pos];
     victim.soulTaken = false;
     victim.decay = 0;
+    victim.killedAt = this.time;
     victim.stats.deaths++;
     victim.respawnAt = this.time + MATCH.respawn;
     victim.killedBy = { killer, def: info.def, headshot: info.part === 'head', wallbang: info.wallbang };
@@ -1343,6 +1354,8 @@ export class Game {
       killer.stats.kills++;
       if (killer.brain) killer.brain.lastKillAt = this.time;
       if (killer.kit) killer.kit.onKill(info.def, victim);
+      // Soul Harvest: a Vex who hurt them in the last 3 s gets an orb too, whoever got the kill.
+      if (victim.hurtAt) for (const [a, t] of victim.hurtAt) if (a !== killer && a.alive && a.kit?.id === 'vex' && this.time - t <= 3 && this.isEnemy(a, victim)) a.kit.dropOrb(victim);
       if (!this.mode && MATCH.healOnKill && killer.alive) killer.heal();
     }
     // The body drops its best gun: the primary, or the sidearm if there's no primary.

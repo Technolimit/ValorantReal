@@ -10,7 +10,7 @@
 //   heal    – heal when hurt and out of a fight
 //   ultFight / ultSelf / ultRecon / ultPlace / ultMap / bodyRead – ultimates
 // Abilities a bot would have to steer or pilot (drones, cameras, teleports, ability guns) are left alone.
-import { buyPhaseAllows } from './abilities.js';
+import { buyPhaseAllows, THROW } from './abilities.js';
 
 const R = {
   zephyr: { x: 'ultGun' },
@@ -31,7 +31,7 @@ const R = {
   solace: { c: 'wall', q: 'molly', e: 'allyHeal', x: 'revive' },
   stella: { x: 'ultMap' },
   regent: { c: 'trap', x: 'ultGun' },
-  marina: { c: 'wall', q: 'wall', e: 'smoke', x: 'ultFight' },
+  marina: { c: 'flash', q: 'wall', e: 'smoke', x: 'ultFight' },
   vanta: { c: 'wall', q: 'flash', e: 'ultSelf', x: 'ultFight' },
   ballast: { q: 'flash', e: 'mapDamage', x: 'ultMap' },
   override: { c: 'molly', q: 'flash', e: 'recon', x: 'ultSelf' },
@@ -64,6 +64,12 @@ export function cast(bot, k, target, { picks = null, yOff = 0.2 } = {}) {
   const floors = [];
   for (const p of picks || [target]) { const f = p && g.floorAt(p[0], p[2]); if (f) floors.push(f); }
   const params = { dist: ab.distance ? Math.max(ab.distance.min, Math.min(ab.distance.max, d)) : undefined, power: ab.charge ? Math.max(0.15, Math.min(1, d / 45)) : undefined, picks: floors };
+  if (target && ab.throw) {
+    // Thrown abilities fly in an arc: aim up by what it takes to land it on the target (the low arc).
+    const [v, gs] = THROW[typeof ab.throw === 'function' ? ab.throw({ power: params.power }) : ab.throw];
+    const e = me.eye(), dx = Math.hypot(target[0] - e[0], target[2] - e[2]), dy = target[1] - e[1], G = 9.8 * gs, disc = v ** 4 - G * (G * dx * dx + 2 * dy * v * v);
+    if (dx > 0.5) me.pitch = Math.max(-1.3, Math.min(1.3, disc >= 0 ? Math.atan((v * v - Math.sqrt(disc)) / (G * dx)) : Math.PI / 4));
+  }
   const r = applyCast(me, k, params);
   if (r === false) { bot.lastCast = g.time - 1.2; return false; } // couldn't place it: try again a bit later
   g.emit('botCast', { who: me, k, ...params }); // online: clients replay the same cast (net.js)
@@ -102,7 +108,7 @@ export function botAbilities(bot, now) {
   // Drawing an ability: like a player, the bot holds it out for a moment (visible in its hands), aiming, then uses it.
   const pd = bot.pending;
   if (pd) {
-    if (!castable(bot, pd.k, true) || now > pd.at + 1) { if (kit.armed?.k === pd.k) kit.armed = null; bot.pending = null; if (!kit.busy() && me.alive) me.equip(me.slot, now, true); return; }
+    if (!castable(bot, pd.k, true) || now > pd.at + 1.5) { if (kit.armed?.k === pd.k) kit.armed = null; bot.pending = null; if (!kit.busy() && me.alive) me.equip(me.slot, now, true); return; }
     if (pd.target) bot.turnToward(pd.target, 0, 1 / 128, 1.4);
     if (now >= pd.at) { kit.armed = null; bot.pending = null; cast(bot, pd.k, pd.target, { picks: pd.picks }); }
     return;
@@ -228,7 +234,7 @@ export function botAbilities(bot, now) {
       kit.armed = { k, at: now };
       me.gun.onHolster();
       g.emit('abilityArm', { who: me, key: k });
-      bot.pending = { k, target, picks, at: now + 0.35 + Math.random() * 0.2 };
+      bot.pending = { k, target, picks, at: now + (ab.equip ?? 0.25) + 0.1 + Math.random() * 0.2 }; // its draw time, like a player
       bot.lastCast = now;
       return;
     }

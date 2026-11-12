@@ -229,8 +229,8 @@ export const WEAPONS = {
   // Ability weapons (Regent): not in the buy menu.
   headhunter: {
     name: 'Sovereign', cat: 'Ability', slot: 'ability', cost: 0, model: 'revolver', auto: false, ability: true,
-    rate: 4, mag: 8, reserve: 0, reload: 1, equip: 0.5, pen: 'medium', move: LIGHT_MOVE,
-    dmg: [[30, 159, 55, 46], [50, 145, 50, 42]],
+    rate: 4, mag: 8, reserve: 0, reload: 1, equip: 0.3, pen: 'medium', move: LIGHT_MOVE,
+    dmg: [[50, 159, 55, 46]], // no falloff
     spread: { hip: 0.2, ads: 0.05, run: 2.5, walk: 1.4, air: 5.0, deadzone: 0.3 },
     fe: { max: 1.5, start: 1, end: 4 }, recovery: 0.35,
     recoil: { v: [1.6, 1.4, 1.2], tail: 1.0, h: [[0, 0], [2, 0.2], [4, -0.2]], hJit: 0.1, vJit: 0.06 },
@@ -238,7 +238,7 @@ export const WEAPONS = {
   },
   tourdeforce: {
     name: 'Coup de Grace', cat: 'Ability', slot: 'ability', cost: 0, model: 'sniper', auto: false, ability: true,
-    rate: 0.9, mag: 5, reserve: 0, reload: 1, equip: 0.8, pen: 'high', move: HEAVY_MOVE,
+    rate: 0.9, mag: 5, reserve: 0, reload: 1, equip: 2.3, pen: 'high', move: HEAVY_MOVE,
     dmg: [[50, 255, 150, 127]],
     spread: { hip: 3.0, ads: 0, run: 6.0, walk: 3.0, air: 10.0, deadzone: 0.27 },
     fe: { max: 1.0, start: 0, end: 1 }, recovery: 0.5,

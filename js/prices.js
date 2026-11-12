@@ -10,16 +10,16 @@ export const PRICES = {
   bastion:  { c: [200, 2], q: [200, 1] },                         // Killjoy: Nanoswarm, Alarmbot
   blitz:    { c: [300, 1], q: [200, 2] },                         // Raze: Boom Bot, Blast Pack
   granite:  { c: [200, 1], q: [250, 1], e: [100, 3, 1] },         // Brimstone: Stim Beacon, Incendiary, Sky Smoke (1 free)
-  venom:    { c: [300, 1], q: [200, 1] },                         // Viper: Snake Bite, Poison Cloud
+  venom:    { c: [300, 2], q: [200, 1] },                         // Viper: Snake Bite (max 2), Poison Cloud
   vex:      { c: [250, 2], q: [200, 2, 1] },                      // Reyna: Leer, Devour + Dismiss (one shared pool, 1 free)
   quake:    { c: [200, 1], q: [250, 2] },                         // Breach: Aftershock, Flashpoint
   volt:     { c: [300, 1], q: [200, 1] },                         // Neon: Fast Lane, Relay Bolt
-  mirage:   { c: [200, 1], q: [250, 1] },                         // Yoru: Fakeout, Blindside
-  fawn:     { c: [150, 1], q: [300, 1] },                         // Skye: Regrowth, Trailblazer
+  mirage:   { c: [200, 1], q: [250, 1], e: [150, 2, 1] },         // Yoru: Fakeout, Blindside, Gatecrash (E: 1 free, max 2)
+  fawn:     { c: [150, 1], q: [300, 1], e: [250, 2, 1] },         // Skye: Regrowth, Trailblazer, Guiding Light (E: 1 free, max 2)
   lattice:  { c: [200, 2], q: [100, 2] },                         // Cypher: Trapwire, Cyber Cage
   nyx:      { c: [250, 2], q: [200, 1] },                         // Fade: Prowler, Seize
   solace:   { c: [300, 1], q: [200, 2] },                         // Sage: Barrier Orb, Slow Orb
-  stella:   { c: [150, 1], q: [150, 1] },                         // Astra: stars, 150 each
+  stella:   { c: [null, 1, 1], q: [null, 1, 1], e: [150, 5, 1] }, // Astra: Gravity Well and Nova Pulse are free (cooldowns); stars (E) 150 each, max 5, 1 free
   regent:   { c: [200, 1], q: [100, 8], bullets: 'q' },           // Chamber: Trademark, Headhunter (100 per bullet, 8 max)
   marina:   { c: [200, 1], q: [300, 1] },                         // Harbor: Storm Surge, High Tide (Q); Cove is the signature (E)
   vanta:    { c: [200, 1], q: [300, 1] },                         // Iso: Contingency, Undercut

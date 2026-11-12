@@ -149,6 +149,7 @@ export class Combatant {
     this.dash = null;
     this.burn = 0;
     this.damagedBy = new Set();
+    this.hurtAt = null;
     this.decay = 0;
     this.deathPos = null;
     this.st = { slowUntil: 0, slowAmt: 0, blindUntil: 0, blindLen: 1, stunUntil: 0, nearUntil: 0, revealUntil: 0, disarmUntil: 0, suppressUntil: 0, deafUntil: 0, vulnUntil: 0, stimUntil: 0, intangibleUntil: 0, hiddenUntil: 0, downedUntil: 0, channelUntil: 0, hasteUntil: 0, hasteAmt: 0.15, hinderUntil: 0, castLockUntil: 0, invulnUntil: 0 };

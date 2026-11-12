@@ -89,6 +89,9 @@ Imported maps are sent to joiners too.
 **[ABILITIES.md](ABILITIES.md)** lists every agent's abilities with their charges, prices, cooldowns, durations and
 ultimate costs, and how they recharge in 5v5 and in deathmatch.
 
+The numbers follow **[VALORANT_SPECS.md](VALORANT_SPECS.md)**, the patch 13.10 ability spec.
+**[VALORANT_DIFFERENCES.md](VALORANT_DIFFERENCES.md)** lists where a kit still differs from Valorant.
+
 ## Maps (JSON, loaded with fetch)
 
 Every map is one editable JSON file in `maps/`, listed in `maps/index.json` and fetched when first needed. A map
