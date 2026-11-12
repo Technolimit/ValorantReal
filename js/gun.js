@@ -1,7 +1,7 @@
 // Per-weapon state machine shared by the player and bots: fire cadence, spread, recoil, recovery,
 // ADS/scopes, bursts, spin-up, reload and equip.
 import { DT, CROUCH_SPREAD, PLAYER } from './config.js';
-import { dirFromAngles } from './entity.js';
+import { dirFromAngles, concussT } from './entity.js';
 
 const DEG = Math.PI / 180;
 const ADS_RECOIL = 0.8; // share of hip recoil while aimed down sights
@@ -68,7 +68,7 @@ export class Gun {
     }
     if ((a.type === 'zoom' || a.type === 'scope') && a.rateMult && this.adsT > 0.5) r *= a.rateMult;
     r *= this.buffRate || 1; // agent buffs (Overheat)
-    if (this.stunned) r *= 0.55;
+    if (this.stunned) r *= this.stunRate; // concussed: x0.3 at first, x0.7 near the end
     if (this.hindered) r *= 0.8;
     return r;
   }
@@ -102,7 +102,7 @@ export class Gun {
     if (this.reloading || !d.mag || this.mag >= d.mag || this.reserve <= 0) return;
     this.reloading = true;
     this.reloadStart = now;
-    const k = this.buffHandling || 1; // Ravenous: faster reload
+    const k = (this.buffHandling || 1) * (this.buffReload || 1); // Combat Stim, Focus: faster reload
     if (d.perRound) {
       // One round at a time; each one can be fired as soon as it's chambered.
       const n = Math.min(d.mag - this.mag, this.reserve);
@@ -140,7 +140,8 @@ export class Gun {
   }
 
   tick(owner, now, dt) {
-    this.stunned = owner.st?.stunUntil > now; // concussed: slower trigger, wilder spray
+    this.stunned = owner.st?.stunUntil > now; // concussed: slower trigger, wilder spray, no aiming down sights
+    if (this.stunned) { const t = concussT(owner, now); this.stunRate = t <= 0.1 ? 0.3 : t <= 0.9 ? 0.3 + 0.4 * (t - 0.1) / 0.8 : 0.7 + 0.3 * (t - 0.9) / 0.1; }
     this.hindered = owner.st?.hinderUntil > now; // Hindered: slower fire rate too
     if (this.def.melee) return this.tickMelee(owner, now);
     const d = this.def, a = this.alt, inp = owner.input;
@@ -178,7 +179,7 @@ export class Gun {
       this.zoomLevel = (this.zoomLevel + 1) % (a.levels.length + 1);
       this.adsWant = this.zoomLevel > 0;
     }
-    if (!ready) { this.adsWant = false; this.zoomLevel = 0; }
+    if (!ready || this.stunned) { this.adsWant = false; this.zoomLevel = 0; }
     const step = dt / (a.time || 0.2);
     this.adsT = clamp(this.adsT + clamp((this.adsWant ? 1 : 0) - this.adsT, -step, step), 0, 1);
 
