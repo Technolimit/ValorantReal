@@ -25,6 +25,8 @@ stop shooting when their target ducks behind a wall, and still shoot when they c
 team credits), weapon requests offline and online, and ultimate orbs; `--shots` saves pictures of the shop and an orb.
 `node tools/check-pullout.mjs [out-dir]` checks that a gun shows as soon as it's pulled out, with the weapon glow on, for default and skinned guns.
 `node tools/check-world.mjs` checks that the collision grid answers exactly like testing every box.
+`node tools/measure-abilities.mjs [--only <agent[:key],...>] [--json]` plays every ability through the controls on the Range
+and prints what it did (timings, where it went, damage and statuses on two bots), to compare with `VALORANT_SPECS.md`.
 `node tools/profile.mjs [seconds] [--dm] [--shadows on] [--scale 1] [--cpu] [--spikes] [--gpu]` plays a 5v5 (or with `--dm` a deathmatch) on Divide headless and reports
 the cost of a tick and a frame, draw calls and garbage (`--gpu` waits for each frame to finish drawing, so the render time includes the pixels). `node tools/profile-shop-open.mjs [rounds|dm]` times opening the buy menu in a match, the first time and after. `node tools/check-net-smooth.mjs` measures how smoothly another player moves
 on your screen online, with a jittery connection simulated.

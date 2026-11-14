@@ -165,7 +165,8 @@ function gasOn(kit, gr) {
   for (const p of gr.points) {
     if (gr.slab) gr.items.push(g.addSmoke(kit.owner, [p[0], p[1] + h / 2, p[2]], kit.now, { radius: 1, life: 999, color: 0x58c76a, kind: 'gas', slab: { dir: gr.slab, len: 2.1, th: SLAB.th, h } }));
     else gr.items.push(g.addSmoke(kit.owner, [p[0], p[1] + 1.3, p[2]], kit.now, { radius: gr.r, life: 999, color: 0x58c76a, kind: 'gas' }));
-    gr.items.push(g.addZone({ kind: 'fire', color: 0x58c76a, owner: kit.owner, pos: p, r: gr.r, life: 999, dps: 0, heal: 0, toxin: TOXIN, def: src('toxin', 'Toxin'), gas: true }, kit.now));
+    // A wall's gas covers its whole length: each emitter's stretch is a strip (zone.slab), so there are no gaps.
+    gr.items.push(g.addZone({ kind: 'fire', color: 0x58c76a, owner: kit.owner, pos: p, r: gr.r, life: 999, dps: 0, heal: 0, toxin: TOXIN, def: src('toxin', 'Toxin'), gas: true, slab: gr.slab ? { dir: gr.slab, len: 2.1, th: SLAB.th } : null }, kit.now));
   }
   g.emit('ability', { who: kit.owner, type: 'gas' });
   return true;
@@ -1084,11 +1085,14 @@ export const AGENTS = {
         name: 'Terror', desc: 'Unleash a wave of nightmare through walls, 20 m wide and 40 m long, rolling out zone by zone: everyone it reaches is marked (revealed, with a terror trail) and deafened for 8 s and loses 75 health to Decay (never lethal; it comes back).', points: 8,
         use(kit) {
           const o = kit.owner, g = o.game, from = [...o.pos], yaw = o.yaw, f = fwd2(yaw), N = 8, step = 40 / N;
+          const hit = new Set(); // once per enemy per cast
           o.st.castLockUntil = kit.now + 1;
           for (let i = 0; i < N; i++) later(kit, 0.1 + i * 0.325, () => {
             const a = [from[0] + f[0] * i * step, from[1] + 1, from[2] + f[1] * i * step], b = [a[0] + f[0] * step, a[1], a[2] + f[1] * step];
             g.emit('quakeLine', { from: a, to: b, width: 20, life: 0.6, color: 0xb07a9a });
             for (const c of g.inStrip(o, from, yaw, i * step, (i + 1) * step, 10)) {
+              if (hit.has(c)) continue;
+              hit.add(c);
               c.st.revealUntil = c.st.trailUntil = c.st.deafUntil = g.time + 8;
               g.decay(c, 75);
             }
@@ -2378,6 +2382,8 @@ export class Kit {
     // Rocket launcher
     if (this.launcher && o.input.firePressed && now >= this.launcher.ready) {
       this.launcher = null;
+      o.input.firePressed = o.input.fire = false; // the click fires the rocket only, not your gun as well
+      o.equip(o.slot, now, true); // and the gun takes its draw time to come back
       // The rocket flies straight at 25 m/s, no gravity, and goes off on the first wall or enemy it meets.
       const boom = (d) => { d.removed = true; g.explode(o, d.pos, 7, 150, 30, src('rocket', 'Finale'), 0xff8c2e, true, false, 4.5); };
       g.throwProj(o, 25, 0, { rule: 'stick', hitBodies: true, model: 'rocket', color: 0xff8c2e, fuse: 8, onStop: boom, onFuse: boom });

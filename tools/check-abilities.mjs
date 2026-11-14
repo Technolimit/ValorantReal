@@ -773,6 +773,35 @@ const checks = [
     __tick(g, 1.2); const moved = Math.hypot(p.pos[0] - from[0], p.pos[2] - from[2]) > 5, hurtAfter = hit(); // untouchable for 1.3 s
     return { pass: !hurtMid && noGun && moved && hurtAfter, hurtMid, noGun, moved, hurtAfter };
   }],
+  ['Finale fires only the rocket (not your gun on the same click) and the gun takes its draw time to come back', async () => {
+    const g = await __start({ agent: 'blitz' }), p = g.player, k = p.kit;
+    __place(g, p, 20); p.give('vandal'); p.equip('primary', g.time, true); __tick(g, 1.3);
+    k.ultPoints = 99; p.input.abX = true; g.tick(); __tick(g, 1.6);
+    const shots = p.stats.shots;
+    p.input.firePressed = true; p.input.fire = true; g.tick();
+    const rocket = g.devices.some(d => d.model === 'rocket'), drawing = p.gun.equipEnd > g.time;
+    for (let i = 0; i < 25; i++) { p.input.fire = true; g.tick(); }
+    return { pass: rocket && drawing && p.stats.shots === shots, rocket, drawing, gunShotsWithin02s: p.stats.shots - shots };
+  }],
+  ['Toxic Wall decays anyone crossing it, between emitters too; Terror decays each enemy once', async () => {
+    const cross = async (off) => {
+      const g = await __start({ agent: 'venom' }), p = g.player, k = p.kit, b = g.bots[0];
+      __place(g, p, 30); __tick(g, 0.5);
+      k.agent.abilities.e.use(k); __tick(g, 1.3);
+      const y = p.pos[1], x0 = p.pos[0], z = p.pos[2] - (14 + off); // emitters every 2 m from 2 m: 14 is on one, 15 between two
+      b.hp = 100; b.armor = 0;
+      for (let i = 0; i <= 154; i++) { b.pos = [x0 - 3 + i * 6 / 154, y, z]; b.prevPos = [...b.pos]; b.vel = [0, 0, 0]; g.tick(); }
+      return 100 - b.hp;
+    };
+    const onEmitter = await cross(0), between = await cross(1);
+    const g = await __start({ agent: 'nyx' }), p = g.player, k = p.kit, b = g.bots[0];
+    __place(g, p, 40); __tick(g, 0.5);
+    b.pos = [p.pos[0], p.pos[1], p.pos[2] - 9]; b.hp = 100; b.armor = 0;
+    k.ultPoints = 99; k.agent.abilities.x.use(k);
+    for (let i = 0; i < 128 * 3; i++) { b.pos[2] -= 6.75 / 128; b.prevPos = [...b.pos]; g.tick(); } // walking along with the wave
+    const terror = 100 - b.hp;
+    return { pass: onEmitter >= 10 && between >= 10 && Math.abs(terror - 75) < 0.5, onEmitter: +onEmitter.toFixed(1), betweenEmitters: +between.toFixed(1), terrorDecay: +terror.toFixed(1) };
+  }],
   ['Bot 5v5 (6 min): no errors, bots don\'t stay stuck on walls, bot flashes hit enemies more than their own side', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', botMode: 'fight' });
     const s = { flashes: 0, self: 0, ally: 0, enemy: 0, errors: 0, rounds: 0 };

@@ -250,9 +250,12 @@ export class Game {
       if (now >= z.until) continue;
       for (const c of this.combatants) {
         if (!c.alive) continue;
-        const d = hyp(c.pos[0] - z.pos[0], c.pos[2] - z.pos[2]);
-        const dy = c.pos[1] - z.pos[1];
-        if (d > zoneRadius(z, now) || dy < -1.0 || dy > 3) continue;
+        const dx = c.pos[0] - z.pos[0], dz = c.pos[2] - z.pos[2], dy = c.pos[1] - z.pos[1];
+        if (dy < -1.0 || dy > 3) continue;
+        if (z.slab) { // a strip (Toxic Wall): along its length, and touching its thickness
+          const sl = z.slab, along = dx * sl.dir[0] + dz * sl.dir[1], across = dz * sl.dir[0] - dx * sl.dir[1];
+          if (Math.abs(along) > sl.len / 2 || Math.abs(across) > sl.th / 2 + PLAYER.radius) continue;
+        } else if (hyp(dx, dz) > zoneRadius(z, now)) continue;
         const enemy = this.isEnemy(z.owner, c) || (z.burnsOwner && c === z.owner);
         if (z.armAt && now < z.armAt) continue; // orbital strike still charging
         const fx = this.affectable(c);
@@ -367,7 +370,7 @@ export class Game {
       if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
       const dx = c.pos[0] - from[0], dz = c.pos[2] - from[2];
       const along = dx * fx + dz * fz, across = dx * fz - dz * fx;
-      if (along >= d0 && along <= d1 && Math.abs(across) <= half && Math.abs(c.pos[1] - from[1]) <= up) out.push(c);
+      if (along >= d0 && along < d1 && Math.abs(across) <= half && Math.abs(c.pos[1] - from[1]) <= up) out.push(c); // half-open, so back-to-back strips never both take someone on the line between them
     }
     return out;
   }
