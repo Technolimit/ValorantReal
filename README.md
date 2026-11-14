@@ -90,7 +90,9 @@ Imported maps are sent to joiners too.
 ultimate costs, and how they recharge in 5v5 and in deathmatch.
 
 The numbers follow **[VALORANT_SPECS.md](VALORANT_SPECS.md)**, the patch 13.10 ability spec.
-**[VALORANT_DIFFERENCES.md](VALORANT_DIFFERENCES.md)** lists where a kit still differs from Valorant.
+**[VALORANT_DIFFERENCES.md](VALORANT_DIFFERENCES.md)** lists where a kit still differs from Valorant, and
+**[VISUAL_DIFFERENCES.md](VISUAL_DIFFERENCES.md)** how the game looks next to Valorant: movement, shooting and
+abilities.
 
 ## Maps (JSON, loaded with fetch)
 

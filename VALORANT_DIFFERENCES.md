@@ -43,3 +43,5 @@ These follow one reading of the spec, which may not be what Valorant does:
 ## Outside the kits
 
 - **Maps** are original layouts, not Valorant's.
+- **Looks.** How players, guns, effects and abilities look is compared in
+  [VISUAL_DIFFERENCES.md](VISUAL_DIFFERENCES.md).
