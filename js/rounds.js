@@ -670,16 +670,31 @@ export class RoundMode {
   }
 
   // Post-plant spots: open floor 7 to 20 m from the spike with a clear view of it, so the attackers can play
-  // off the spike from cover instead of standing on it. The ones closest to `near` come first.
-  postSpots(sp, near) {
+  // off the spike from cover instead of standing on it. Ranked the way players pick them: hidden from the ways the
+  // defenders come back in (a retake has to walk onto the site to find them), then close to `near`. Spots within
+  // 4 m of a teammate's (`taken`) are left out, so they spread into a crossfire.
+  postSpots(sp, near, taken = []) {
     const g = this.game, map = g.map, target = [sp.pos[0], sp.pos[1] + 0.3, sp.pos[2]];
     if (!this.plan.postCells || this.plan.postFor !== sp.plantedAt) {
       this.plan.postFor = sp.plantedAt;
+      // Where retakers come from: the routes from the defenders' spawn and from every hold spot to the spike,
+      // 12 to 30 m out from it, at eye height.
+      const goal = map.nearestWalkable(...map.cellOf(sp.pos[0], sp.pos[2])), entries = [];
+      const froms = [...map.teamSpawns.def.slice(0, 1).map(s => [s.x, 0, s.z]), ...Object.values(map.holds || {}).flat().map(h => h.pos)];
+      for (const f of froms) {
+        const path = map.findPath(map.nearestWalkable(...map.cellOf(f[0], f[2])), goal) || [];
+        for (let i = 0; i < path.length; i += 2) {
+          const [cx, cz] = path[i], c = map.cellCenter(cx, cz), q = [c.x, (map.heights[cz][cx] ?? 0) + PLAYER.standEye, c.z], d = dist(q, sp.pos);
+          if (d >= 12 && d <= 30 && !entries.some(e => dist(e, q) < 3)) entries.push(q);
+        }
+      }
       this.plan.postCells = map.walkable.map(([cx, cz]) => { const c = map.cellCenter(cx, cz); return [c.x, map.heights[cz][cx], c.z]; })
         .filter(p => { const d = dist(p, sp.pos); return d > 7 && d < 20 && Math.abs(p[1] - sp.pos[1]) < 4; })
-        .filter(p => g.world.lineOfSight([p[0], p[1] + 1.5, p[2]], target));
+        .filter(p => g.world.lineOfSight([p[0], p[1] + 1.5, p[2]], target))
+        .map(p => { const e = [p[0], p[1] + PLAYER.standEye, p[2]]; return { p, seen: entries.filter(q => g.world.lineOfSight(e, q)).length }; });
     }
-    return this.plan.postCells.slice().sort((a, b) => dist(a, near) - dist(b, near));
+    const score = (c) => c.seen * 4 + dist(c.p, near);
+    return this.plan.postCells.filter(c => !taken.some(t => dist(t, c.p) < 4)).sort((a, b) => score(a) - score(b)).map(c => c.p);
   }
 
   planBots(fresh) {
@@ -816,6 +831,12 @@ export class RoundMode {
           continue;
         }
         const role = plan.defRoles.get(b) || 'mid';
+        // Early in the round, the defender closest to an orb the defenders reach first goes and takes it, as players
+        // do; once it's taken (or it's getting late, or there's a call) they go back to their spot.
+        if (br.goal?.kind === 'orb' && (br.goal.orb.taken || !live || since > 25 || plan.defCall)) br.goal = null;
+        if (br.goal?.kind === 'orb') continue;
+        const orb = live && since < 12 && !plan.defCall && this.orbFor(b);
+        if (orb) { plan.orbRun.add(orb); br.goal = { kind: 'orb', orb, pos: [...orb.pos], look: map.teamSpawns.atk[0] ? [map.teamSpawns.atk[0].x, 0, map.teamSpawns.atk[0].z] : null }; continue; }
         // An aggressive defender looks for info in a lane when nothing has happened for a while.
         if (live && !plan.defCall && since > 16 && since < 40 && br.aggr > 0.65 && !plan.pushed.has(b) && !this.seenIn('def', role, 15)) {
           plan.pushed.add(b);
@@ -835,7 +856,7 @@ export class RoundMode {
         if (!br.goal || br.goal.kind !== 'hold' || rotating || fresh || (live && now >= (br.nextShift || 0))) {
           const k = fresh || !br.goal || rotating ? Math.max(0, idx) : Math.floor(Math.random() * list.length);
           const h = list[k % list.length];
-          br.goal = { kind: 'hold', role, pos: jitter(h.pos, 2), look: h.look, hold: true };
+          br.goal = { kind: 'hold', role, pos: Math.random() < 0.5 ? this.offAngle(h) : jitter(h.pos, 2), look: h.look, hold: true };
           // Hold it a good while (counted from when the round goes live) before moving to another spot:
           // walking across the site is how a defender gets caught in the open.
           br.nextShift = (this.phase === 'buy' ? this.phaseEnd : now) + 15 + Math.random() * 15;
@@ -847,8 +868,9 @@ export class RoundMode {
           // A defuse started: swing on it. Otherwise play off the spike from a spot that sees it.
           if (sp.defuser && br.goal?.kind === 'post' && now - br.lastSeen > 1) { br.lastSeenPos = [...sp.pos]; br.pushUntil = now + 1.5; }
           if (!br.goal || br.goal.kind !== 'post' || fresh || now >= (br.nextShift || 0)) {
-            const spots = this.postSpots(sp, b.pos);
-            const p = spots.length ? jitter(pick(spots.slice(0, 6)), 1) : [sp.pos[0] + (Math.random() - 0.5) * 16, 0, sp.pos[2] + (Math.random() - 0.5) * 16];
+            const taken = this.alive('atk').filter(c => c !== b && c.brain?.goal?.kind === 'post').map(c => c.brain.goal.pos);
+            const spots = this.postSpots(sp, b.pos, taken);
+            const p = spots.length ? jitter(pick(spots.slice(0, 3)), 1) : [sp.pos[0] + (Math.random() - 0.5) * 16, 0, sp.pos[2] + (Math.random() - 0.5) * 16];
             br.goal = { kind: 'post', pos: p, look: sp.pos, hold: true };
             br.nextShift = now + 9 + Math.random() * 8; // reposition during the post-plant
           }
@@ -899,6 +921,43 @@ export class RoundMode {
         } else if (!br.goal || br.goal.kind !== 'entry' || br.goal.site !== plan.site) br.goal = { kind: 'entry', site: plan.site, pos: siteSpot(plan.site, 0.9), look: siteSpot(plan.site, 0.2), hold: true };
       }
     }
+  }
+
+  // An off-angle for a hold: a floor spot within 4 m of it that still sees the angle it watches (at eye height), so a
+  // defender isn't always where attackers expect. Worked out once per hold.
+  offAngle(h) {
+    const g = this.game, map = g.map;
+    if (!h.off) {
+      const look = [h.look[0], (h.look[1] || h.pos[1]) + PLAYER.standEye, h.look[2]];
+      h.off = map.walkable.map(([cx, cz]) => { const c = map.cellCenter(cx, cz); return [c.x, map.heights[cz][cx] ?? 0, c.z]; })
+        .filter(p => dist(p, h.pos) < 4 && dist(p, h.pos) > 1 && Math.abs(p[1] - h.pos[1]) < 0.6 && g.world.lineOfSight([p[0], p[1] + PLAYER.standEye, p[2]], look));
+    }
+    return h.off.length ? [...pick(h.off)] : [...h.pos];
+  }
+
+  // An orb this defender should go for: not taken, nobody sent for it yet, one the defenders reach before the attackers
+  // (by walking distance from each team's barriers), and this defender the closest one to it who could use the point.
+  orbFor(b) {
+    const plan = this.plan, map = this.game.map;
+    if (!this.orbs?.length || !b.kit || b.kit.ultPoints >= b.kit.ultCost) return null;
+    plan.orbRun ||= new Set();
+    const len = (a, c) => (map.findPath(map.nearestWalkable(...map.cellOf(a[0], a[2])), map.nearestWalkable(...map.cellOf(c[0], c[2]))) || { length: 999 }).length;
+    plan.orbSide ||= new Map();
+    for (const o of this.orbs) {
+      if (o.taken || plan.orbRun.has(o)) continue;
+      if (!plan.orbSide.has(o)) {
+        // Whose orb: the team whose barriers are closer to it by walking, since each team can stand right at its
+        // barriers when the round starts.
+        const from = (team) => Math.min(999, ...(map.barriers || []).filter(b => b.team === team).map(b => len([(b.min[0] + b.max[0]) / 2, 0, (b.min[2] + b.max[2]) / 2], o.pos)));
+        plan.orbSide.set(o, from('def') < from('atk') ? 'def' : 'atk');
+      }
+      if (plan.orbSide.get(o) !== 'def') continue;
+      const mine = len(b.pos, o.pos);
+      if (mine > 25) continue; // about 50 m of walking: too far to leave a spot for
+      const closer = this.alive('def').some(c => c !== b && c.brain && c.kit && c.kit.ultPoints < c.kit.ultCost && c.brain.goal?.kind !== 'orb' && len(c.pos, o.pos) < mine);
+      if (!closer) return o;
+    }
+    return null;
   }
 
   // Attackers wait for the call out of the defenders' sight, like players stacking up behind the last corner

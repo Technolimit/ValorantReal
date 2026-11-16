@@ -186,7 +186,9 @@ export class Bot {
     // the assigned position — attackers almost always, defenders depending on temperament.
     const gl = this.goal, side = mode?.side(me), lsp = this.lastSeenPos, ago = now - this.lastSeen;
     // A free ultimate orb a few steps away and nobody around: go take it.
-    const orb = mode?.orbs && ago > 4 && !gl?.commit && me.kit && me.kit.ultPoints < me.kit.ultCost && mode.orbs.find(o => !o.taken && hyp(me.pos[0] - o.pos[0], me.pos[2] - o.pos[2]) < 10 && Math.abs(me.pos[1] - o.pos[1]) < 1.5);
+    // Sent for one by the team plan (an orb on our side of the map, early in the round): walk all the way to it.
+    const orbReach = gl?.kind === 'orb' ? 60 : 10;
+    const orb = mode?.orbs && ago > 4 && !gl?.commit && me.kit && me.kit.ultPoints < me.kit.ultCost && (gl?.kind === 'orb' ? (!gl.orb.taken && gl.orb) : mode.orbs.find(o => !o.taken && hyp(me.pos[0] - o.pos[0], me.pos[2] - o.pos[2]) < orbReach && Math.abs(me.pos[1] - o.pos[1]) < 1.5));
     if (orb) {
       if (mode.orbNear(me) === orb) { inp.use = true; return; }
       this.moveTo(orb.pos, now, dt);
@@ -486,7 +488,9 @@ export class Bot {
     if (this.clearFor !== gl) {
       this.clearFor = gl; this.clearT = new Map();
       const site = gl.site || g.mode?.zoneOf?.(gl.pos);
-      this.angles = (map.holds[site] || []).map(h => [h.pos[0], h.pos[1] + PLAYER.standEye, h.pos[2]]);
+      // Common angles, not the exact spots: a player knows roughly where defenders like to stand, and whether
+      // they'll be standing or crouched, not where they are.
+      this.angles = (map.holds[site] || []).map(h => [h.pos[0] + rand(-1.5, 1.5), h.pos[1] + (Math.random() < 0.3 ? PLAYER.standEye * 0.7 : PLAYER.standEye), h.pos[2] + rand(-1.5, 1.5)]);
       this.angle = null;
     }
     const eye = this.me.eye(), a = this.angle;
