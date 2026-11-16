@@ -64,22 +64,22 @@
       "bbb.hh......c.s.b####....####k.............kkk",
       "bbb.............b####.##.####kkkkkkkkkkk...kkk",
       "bbb...bbbbbbbbbbb####.##.####kkkkkkkkkkkhh.kkk",
-      "bbb.hhbbbbbbbbbbb####.##.####kkkkkkkkkkk...kkk",
-      "bbb...bbbbbbbbbbb####.##.####kkkkkkkkkkk...kkk",
-      "bbb...bbbbbbbbbbb####.##.####kkkkkkkkkkk...kkk",
-      "bbb...bbbbbbbbbbb####.##.####kkkkkkkkkkk..ckkk",
+      "bbb.hhbbbbbbbbbbb####....####kkkkkkkkkkk...kkk",
+      "bbb...bbbbbbbbbbb#####..#####kkkkkkkkkkk...kkk",
+      "bbb...bbbbbbbbbbb#####..#####kkkkkkkkkkk...kkk",
+      "bbb...bbbbbbbbbbb#####..#####kkkkkkkkkkk..ckkk",
       "bbbc..bbbbbbbbbbb####....####kkkkkkkkkkk...kkk",
       "bbb...bbbbbbbbbbb####....####kkkkkkkkkkk...kkk",
       "bbb............o..s........##kkkkkkkkkkk.s.kkk",
       "bbb.s......................##kkkkkkkkkkk...kkk",
-      "bbb...bbbbbbbbbbb####..s...##kkkkkkkkkkk...kkk",
-      "bbb...bbbbbbbbbbb####c.....##kkkkkk........kkk",
-      "bbb........bbbbbb####......##kkkkkkC....kkkkkk",
+      "bbbbbbbb...bbbbbb####..s...##kkkkkkkkkkk...kkk",
+      "bbbbbbbb...bbbbbb####c.....##kkkkkk........kkk",
+      "bbbbbbbb...bbbbbb####......##kkkkkkC....kkkkkk",
       "bbbbbb....Cbbbbbb####..##..##kkkkkk.....kkkkkk",
       "bbbbbb.....bbbbbb####..##.....o.......kkkkkkkk",
       "bbbbbbbb...bbbbbb####..........s......kkkkkkkk",
       "bbbbbbbb...bbbbbb####....####kkkkkk...kkkkkkkk",
-      "bbbbbbbb.c.bbbbbb####hh..####kkkkkk.c.kkkkkkkk",
+      "bbbbbbbb.c.bbbbbb######..####kkkkkk.c.kkkkkkkk",
       "bbbbbbbb.s.bbbbbb####....####kkkkkk.s.kkkkkkkk",
       "bbbbbbbb...bbbbbb####s...####kkkkkk...kkkkkkkk",
       "bbbbbbbb...bbbbbb####....####kkkkkk...kkkkkkkk",
@@ -135,5 +135,20 @@
     { "text": "B CROSS", "cell": [32, 35], "y": 0.02 },
     { "text": "A LOBBY", "cell": [11, 43], "y": 0.02 },
     { "text": "B LOBBY", "cell": [34, 43], "y": 0.02 }
-  ]
+  ],
+  "bots": {
+    "holds": {
+      "A": [{ "pos": [-33, 0, -13], "look": [-37, 0, 1] }, { "pos": [-21, 0, -23], "look": [-11, 0, -17] }, { "pos": [-23, 2, -29], "look": [-35, 0, -9] }],
+      "B": [{ "pos": [25, 0, -13], "look": [37, 0, -11] }, { "pos": [23, 0, -19], "look": [11, 0, -23] }, { "pos": [31, 0, -27], "look": [37, 0, -13] }],
+      "mid": [{ "pos": [1, 0, -29], "look": [3, 0, -9] }, { "pos": [-3, 0, -21], "look": [3, 0, -1] }]
+    },
+    "stage": {
+      "A": { "main": [[-29, 0, 9], [-25, 0, 7], [-29, 0, 15]], "mid": [[-1, 0, 17], [1, 0, 23], [-1, 0, 11]] },
+      "B": { "main": [[29, 0, 13], [29, 0, 15], [27, 0, 19]], "mid": [[-1, 0, 17], [7, 0, 19], [-1, 0, 11]] }
+    },
+    "buyStage": {
+      "A": { "main": [[-7, 0, 39], [-7, 0, 41], [-5, 0, 39]], "mid": [[-1, 0, 39], [1, 0, 39]] },
+      "B": { "main": [[9, 0, 39], [7, 0, 41], [9, 0, 41]], "mid": [[-1, 0, 39], [1, 0, 39]] }
+    }
+  }
 }
