@@ -118,7 +118,7 @@ export class Combatant {
     return this.inv[def.slot];
   }
 
-  equip(slot, now, force = false) {
+  equip(slot, now, force = false, dur) { // dur: draw time other than the gun's own (see Gun.onEquip)
     if (this.kit?.blades) { this.kit.bladesAway = this.kit.blades.left; this.kit.blades = null; } // switching weapons puts the blades away (X takes them back out)
     if (this.kit?.armed && !force) this.kit.armed = null; // ...and any ability you were holding
     if (this.kit?.highGear && !force) this.kit.highGear = null;
@@ -127,7 +127,7 @@ export class Combatant {
     if (old) old.onHolster();
     if (slot !== this.slot) this.prevSlot = this.slot;
     this.slot = slot;
-    this.inv[slot].onEquip(now);
+    this.inv[slot].onEquip(now, dur);
     this.game.emit('equip', { who: this, gun: this.inv[slot] });
     return true;
   }

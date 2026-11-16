@@ -74,8 +74,9 @@ export class Gun {
     return r;
   }
 
-  onEquip(now) {
-    this.equipEnd = now + this.def.equip / (this.buffHandling || 1); // Ravenous: faster draw
+  // dur: how long until it can fire; the gun's own draw time unless given (after an ability: its unequip time).
+  onEquip(now, dur) {
+    this.equipEnd = now + (dur ?? this.def.equip) / (this.buffHandling || 1); // Ravenous: faster draw
     this.nextFire = Math.max(this.nextFire, this.equipEnd);
     this.reloading = false;
     this.reloadStopped = -10;

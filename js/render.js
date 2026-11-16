@@ -652,7 +652,7 @@ export class Renderer {
       if (vm.swingAnim) { const sk = SKINS[vm.skin]; this.trails.play(vm.swingAnim.trail, { glow: sk?.glow?.color, accent: sk?.accent?.color, trim: sk?.trim?.color }); }
     });
     g.on('equip', ({ who, gun }) => {
-      if (who === g.player) { this.vm.equipStart = performance.now(); this.vm.equipDur = gun.def.equip * 1000; this.resetRecoil(); this.cycle = null; }
+      if (who === g.player) { this.vm.equipStart = performance.now(); this.vm.equipDur = Math.max(1, (gun.equipEnd - g.time) * 1000); this.resetRecoil(); this.cycle = null; }
     });
     g.on('kill', ({ victim, killer, def }) => {
       const ch = this.characters.get(victim);

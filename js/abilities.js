@@ -335,7 +335,7 @@ export const AGENTS = {
     passive: { name: 'Kindled', desc: 'Your own fire heals you instead of hurting you.' },
     abilities: {
       c: {
-        item: 'orb', name: 'Firebreak', desc: 'Hold the flame, then left click: a wall of fire races out 13 m ahead (20 m/s). Keep the button held and turn to bend it. It stands 8 s, blocks sight, burns enemies (30/s) and heals you (up to 50).', charges: 1, cooldown: 25, equip: 0.8,
+        item: 'orb', name: 'Firebreak', desc: 'Hold the flame, then left click: a wall of fire races out 13 m ahead (20 m/s). Keep the button held and turn to bend it. It stands 8 s, blocks sight, burns enemies (30/s) and heals you (up to 50).', charges: 1, cooldown: 25, equip: 0.8, unequip: 0.5,
         armHint: 'LEFT CLICK: CAST · KEEP HOLDING AND TURN TO BEND IT',
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
@@ -344,7 +344,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'grenade', name: 'Ember', desc: 'Hold a fireball: left click throws it, right click lobs it short. It drops after 1.5 s in the air and bursts on the ground into a pool of fire that spreads to 4.5 m and burns for 4 s (60/s to enemies; heals you, up to 50).', charges: 1, cooldown: 18, equip: 0.8,
+        item: 'grenade', name: 'Ember', desc: 'Hold a fireball: left click throws it, right click lobs it short. It drops after 1.5 s in the air and bursts on the ground into a pool of fire that spreads to 4.5 m and burns for 4 s (60/s to enemies; heals you, up to 50).', charges: 1, cooldown: 18, equip: 0.8, unequip: 0.7,
         armHint: 'LEFT CLICK: THROW · RIGHT CLICK: LOB', throw: 'c2',
         use(kit, mode) {
           const o = kit.owner, g = o.game;
@@ -355,7 +355,7 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'flash', name: 'Sunflare', desc: 'Hold a flare in your hand (no gun), then left click to curve it left or right click to curve it right. It bursts around the corner 0.7 s later, blinding anyone facing it for up to 1.5 s. In 5v5 one is free each round and two kills bring a used one back.', charges: 2, cooldown: 14, recharge: 'kills', equip: 0.8,
+        item: 'flash', name: 'Sunflare', desc: 'Hold a flare in your hand (no gun), then left click to curve it left or right click to curve it right. It bursts around the corner 0.7 s later, blinding anyone facing it for up to 1.5 s. In 5v5 one is free each round and two kills bring a used one back.', charges: 2, cooldown: 14, recharge: 'kills', equip: 0.8, unequip: 0.48,
         arm: true, armHint: 'LEFT CLICK: CURVE LEFT · RIGHT CLICK: CURVE RIGHT',
         use(kit, mode) {
           const o = kit.owner, g = o.game, eye = o.eye();
@@ -385,7 +385,7 @@ export const AGENTS = {
     blurb: 'Commands the dark from a distance: long-range smokes, a blinding wave, and he can step out of the shadows anywhere on the map.',
     abilities: {
       c: {
-        name: 'Rift', desc: 'Hold it: a marker shows where you will land (up to 15 m) and follows your aim. Left click to go; 0.7 s later you step through the shadows to it, and take another 0.5 s to arrive before you can shoot.', charges: 2, cooldown: 25, equip: 0.5,
+        name: 'Rift', desc: 'Hold it: a marker shows where you will land (up to 15 m) and follows your aim. Left click to go; 0.7 s later you step through the shadows to it, and take another 0.5 s to arrive before you can shoot.', charges: 2, cooldown: 25, equip: 0.5, unequip: 0.7,
         preview(kit) { return landing(kit.owner, 15); },
         use(kit) {
           const o = kit.owner, pos = target(kit, this);
@@ -396,7 +396,7 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Dread', desc: 'Send a wave of shadow straight ahead (20 m/s, 25 m) that passes through walls. Everyone it touches, teammates included, is nearsighted and deafened for 2 s.', charges: 1, cooldown: 30, equip: 1.1,
+        name: 'Dread', desc: 'Send a wave of shadow straight ahead (20 m/s, 25 m) that passes through walls. Everyone it touches, teammates included, is nearsighted and deafened for 2 s.', charges: 1, cooldown: 30, equip: 1.1, unequip: 0.7,
         use(kit) {
           const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           const end = [eye[0] + d[0] * 25, eye[1] + d[1] * 25, eye[2] + d[2] * 25];
@@ -417,7 +417,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Nightwalk', desc: 'Open the map and click anywhere. You fade out (untouchable) while a shade of you forms there; after 4 s you step out of it. Enemies who shoot the shade first cancel it and you stay where you were.', points: 7,
+        name: 'Nightwalk', desc: 'Open the map and click anywhere. You fade out (untouchable) while a shade of you forms there; after 4 s you step out of it. Enemies who shoot the shade first cancel it and you stay where you were.', points: 7, equip: 0.5, autoUse: true, unequip: 0.7,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -436,7 +436,7 @@ export const AGENTS = {
     blurb: 'A tracker who knows where you are before you do. Scouts with his drone and bolts, then shoots through the walls.',
     abilities: {
       c: {
-        name: 'Kestrel', desc: 'Hold the drone, left click to launch it. Fly it with WASD and your mouse for up to 7 s while your body stands exposed (damage to your body ends it). Left click fires a tracking dart (every 5 s): an enemy it hits is revealed in two pings.', charges: 1, cooldown: 40, item: 'device', equip: 0.9,
+        name: 'Kestrel', desc: 'Hold the drone, left click to launch it. Fly it with WASD and your mouse for up to 7 s while your body stands exposed (damage to your body ends it). Left click fires a tracking dart (every 5 s): an enemy it hits is revealed in two pings.', charges: 1, cooldown: 40, item: 'device', equip: 0.9, unequip: 0.7,
         use(kit) {
           const o = kit.owner, e = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           kit.pilot = o.game.addDevice({ kind: 'owl', owner: o, pos: [e[0] + d[0] * 0.8, e[1] + 0.3, e[2] + d[2] * 0.8], dir: d, life: 7, fly: true, dartReady: kit.now + 0.4 });
@@ -479,7 +479,7 @@ export const AGENTS = {
     blurb: 'An inventor who holds ground with machines: hidden swarm grenades, a hunting alarm bot, an automatic turret and a lockdown nobody walks out of.',
     abilities: {
       c: {
-        item: 'grenade', name: 'Hive', desc: 'Throw a swarm grenade (left click) or lob it short (right click); it hides where it lands. Once both are out — or you have none left — press C again to set them off: 0.5 s later, 45/s for 5 s in a 4.5 m radius.', charges: 2, cooldown: 40, equip: 0.74,
+        item: 'grenade', name: 'Hive', desc: 'Throw a swarm grenade (left click) or lob it short (right click); it hides where it lands. Once both are out — or you have none left — press C again to set them off: 0.5 s later, 45/s for 5 s in a 4.5 m radius.', charges: 2, cooldown: 40, equip: 0.74, unequip: 0.7,
         armHint: 'LEFT CLICK: THROW · RIGHT CLICK: LOB', throw: 'c2',
         use(kit, mode) {
           const o = kit.owner, g = o.game;
@@ -514,7 +514,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Clampdown', desc: 'Plant a device (200 HP) that charges for 13 s, then detains every enemy within 32 m for 8 s: they cannot fire or use abilities and can barely move.', points: 9,
+        name: 'Clampdown', desc: 'Plant a device (200 HP) that charges for 13 s, then detains every enemy within 32 m for 8 s: they cannot fire or use abilities and can barely move.', points: 9, equip: 0.8, unequip: 0.15,
         use(kit) {
           const o = kit.owner;
           o.game.addZone({ kind: 'lockdown', owner: o, pos: [...o.pos], r: 32, life: 13.1, armAt: kit.now + 13, dur: 8, slow: 0.833 }, kit.now); // detained: move x0.167
@@ -529,7 +529,7 @@ export const AGENTS = {
     blurb: 'A demolitions fanatic. Launches herself with satchels, clears corners with bots and bombs, and ends fights with a rocket.',
     abilities: {
       c: {
-        item: 'device', name: 'Boomer', desc: 'Deploy a bot that unpacks for 0.5 s, then rolls forward and bounces off walls. It locks onto the first enemy it sees ahead within 15 m and explodes 2.5 m from them: 80 within 2 m, down to 30 at 6 m. It lasts 5 s and has 60 HP.', charges: 1, cooldown: 35, equip: 1.1,
+        item: 'device', name: 'Boomer', desc: 'Deploy a bot that unpacks for 0.5 s, then rolls forward and bounces off walls. It locks onto the first enemy it sees ahead within 15 m and explodes 2.5 m from them: 80 within 2 m, down to 30 at 6 m. It lasts 5 s and has 60 HP.', charges: 1, cooldown: 35, equip: 1.1, unequip: 0.7,
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
           o.game.addDevice({ kind: 'boombot', owner: o, pos: [o.pos[0] + f[0] * 0.8, o.pos[1], o.pos[2] + f[1] * 0.8], dir: [f[0], 0, f[1]], life: 5 });
@@ -550,7 +550,7 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'paintshell', name: 'Splatter', desc: 'Throw a cluster grenade (left click) or lob it short (right click). It bounces, and 2 s after the throw explodes (55 within 2.5 m, down to 1 at 5.5 m), tossing out four bomblets that go off for 55 each. In 5v5 it comes back after two kills.', charges: 1, cooldown: 30, recharge: 'kills', equip: 0.8,
+        item: 'paintshell', name: 'Splatter', desc: 'Throw a cluster grenade (left click) or lob it short (right click). It bounces, and 2 s after the throw explodes (55 within 2.5 m, down to 1 at 5.5 m), tossing out four bomblets that go off for 55 each. In 5v5 it comes back after two kills.', charges: 1, cooldown: 30, recharge: 'kills', equip: 0.8, unequip: 0.7,
         armHint: 'LEFT CLICK: THROW · RIGHT CLICK: LOB', throw: 'c2',
         use(kit, mode) {
           const o = kit.owner, g = o.game;
@@ -589,7 +589,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'grenade', name: 'Napalm', desc: 'Fire an incendiary grenade from the launcher (29 m/s). It bounces off walls and bursts on the floor into a fire that spreads to 4.5 m and burns for 7 s (60/s).', charges: 1, cooldown: 25, equip: 1.1, throw: 'c3',
+        item: 'grenade', name: 'Napalm', desc: 'Fire an incendiary grenade from the launcher (29 m/s). It bounces off walls and bursts on the floor into a fire that spreads to 4.5 m and burns for 7 s (60/s).', charges: 1, cooldown: 25, equip: 1.1, throw: 'c3', unequip: 0.7,
         use(kit) {
           const o = kit.owner, g = o.game;
           toss(o, 'c3', { color: 0xff6a1a, onStop: (d) => {
@@ -599,7 +599,7 @@ export const AGENTS = {
         },
       },
       e: {
-        instant: true, name: 'Overcast', desc: 'Open the map and click up to three spots (one per charge) for sky smokes; press E again to call them in. Each lasts 19.25 s.', charges: 3, cooldown: 35, recharge: 'none',
+        name: 'Overcast', desc: 'Open the map and click up to three spots (one per charge) for sky smokes; press E again to call them in. Each lasts 19.25 s.', charges: 3, cooldown: 35, recharge: 'none', equip: 0.8, autoUse: true, unequip: 0.7,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -618,7 +618,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Sky Hammer', desc: 'Open the map and click a spot within 60 m: after 2 s a 9 m orbital strike burns it for 3 s (20 every 0.15 s), then shrinks away over 0.75 s.', points: 8,
+        name: 'Sky Hammer', desc: 'Open the map and click a spot within 60 m: after 2 s a 9 m orbital strike burns it for 3 s (20 every 0.15 s), then shrinks away over 0.75 s.', points: 8, equip: 0.74, autoUse: true, unequip: 1,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -642,7 +642,7 @@ export const AGENTS = {
     passive: { name: 'Fuel', desc: 'Gas drains fuel while on and refills while everything is off. Toxin decays enemies inside it.' },
     abilities: {
       c: {
-        item: 'grenade', name: 'Acid Vial', desc: 'Launch a vial (29 m/s) that bursts on the floor into a 4.5 m pool of acid for 6.5 s: 12.5/s, and Vulnerable (double damage, so 25/s) while you stand in it and for 2 s after.', charges: 2, cooldown: 25, equip: 0.8, throw: 'c3',
+        item: 'grenade', name: 'Acid Vial', desc: 'Launch a vial (29 m/s) that bursts on the floor into a 4.5 m pool of acid for 6.5 s: 12.5/s, and Vulnerable (double damage, so 25/s) while you stand in it and for 2 s after.', charges: 2, cooldown: 25, equip: 0.8, throw: 'c3', unequip: 0.7,
         use(kit) {
           const o = kit.owner, g = o.game;
           toss(o, 'c3', { color: 0x9be15d, onStop: (d) => {
@@ -652,7 +652,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'device', name: 'Miasma', desc: 'Throw a gas emitter (left click) or lob it short (right click). Where it lands it releases a 4.5 m toxic cloud; press Q again to switch the cloud off and on (uses fuel; 5.5 s before it can come back on).', charges: 1, cooldown: 0, equip: 0.8,
+        item: 'device', name: 'Miasma', desc: 'Throw a gas emitter (left click) or lob it short (right click). Where it lands it releases a 4.5 m toxic cloud; press Q again to switch the cloud off and on (uses fuel; 5.5 s before it can come back on).', charges: 1, cooldown: 0, equip: 0.8, unequip: 0.7,
         armHint: 'LEFT CLICK: THROW · RIGHT CLICK: LOB', throw: 'c2',
         use(kit, mode) {
           const o = kit.owner, g = o.game;
@@ -693,7 +693,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Nest', desc: 'Flood the area around you with a toxic cloud that spreads to 9 m over 5 s. It lasts as long as you stay inside it, and 8 s after you leave. Enemies inside are nearsighted (8 m) and lose 50 health to Decay at once, then 10 a second; you can see through it and enemies inside are outlined for you.', points: 9,
+        name: 'Nest', desc: 'Flood the area around you with a toxic cloud that spreads to 9 m over 5 s. It lasts as long as you stay inside it, and 8 s after you leave. Enemies inside are nearsighted (8 m) and lose 50 health to Decay at once, then 10 a second; you can see through it and enemies inside are outlined for you.', points: 9, equip: 0.5, unequip: 1.35,
         use(kit) {
           const o = kit.owner, g = o.game, p = [...o.pos];
           kit.nest = g.addSmoke(o, [p[0], p[1] + 2, p[2]], kit.now, { radius: 1.5, life: 8, color: 0x3f9a50, kind: 'gas', nest: true });
@@ -710,7 +710,7 @@ export const AGENTS = {
     passive: { name: 'Soul Harvest', desc: 'An enemy who dies within 3 s of taking your damage drops a soul orb for 3 s.' },
     abilities: {
       c: {
-        name: 'Glare', desc: 'Hold the eye: a marker shows where it will go, 10 m straight ahead, through walls. Left click to cast it (22.5 m/s). It opens 0.4 s after it arrives and nearsights every enemy who looks at it for the 2 s it lasts. Enemies can shoot it out (60 HP).', charges: 2, cooldown: 20, equip: 0.77,
+        name: 'Glare', desc: 'Hold the eye: a marker shows where it will go, 10 m straight ahead, through walls. Left click to cast it (22.5 m/s). It opens 0.4 s after it arrives and nearsights every enemy who looks at it for the 2 s it lasts. Enemies can shoot it out (60 HP).', charges: 2, cooldown: 20, equip: 0.77, unequip: 0.5,
         smokePreview: 0.45,
         preview(kit) { return glareSpot(kit.owner); },
         use(kit) {
@@ -756,7 +756,7 @@ export const AGENTS = {
     blurb: 'Breaks positions open from the other side of the wall: blasts, flashes and shockwaves that go straight through cover.',
     abilities: {
       c: {
-        name: 'Rubble', desc: 'Fire a charge at a wall up to 35 m ahead (25 m/s). 2.2 s later it blasts the far side three times, 0.6 s apart: 80 damage each to everyone in a strip 10 m deep and 6 m wide behind the wall.', charges: 1, cooldown: 25, equip: 0.9,
+        name: 'Rubble', desc: 'Fire a charge at a wall up to 35 m ahead (25 m/s). 2.2 s later it blasts the far side three times, 0.6 s apart: 80 damage each to everyone in a strip 10 m deep and 6 m wide behind the wall.', charges: 1, cooldown: 25, equip: 0.9, unequip: 0.7,
         use(kit) {
           const o = kit.owner, g = o.game, p = throughWall(o, 35, 0.3);
           if (!p) return false;
@@ -771,7 +771,7 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Glimmer', desc: 'Fire a flash charge at a wall up to 35 m ahead (24 m/s). It passes through and bursts on the far side 0.5 s later, blinding for up to 2.25 s.', charges: 2, cooldown: 18, equip: 1.1,
+        name: 'Glimmer', desc: 'Fire a flash charge at a wall up to 35 m ahead (24 m/s). It passes through and bursts on the far side 0.5 s later, blinding for up to 2.25 s.', charges: 2, cooldown: 18, equip: 1.1, unequip: 0.7,
         use(kit) {
           const o = kit.owner, g = o.game, p = throughWall(o, 35, 2.5);
           if (!p) return false;
@@ -792,7 +792,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Aftershock Wave', desc: 'Send a seismic charge rolling out through every wall: a strip 18 m wide that starts 8 m ahead of you and runs 30 m, going off zone by zone (the first 0.9 s after the cast, then every 0.255 s). Enemies in a zone when it goes are knocked up and concussed for 4 s.', points: 8,
+        name: 'Aftershock Wave', desc: 'Send a seismic charge rolling out through every wall: a strip 18 m wide that starts 8 m ahead of you and runs 30 m, going off zone by zone (the first 0.9 s after the cast, then every 0.255 s). Enemies in a zone when it goes are knocked up and concussed for 4 s.', points: 8, equip: 1.1,
         use(kit) {
           const o = kit.owner, g = o.game, from = [...o.pos], yaw = o.yaw, f = fwd2(yaw), N = 8, step = 30 / N;
           o.st.castLockUntil = kit.now + 1; // an ultimate cast holds your aim and feet for a second
@@ -813,7 +813,7 @@ export const AGENTS = {
     passive: { name: 'Energy', desc: 'Overclock runs on energy: a full bar is 16 s of sprinting and takes 60 s to refill.' },
     abilities: {
       c: {
-        instant: true, name: 'Static Lanes', desc: 'Instantly fire two parallel walls of static, 3.5 m apart and 6.75 m high, from 1.5 m behind you to 45 m ahead, through walls. They block sight for 4 s.', charges: 1, cooldown: 25,
+        name: 'Static Lanes', desc: 'Instantly fire two parallel walls of static, 3.5 m apart and 6.75 m high, from 1.5 m behind you to 45 m ahead, through walls. They block sight for 4 s.', charges: 1, cooldown: 25, equip: 0.3, autoUse: true, unequip: 0.7,
         use(kit) {
           const o = kit.owner, g = o.game, f = fwd2(o.yaw), r = right(o.yaw), H = 6.75;
           for (const side of [-1.75, 1.75]) {
@@ -840,7 +840,7 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Overclock', desc: 'Put your gun away and sprint (9.1 m/s) while energy lasts; press E again to stop. Right click mid-sprint, while moving, to slide 7 m (12 m/s for 0.6 s): the slide ends the sprint and your gun comes back out (one slide per round in 5v5, back after two kills; one every 8 s in deathmatch).', charges: 1, cooldown: 0, instant: true, equip: 0.6,
+        name: 'Overclock', desc: 'Put your gun away and sprint (9.1 m/s) while energy lasts; press E again to stop. Right click mid-sprint, while moving, to slide 7 m (12 m/s for 0.6 s): the slide ends the sprint and your gun comes back out (one slide per round in 5v5, back after two kills; one every 8 s in deathmatch).', charges: 1, cooldown: 0, equip: 0.6, autoUse: true, noGun: true,
         use(kit) {
           if (kit.energy < 2) return false;
           kit.highGear = { slideAt: kit.slideAt || 0 };
@@ -874,14 +874,14 @@ export const AGENTS = {
     blurb: 'A trickster who fights from another dimension. Decoys, ricochet flashes and a rift to step through — or vanish entirely.',
     abilities: {
       c: {
-        name: 'Double', desc: 'Send out a decoy of yourself that walks forward for 10 s. An enemy who shoots it sets it off: it bursts into a flash that blinds for up to 2 s.', charges: 1, cooldown: 30, equip: 0.8,
+        name: 'Double', desc: 'Send out a decoy of yourself that walks forward for 10 s. An enemy who shoots it sets it off: it bursts into a flash that blinds for up to 2 s.', charges: 1, cooldown: 30, equip: 0.8, unequip: 0.7,
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
           o.game.addDevice({ kind: 'decoy', owner: o, pos: [o.pos[0] + f[0], o.pos[1], o.pos[2] + f[1]], dir: [f[0], 0, f[1]], life: 10, armAt: kit.now + 0.7 });
         },
       },
       q: {
-        name: 'Rebound', desc: 'Throw a flash (29 m/s) that bounces off the first surface it hits and bursts 0.7 s later (or 2 s after the throw if it hits nothing), blinding anyone facing it for up to 1.5 s.', charges: 1, cooldown: 18, equip: 0.8, throw: 'c3',
+        name: 'Rebound', desc: 'Throw a flash (29 m/s) that bounces off the first surface it hits and bursts 0.7 s later (or 2 s after the throw if it hits nothing), blinding anyone facing it for up to 1.5 s.', charges: 1, cooldown: 18, equip: 0.8, throw: 'c3', unequip: 0.5,
         use(kit) {
           const o = kit.owner, g = o.game;
           toss(o, 'c3', { rule: 'bounce', bounces: 1, bounce: 0.6, friction: 0.9, color: 0x8f9bff, fuse: 2,
@@ -890,7 +890,7 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Riftwalk', desc: 'Hold the rift: left click sends it along the ground (8 m/s), right click leaves it where you stand. Press E again any time in the next 20 s to teleport to it (0.5 s, untouchable on the way). Enemies can shoot it (60 HP). In 5v5 one is free each round, a second costs 150, and two kills bring a used one back.', charges: 2, cooldown: 30, recharge: 'kills', equip: 0.8,
+        name: 'Riftwalk', desc: 'Hold the rift: left click sends it along the ground (8 m/s), right click leaves it where you stand. Press E again any time in the next 20 s to teleport to it (0.5 s, untouchable on the way). Enemies can shoot it (60 HP). In 5v5 one is free each round, a second costs 150, and two kills bring a used one back.', charges: 2, cooldown: 30, recharge: 'kills', equip: 0.8, unequip: 0.7,
         armHint: 'LEFT CLICK: SEND IT · RIGHT CLICK: LEAVE IT HERE',
         use(kit, mode) {
           const o = kit.owner, f = fwd2(o.yaw), still = mode === 'right';
@@ -911,7 +911,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Phase Out', desc: 'Slip into another dimension for 10 s: enemies can’t see or hurt you, but you can’t shoot. Press X to come back early.', points: 8,
+        name: 'Phase Out', desc: 'Slip into another dimension for 10 s: enemies can’t see or hurt you, but you can’t shoot. Press X to come back early.', points: 8, equip: 0.8,
         use(kit) {
           const o = kit.owner;
           kit.drift = { until: kit.now + 10 };
@@ -940,14 +940,14 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Stalker', desc: 'Hold the tiger, left click to send it. You see through its eyes and steer with the mouse for up to 6 s (6.4 m/s, 80 HP). Left click makes it leap up to 12 m: the first enemy it hits takes 30, and everyone within 3.5 m of where it lands is concussed for up to 4 s.', charges: 1, cooldown: 40, equip: 0.8,
+        name: 'Stalker', desc: 'Hold the tiger, left click to send it. You see through its eyes and steer with the mouse for up to 6 s (6.4 m/s, 80 HP). Left click makes it leap up to 12 m: the first enemy it hits takes 30, and everyone within 3.5 m of where it lands is concussed for up to 4 s.', charges: 1, cooldown: 40, equip: 0.8, unequip: 0.7,
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
           kit.pilot = o.game.addDevice({ kind: 'tiger', owner: o, pos: [o.pos[0] + f[0], o.pos[1], o.pos[2] + f[1]], dir: [f[0], 0, f[1]], life: 6, steer: true });
         },
       },
       e: {
-        name: 'Lantern Hawk', desc: 'Hold the hawk, left click to release it; it flies where you aim (18 m/s, 60 HP). Press E again to make it burst 0.3 s later, blinding anyone facing it for 1 to 2.25 s: the full time once it has flown 0.75 s (it bursts on its own after 2 s). In 5v5 one is free each round and a second costs 250.', charges: 2, cooldown: 50, equip: 0.8,
+        name: 'Lantern Hawk', desc: 'Hold the hawk, left click to release it; it flies where you aim (18 m/s, 60 HP). Press E again to make it burst 0.3 s later, blinding anyone facing it for 1 to 2.25 s: the full time once it has flown 0.75 s (it bursts on its own after 2 s). In 5v5 one is free each round and a second costs 250.', charges: 2, cooldown: 50, equip: 0.8, unequip: 0.85,
         use(kit) {
           const o = kit.owner, e = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           kit.hawk = o.game.addDevice({ kind: 'hawk', owner: o, pos: [e[0] + d[0], e[1], e[2] + d[2]], dir: d, life: 2, steer: true, fly: true, speed: 18 });
@@ -963,7 +963,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Hunters', desc: 'Release three seekers (120 HP each) that track the three closest enemies for up to 15 s, through walls. Each one that reaches its target nearsights them for 3 s.', points: 8,
+        name: 'Hunters', desc: 'Release three seekers (120 HP each) that track the three closest enemies for up to 15 s, through walls. Each one that reaches its target nearsights them for 3 s.', points: 8, equip: 0.8, unequip: 0.55,
         use(kit) {
           const o = kit.owner, g = o.game;
           const targets = g.combatants.filter(c => c.alive && g.isEnemy(o, c)).sort((a, b) => hyp(a.pos[0] - o.pos[0], a.pos[2] - o.pos[2]) - hyp(b.pos[0] - o.pos[0], b.pos[2] - o.pos[2])).slice(0, 3);
@@ -979,7 +979,7 @@ export const AGENTS = {
     blurb: 'An information broker. Wires, cages and a camera tell him everything — and his ultimate reads the minds of the fallen.',
     abilities: {
       c: {
-        item: 'device', name: 'Tripline', desc: 'Hold the wire, aim at a wall (up to 20 m) and left click to stretch it across the gap at that height (up to 15 m); it arms 1.5 s later. An enemy who crosses it is tethered and slowed by half. 0.7 s later it zaps them: slowed for another second and revealed for as long as it holds them. Tearing free (6.2 m) costs a zap too; shooting the wire (20 HP) frees them. It resets and can catch again.', charges: 2, cooldown: 30, equip: 0.8,
+        item: 'device', name: 'Tripline', desc: 'Hold the wire, aim at a wall (up to 20 m) and left click to stretch it across the gap at that height (up to 15 m); it arms 1.5 s later. An enemy who crosses it is tethered and slowed by half. 0.7 s later it zaps them: slowed for another second and revealed for as long as it holds them. Tearing free (6.2 m) costs a zap too; shooting the wire (20 HP) frees them. It resets and can catch again.', charges: 2, cooldown: 30, equip: 0.8, unequip: 0.7,
         use(kit) {
           const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           const hit = g.world.raycast(eye, d, 20);
@@ -1048,7 +1048,7 @@ export const AGENTS = {
     blurb: 'Hunts with nightmares. Her prowlers chase down whoever she’s looking at, her orb holds them in place, and her terror wave marks everyone it touches.',
     abilities: {
       c: {
-        name: 'Hound', desc: 'Send a prowler (10 m/s, 60 HP) that follows your crosshair for 2.5 s. It chases the first enemy it sees within 15 m, or one marked by a terror trail, and bites from 2.5 m: nearsighted for 2.75 s.', charges: 2, cooldown: 25, equip: 1.1,
+        name: 'Hound', desc: 'Send a prowler (10 m/s, 60 HP) that follows your crosshair for 2.5 s. It chases the first enemy it sees within 15 m, or one marked by a terror trail, and bites from 2.5 m: nearsighted for 2.75 s.', charges: 2, cooldown: 25, equip: 1.1, unequip: 0.7,
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
           o.game.addDevice({ kind: 'prowler', owner: o, pos: [o.pos[0] + f[0], o.pos[1], o.pos[2] + f[1]], dir: [f[0], 0, f[1]], life: 2.5, steer: true });
@@ -1082,7 +1082,7 @@ export const AGENTS = {
         reuse: dropOrbNow,
       },
       x: {
-        name: 'Terror', desc: 'Unleash a wave of nightmare through walls, 20 m wide and 40 m long, rolling out zone by zone: everyone it reaches is marked (revealed, with a terror trail) and deafened for 8 s and loses 75 health to Decay (never lethal; it comes back).', points: 8,
+        name: 'Terror', desc: 'Unleash a wave of nightmare through walls, 20 m wide and 40 m long, rolling out zone by zone: everyone it reaches is marked (revealed, with a terror trail) and deafened for 8 s and loses 75 health to Decay (never lethal; it comes back).', points: 8, unequip: 1,
         use(kit) {
           const o = kit.owner, g = o.game, from = [...o.pos], yaw = o.yaw, f = fwd2(yaw), N = 8, step = 40 / N;
           const hit = new Set(); // once per enemy per cast
@@ -1108,7 +1108,7 @@ export const AGENTS = {
     blurb: 'A healer who shapes ice. Walls off a lane, slows a push, patches herself up — and refuses to stay down.',
     abilities: {
       c: {
-        item: 'orb', name: 'Frost Wall', desc: 'Hold the crystal: a preview shows the wall where you aim (15 m). Right click rotates it, left click raises a solid ice wall of four pieces (10.4 m × 2.6 m) for 40 s. Each piece has 400 HP, hardening to 600 after 2 s, and enemies can shoot it down. You can stand on it — raise it under yourself to boost up.', charges: 1, cooldown: 40, rotate: true, equip: 0.8,
+        item: 'orb', name: 'Frost Wall', desc: 'Hold the crystal: a preview shows the wall where you aim (15 m). Right click rotates it, left click raises a solid ice wall of four pieces (10.4 m × 2.6 m) for 40 s. Each piece has 400 HP, hardening to 600 after 2 s, and enemies can shoot it down. You can stand on it — raise it under yourself to boost up.', charges: 1, cooldown: 40, rotate: true, equip: 0.8, unequip: 0.7,
         preview(kit) { const o = kit.owner; return aimPoint(o, 15, { floor: true, back: 0.4, bodies: false }); },
         wallPreview: { half: 5.2, h: 2.6, th: 0.4 },
         use(kit) {
@@ -1117,14 +1117,14 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'orb', name: 'Chill', desc: 'Hold the orb, left click to throw it (29 m/s). It shatters on the floor into a field up to 9 m across the ground for 7 s that slows enemies by 50%.', charges: 2, cooldown: 25, equip: 0.5, throw: 'c3',
+        item: 'orb', name: 'Chill', desc: 'Hold the orb, left click to throw it (29 m/s). It shatters on the floor into a field up to 9 m across the ground for 7 s that slows enemies by 50%.', charges: 2, cooldown: 25, equip: 0.5, throw: 'c3', unequip: 0.4,
         use(kit) {
           const o = kit.owner, g = o.game;
           toss(o, 'c3', { color: 0x9ff3ff, onStop: (d) => { d.removed = true; g.addZone({ kind: 'slowfield', color: 0x9ff3ff, owner: o, pos: floorUnder(g, d.pos), r: 9, spread: 12, life: 7, slowField: 0.5 }, g.time); } });
         },
       },
       e: {
-        item: 'orb', name: 'Mend', desc: 'Hold the healing orb. Aim at a teammate you can see (20 m) and left click to heal them 60 HP over 5 s (30 s cooldown); aim anywhere else to heal yourself 100 HP over 5 s (45 s cooldown).', charges: 1, cooldown: 45, equip: 0.5,
+        item: 'orb', name: 'Mend', desc: 'Hold the healing orb. Aim at a teammate you can see (20 m) and left click to heal them 60 HP over 5 s (30 s cooldown); aim anywhere else to heal yourself 100 HP over 5 s (45 s cooldown).', charges: 1, cooldown: 45, equip: 0.5, unequip: 0.7,
         use(kit) {
           const o = kit.owner, ally = allyInView(kit, { range: 20 });
           if (ally && ally.hp < PLAYER.hp) { healAlly(ally, 60, 5); kit.ready.e ||= kit.now + 30; o.game.emit('ability', { who: ally, type: 'heal' }); return; } // 13.10: 30 s after healing a teammate
@@ -1134,7 +1134,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Second Dawn', desc: 'Look at a fallen teammate’s body (12 m) and press X: after 3 s of channelling they rise where they fell with full health. They can’t be hurt for 2 s, and take 1.3 s to get moving.', points: 7,
+        name: 'Second Dawn', desc: 'Look at a fallen teammate’s body (12 m) and press X: after 3 s of channelling they rise where they fell with full health. They can’t be hurt for 2 s, and take 1.3 s to get moving.', points: 7, equip: 0.8, unequip: 1,
         use(kit) {
           const o = kit.owner, g = o.game, ally = allyInView(kit, { dead: true, range: 12, maxDeg: 18 });
           if (!ally || !g.mode) return false;
@@ -1255,7 +1255,7 @@ export const AGENTS = {
         reuse(kit) { return toggleAbilityGun(kit, 'headhunter'); },
       },
       e: {
-        item: 'device', name: 'Anchor', desc: 'Hold the anchor, left click to place it on the floor (8.5 m). Press E again anywhere within 18 m of it to teleport back (1.3 s, invulnerable on the way; 30 s cooldown between teleports). Enemies can shoot it (50 HP).', charges: 1, cooldown: 0,
+        item: 'device', name: 'Anchor', desc: 'Hold the anchor, left click to place it on the floor (8.5 m). Press E again anywhere within 18 m of it to teleport back (1.3 s, invulnerable on the way; 30 s cooldown between teleports). Enemies can shoot it (50 HP).', charges: 1, cooldown: 0, unequip: 1.2,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 8.5, { floor: true, back: 0.6 });
           if (kit.anchor) kit.anchor.removed = true;
@@ -1288,7 +1288,7 @@ export const AGENTS = {
     blurb: 'Bends the sea to her will: walls of water that run through the map, a shielding cove and a crashing wave.',
     abilities: {
       c: {
-        item: 'orb', name: 'Squall', desc: 'Hold the water, left click to throw it (29 m/s). It bursts into a whirlpool where it lands, and 0.6 s later every enemy within 6 m is nearsighted for 2 s, seen or not.', charges: 1, cooldown: 30, equip: 0.8, throw: 'c3',
+        item: 'orb', name: 'Squall', desc: 'Hold the water, left click to throw it (29 m/s). It bursts into a whirlpool where it lands, and 0.6 s later every enemy within 6 m is nearsighted for 2 s, seen or not.', charges: 1, cooldown: 30, equip: 0.8, throw: 'c3', unequip: 0.4,
         use(kit) {
           const o = kit.owner, g = o.game;
           toss(o, 'c3', { color: 0x2fb3a8, onStop: (d) => {
@@ -1301,7 +1301,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'orb', name: 'Riptide', desc: 'Hold the water, then left click: a wall of water 8 m high races forward along the ground (20 m/s, up to 60 m), through walls. Keep the button held and turn to steer it; right click stops it early. It stands 15 s, blocks sight and slows whoever crosses it.', charges: 1, cooldown: 40, equip: 0.6,
+        item: 'orb', name: 'Riptide', desc: 'Hold the water, then left click: a wall of water 8 m high races forward along the ground (20 m/s, up to 60 m), through walls. Keep the button held and turn to steer it; right click stops it early. It stands 15 s, blocks sight and slows whoever crosses it.', charges: 1, cooldown: 40, equip: 0.6, unequip: 0.6,
         armHint: 'LEFT CLICK: CAST · KEEP HOLDING AND TURN TO STEER · RIGHT CLICK STOPS IT',
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
@@ -1321,7 +1321,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Undertow', desc: 'Send a tall wave of water rolling out ahead of you through walls: 28 m wide, 8 m/s, for 40 m. It blocks sight as it goes, and every enemy it washes over is nearsighted for 3 s.', points: 7,
+        name: 'Undertow', desc: 'Send a tall wave of water rolling out ahead of you through walls: 28 m wide, 8 m/s, for 40 m. It blocks sight as it goes, and every enemy it washes over is nearsighted for 3 s.', points: 7, equip: 0.8,
         use(kit) {
           const o = kit.owner, g = o.game, f = fwd2(o.yaw), r = right(o.yaw);
           o.st.castLockUntil = kit.now + 1;
@@ -1352,7 +1352,7 @@ export const AGENTS = {
     blurb: 'A cold, focused fixer. Pushes a bullet-proof wall into fights, shields himself on the kill, and drags one target into a private arena.',
     abilities: {
       c: {
-        item: 'device', name: 'Push Wall', desc: 'Hold the barrier: left click pushes a wall (5.2 m × 3 m) forward at 3.6 m/s for 3.5 s, right click at half that speed. It blocks bullets and sight and can’t be broken, but players can walk through it; it stops at walls.', charges: 1, cooldown: 30, equip: 0.8,
+        item: 'device', name: 'Push Wall', desc: 'Hold the barrier: left click pushes a wall (5.2 m × 3 m) forward at 3.6 m/s for 3.5 s, right click at half that speed. It blocks bullets and sight and can’t be broken, but players can walk through it; it stops at walls.', charges: 1, cooldown: 30, equip: 0.8, unequip: 0.5,
         armHint: 'LEFT CLICK: PUSH · RIGHT CLICK: PUSH SLOWLY',
         use(kit, mode) {
           const o = kit.owner, f = fwd2(o.yaw);
@@ -1363,7 +1363,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'orb', name: 'Sever', desc: 'Hold the bolt, left click to fire it straight ahead (22.5 m/s, 29.5 m), through walls. Every enemy within 3 m of it as it passes is Vulnerable (double damage) for 4 s.', charges: 1, cooldown: 20, equip: 0.8,
+        item: 'orb', name: 'Sever', desc: 'Hold the bolt, left click to fire it straight ahead (22.5 m/s, 29.5 m), through walls. Every enemy within 3 m of it as it passes is Vulnerable (double damage) for 4 s.', charges: 1, cooldown: 20, equip: 0.8, unequip: 0.5,
         use(kit) {
           const o = kit.owner, g = o.game, e = o.eye(), d = dirFromAngles(o.yaw, o.pitch), end = [e[0] + d[0] * 29.5, e[1] + d[1] * 29.5, e[2] + d[2] * 29.5];
           g.emit('throw', { who: o, from: e, to: end, time: 29.5 / 22.5, color: 0x9b5cff, wave: true });
@@ -1380,7 +1380,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Duel', desc: 'Send a column of energy ahead of you (14 m wide, through walls, 40 m over 4 s, starting 0.8 s after the cast). You and the first enemy it reaches are pulled into a sealed arena: 1.5 s to face off, then up to 13 s to fight. Whoever survives is sent back.', points: 7,
+        name: 'Duel', desc: 'Send a column of energy ahead of you (14 m wide, through walls, 40 m over 4 s, starting 0.8 s after the cast). You and the first enemy it reaches are pulled into a sealed arena: 1.5 s to face off, then up to 13 s to fight. Whoever survives is sent back.', points: 7, equip: 1.1, unequip: 0.8,
         use(kit) {
           const o = kit.owner, g = o.game, f = fwd2(o.yaw), from = [o.pos[0], o.pos[1] + 1, o.pos[2]];
           if (g.contract) return false;
@@ -1408,14 +1408,14 @@ export const AGENTS = {
     passive: { name: 'Refraction', desc: 'Refract comes back after two kills instead of on a timer.' },
     abilities: {
       c: {
-        item: 'grenade', name: 'Saturate', desc: 'Hold a cluster of light, left click to throw it (29 m/s). It drops straight down after 1 s in the air and bursts where it lands: everyone within 6 m, you and teammates included, is Hindered for 3 s (30% slower, lower jumps, 20% slower fire rate).', charges: 1, cooldown: 30, throw: 'c3',
+        item: 'grenade', name: 'Saturate', desc: 'Hold a cluster of light, left click to throw it (29 m/s). It drops straight down after 1 s in the air and bursts where it lands: everyone within 6 m, you and teammates included, is Hindered for 3 s (30% slower, lower jumps, 20% slower fire rate).', charges: 1, cooldown: 30, throw: 'c3', unequip: 0.3,
         use(kit) {
           const o = kit.owner, g = o.game;
           toss(o, 'c3', { color: 0xffe680, drop: { at: 1, g: 2.5 }, onStop: (d) => { d.removed = true; g.pulse(o, [d.pos[0], d.pos[1] + 0.8, d.pos[2]], 6, 'hinder', 3, 0xffe680, false, { all: true }); } });
         },
       },
       q: {
-        name: 'Lightspeed', desc: 'Hold the light: left click dashes twice, right click once. Each dash is about 9 m in 0.45 s, the way you are moving; the first also carries you upward.', charges: 1, cooldown: 25, equip: 0.8,
+        name: 'Lightspeed', desc: 'Hold the light: left click dashes twice, right click once. Each dash is about 9 m in 0.45 s, the way you are moving; the first also carries you upward.', charges: 1, cooldown: 25, equip: 0.8, unequip: 0.2,
         armHint: 'LEFT CLICK: TWO DASHES · RIGHT CLICK: ONE',
         use(kit, mode) {
           const o = kit.owner;
@@ -1488,7 +1488,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'grenade', name: 'Sticky Charge', desc: 'Hold the charge: left click throws it (41 m/s) to stick to the first thing it hits, right click lets it bounce once first. 0.8 s after it sticks it bursts: 35 damage within 1.25 m, down to 20 at 5.25 m, and everyone caught is concussed for 2.5 s.', charges: 1, cooldown: 25, equip: 0.5, throw: 'c5',
+        item: 'grenade', name: 'Sticky Charge', desc: 'Hold the charge: left click throws it (41 m/s) to stick to the first thing it hits, right click lets it bounce once first. 0.8 s after it sticks it bursts: 35 damage within 1.25 m, down to 20 at 5.25 m, and everyone caught is concussed for 2.5 s.', charges: 1, cooldown: 25, equip: 0.5, throw: 'c5', unequip: 0.4,
         armHint: 'LEFT CLICK: STICK · RIGHT CLICK: BOUNCE ONCE',
         use(kit, mode) {
           const o = kit.owner, g = o.game;
@@ -1521,7 +1521,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Barrage', desc: 'Open the map and click where it starts (within 52.5 m), then a second point it runs toward. 3 s later a strike walks 36 m along that line, 2 m at a time: each stretch (12 m wide) is hit four times for 60, a quarter of a second apart.', points: 9,
+        name: 'Barrage', desc: 'Open the map and click where it starts (within 52.5 m), then a second point it runs toward. 3 s later a strike walks 36 m along that line, 2 m at a time: each stretch (12 m wide) is hit four times for 60, a quarter of a second apart.', points: 9, equip: 0.6, autoUse: true,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -1563,7 +1563,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'flash', name: 'Flashpoint', desc: 'Hold the flash. Left click: overhand throw that pops 1.6 s later. Right click: underhand lob that pops after 1 s. If it bounces off something first, it pops 0.8 s after the bounce. Blinds anyone facing it for up to 2.25 s.', charges: 2, cooldown: 20, equip: 0.8, throw: 'c2',
+        item: 'flash', name: 'Flashpoint', desc: 'Hold the flash. Left click: overhand throw that pops 1.6 s later. Right click: underhand lob that pops after 1 s. If it bounces off something first, it pops 0.8 s after the bounce. Blinds anyone facing it for up to 2.25 s.', charges: 2, cooldown: 20, equip: 0.8, throw: 'c2', unequip: 0.6,
         armHint: 'LEFT CLICK: OVERHAND · RIGHT CLICK: UNDERHAND LOB',
         use(kit, mode) {
           const o = kit.owner, g = o.game, short = mode === 'right';
@@ -1573,7 +1573,7 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'knife', name: 'Zero Point', desc: 'Hold the knife, left click to throw it (30 m). It sticks to the first surface and after 1 s pulses 15 m: enemies caught are revealed and suppressed (no abilities) for 8 s. Enemies can shoot it out first (20 HP).', charges: 1, cooldown: 50, equip: 0.8,
+        item: 'knife', name: 'Zero Point', desc: 'Hold the knife, left click to throw it (30 m). It sticks to the first surface and after 1 s pulses 15 m: enemies caught are revealed and suppressed (no abilities) for 8 s. Enemies can shoot it out first (20 HP).', charges: 1, cooldown: 50, equip: 0.8, unequip: 0.5,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 30, { back: 0.15 });
           const ft = flight(o.eye(), pos, 22), g = o.game;
@@ -1620,7 +1620,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'orb', name: 'Meddle', desc: 'Hold the fragment, left click to throw it (29 m/s). 0.75 s after it lands it erupts in a 4 m burst: enemies caught lose 90 health to Decay (never lethal), which comes back over 5 s.', charges: 1, cooldown: 25, equip: 0.8, throw: 'c3',
+        item: 'orb', name: 'Meddle', desc: 'Hold the fragment, left click to throw it (29 m/s). 0.75 s after it lands it erupts in a 4 m burst: enemies caught lose 90 health to Decay (never lethal), which comes back over 5 s.', charges: 1, cooldown: 25, equip: 0.8, throw: 'c3', unequip: 0.7,
         use(kit) {
           const o = kit.owner, g = o.game;
           toss(o, 'c3', { color: 0xe07bd0, onStop: (d) => {
@@ -1635,7 +1635,7 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Ruse', desc: 'Open the map and click up to two spots (one per charge, within 55 m); press E or right click to drop smokes there 1 s later (13.5 s). Works while you are dead: one smoke, 5.5 s, within 42.5 m.', charges: 2, cooldown: 40, instant: true,
+        name: 'Ruse', desc: 'Open the map and click up to two spots (one per charge, within 55 m); press E or right click to drop smokes there 1 s later (13.5 s). Works while you are dead: one smoke, 5.5 s, within 42.5 m.', charges: 2, cooldown: 40, equip: 0.6, autoUse: true, unequip: 0.7,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -1854,8 +1854,14 @@ export class Kit {
     const mp = this.mapPick;
     this.mapPick = null;
     if (mp && mp.picks?.length) mp.confirm(mp.picks);
+    this.mapClosed(mp);
   }
-  mapCancel() { this.mapPick = null; }
+  mapCancel() { const mp = this.mapPick; this.mapPick = null; this.mapClosed(mp); }
+  // The tablet goes away: the gun comes back after the ability's unequip time.
+  mapClosed(mp) {
+    const o = this.owner, a = mp && this.agent.abilities[mp.key];
+    if (o.alive && !this.busy() && !this.armed && a && !a.instant) o.equip(o.slot, this.now, true, a.unequip);
+  }
 
   cooldownLeft(k, now) { return this.ready[k] ? Math.max(0, this.ready[k] - now) : 0; }
 
@@ -1875,6 +1881,23 @@ export class Kit {
   // 5v5: does this slot recharge on its cooldown? Only the signature (E) does, as in Valorant — also when extra
   // charges can be bought (Dark Cover, Ruse) — unless it comes back on kills or once a round.
   roundTimer(k) { const r = this.agent.abilities[k].recharge; return r === 'timer' || (k === 'e' && !r); }
+
+  // Use ability k (the ultimate too) with the click that cast it. The gun comes back after the ability's unequip
+  // time (Valorant's), or its own draw time when the ability has none.
+  cast(k, mode, now) {
+    const a = this.agent.abilities[k], o = this.owner;
+    this.usedAt = now;
+    const r = k === 'x' ? this.useUlt(now) : this.spend(k, mode);
+    if (r !== false && !a.noGun && !this.busy() && !this.armed && o.alive) o.equip(o.slot, now, true, a.unequip);
+    return r;
+  }
+  useUlt(now) {
+    const r = this.agent.abilities.x.use(this, now);
+    if (r === false) { this.owner.game.emit('abilityFail', { who: this.owner, key: 'x' }); return false; }
+    this.armed = null;
+    if (r !== 'pending' && !this.mapPick) { this.ultPoints = 0; this.lastUse.x = now; }
+    return r;
+  }
 
   spend(k, mode) {
     const ab = this.agent.abilities[k];
@@ -1952,13 +1975,13 @@ export class Kit {
         else if (this.chargeT > 0) {
           this.power = Math.max(0.05, this.chargeT / a.charge);
           this.chargeT = 0;
-          this.usedAt = now;
-          if (this.spend(k, 'left') !== false && !this.busy()) o.equip(o.slot, now, true);
+          this.cast(k, 'left', now);
           this.power = undefined;
         }
+      } else if (a.autoUse && !o.isBot) {
+        this.cast(k, 'left', now); // a tablet or a sprint: it goes as soon as it is out, no click
       } else if (inp.firePressed || inp.altPressed) {
-        this.usedAt = now;
-        if (this.spend(k, inp.firePressed ? 'left' : 'right') !== false && !this.busy()) o.equip(o.slot, now, true); // gun comes back out (with its draw time)
+        this.cast(k, inp.firePressed ? 'left' : 'right', now);
       }
     }
 
@@ -1974,10 +1997,10 @@ export class Kit {
         this.bladesAway = 0;
         o.gun.onHolster();
       }
+      else if (this.armed?.k === 'x') { this.armed = null; o.equip(o.slot, now, true); } // X again puts it away
       else if (this.ultPoints >= this.ultCost && !this.busy() && !this.rebirth) {
-        this.armed = null;
-        const r = ab.x.use(this, now);
-        if (r !== false && r !== 'pending') { this.ultPoints = 0; this.lastUse.x = now; }
+        if (ab.x.equip && !ab.x.instant) { this.armed = { k: 'x', at: now }; o.gun.onHolster(); g.emit('abilityArm', { who: o, key: 'x' }); } // equip it, then click (as in Valorant)
+        else { this.armed = null; this.useUlt(now); }
       }
     }
 
