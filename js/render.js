@@ -853,11 +853,23 @@ export class Renderer {
     z.r0 = z.r; // the size it is drawn at; zones that spread or shrink are scaled from it
     const col = z.color || (z.kind === 'fire' ? 0xff6a1a : 0x4fd1a5);
     const flames = z.kind === 'fire' && !z.gas && !z.acid && !z.color;
+    // A patch on the floor (molly, acid, swarm, slow field) stops at walls in play (game.tickZones), so it is drawn
+    // only as far as it reaches in each direction.
+    const patch = !z.wall && !z.gas && !z.orbital && (z.kind === 'fire' || z.kind === 'slowfield');
     const g = new THREE.Group();
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(z.r, 40), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: z.gas ? 0.15 : z.kind === 'fire' ? 0.5 : 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-    disc.rotation.x = -Math.PI / 2;
-    const rim = new THREE.Mesh(new THREE.RingGeometry(z.r * 0.94, z.r, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
-    rim.rotation.x = -Math.PI / 2;
+    const discMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: z.gas ? 0.15 : z.kind === 'fire' ? 0.5 : 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const rimMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
+    let disc, rim, fan = null;
+    if (patch) {
+      fan = this.patchFan(z);
+      disc = new THREE.Mesh(fan.disc, discMat);
+      rim = new THREE.Mesh(fan.rim, rimMat);
+    } else {
+      disc = new THREE.Mesh(new THREE.CircleGeometry(z.r, 40), discMat);
+      disc.rotation.x = -Math.PI / 2;
+      rim = new THREE.Mesh(new THREE.RingGeometry(z.r * 0.94, z.r, 48), rimMat);
+      rim.rotation.x = -Math.PI / 2;
+    }
     g.add(disc, rim);
     if (z.orbital) {
       // Orbital strike: a column of light from the sky, thin while charging, full once it lands.
@@ -867,21 +879,25 @@ export class Renderer {
       g.add(beam);
     }
     if (flames || z.orbital) {
-      // a few flickering flame tongues
+      // a few flickering flame tongues, only where the fire reaches
       const fm = new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending });
       const n = Math.max(3, Math.round(z.r * 3));
       for (let i = 0; i < n; i++) {
         const f = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.9, 6), fm);
         const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * z.r * 0.85;
         f.position.set(Math.cos(a) * d, 0.45, Math.sin(a) * d);
-        f.userData.ph = Math.random() * 6;
+        f.userData.ph = Math.random() * 6; f.userData.a = a; f.userData.d = d;
         g.add(f);
       }
     }
     g.position.set(z.pos[0], z.pos[1] + 0.03, z.pos[2]);
     this.fxAdd(g, () => z.until, (now) => {
-      const age = now - z.born;
-      g.scale.setScalar(z.spread || z.fade || z.grows ? Math.max(0.05, zoneRadius(z, now) / z.r0) : Math.min(1, age / 0.25)); // fire spreads, Sky Hammer shrinks away
+      const age = now - z.born, grown = z.spread || z.fade || z.grows ? Math.max(0.05, zoneRadius(z, now) / z.r0) : Math.min(1, age / 0.25); // fire spreads, Sky Hammer shrinks away
+      if (fan) {
+        if (now >= fan.next) { fan.next = now + 0.5; fan.walls = this.patchReach(z, fan.n); } // a wall put up later cuts it off too
+        fan.set(grown * z.r0, fan.walls);
+        for (const c of g.children) if (c.userData.a != null) c.visible = c.userData.d < Math.min(grown * z.r0, fan.walls[Math.round(((c.userData.a / (Math.PI * 2)) % 1) * fan.n) % fan.n]) - 0.2;
+      } else g.scale.setScalar(grown);
       if (z.kind === 'lockdown') { rim.material.opacity = 0.4 + 0.4 * Math.abs(Math.sin(now * 6)); disc.material.opacity = 0.08 + 0.1 * Math.min(1, age / 2.5); }
       if (z.kind === 'trap') rim.material.opacity = 0.35 + 0.25 * Math.sin(now * 3);
       if (z.kind === 'stim') { rim.material.opacity = 0.5 + 0.3 * Math.sin(now * 4); disc.material.opacity = 0.1; }
@@ -892,6 +908,46 @@ export class Renderer {
       }
       for (const c of g.children) if (c.userData.ph != null) c.scale.y = 0.6 + 0.5 * Math.abs(Math.sin(now * 9 + c.userData.ph));
     });
+  }
+
+  // How far a floor patch reaches in each of n directions: out to its radius, or to the first wall in the way at
+  // the height the game tests (0.4 m up), so what you see is where it hurts.
+  patchReach(z, n) {
+    const o = [z.pos[0], z.pos[1] + 0.4, z.pos[2]], out = new Float32Array(n), d = [0, 0, 0];
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2;
+      d[0] = Math.cos(a); d[2] = Math.sin(a);
+      const hit = this.game.world.raycast(o, d, z.r0);
+      out[i] = hit ? Math.max(0.05, hit.t) : z.r0;
+    }
+    return out;
+  }
+
+  // A fan-shaped disc and rim for a floor patch, rebuilt in place as the patch grows or a wall cuts it off.
+  patchFan(z, n = 64) {
+    const disc = new THREE.BufferGeometry(), rim = new THREE.BufferGeometry();
+    const dp = new Float32Array((n + 1) * 3), rp = new Float32Array(n * 2 * 3), di = [], ri = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      di.push(0, 1 + j, 1 + i);
+      ri.push(2 * i, 2 * j, 2 * i + 1, 2 * j, 2 * j + 1, 2 * i + 1);
+    }
+    disc.setAttribute('position', new THREE.BufferAttribute(dp, 3)); disc.setIndex(di);
+    rim.setAttribute('position', new THREE.BufferAttribute(rp, 3)); rim.setIndex(ri);
+    const fan = { n, disc, rim, next: 0, walls: null };
+    fan.set = (R, walls) => {
+      if (R === fan.R && walls === fan.W) return; // nothing changed since the last frame
+      fan.R = R; fan.W = walls;
+      for (let i = 0; i < n; i++) {
+        const a = i / n * Math.PI * 2, c = Math.cos(a), s = Math.sin(a), r = Math.min(R, walls[i]);
+        dp[3 + i * 3] = c * r; dp[3 + i * 3 + 2] = s * r;
+        rp[i * 6] = c * r * 0.94; rp[i * 6 + 2] = s * r * 0.94;
+        rp[i * 6 + 3] = c * r; rp[i * 6 + 5] = s * r;
+      }
+      disc.attributes.position.needsUpdate = true; rim.attributes.position.needsUpdate = true;
+      disc.computeBoundingSphere(); rim.computeBoundingSphere();
+    };
+    return fan;
   }
 
   // Snapshot reveal: a frozen red silhouette where the enemy stood, seen through walls, fading out.

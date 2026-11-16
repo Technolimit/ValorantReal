@@ -67,7 +67,8 @@ Tapfire's side comes from screenshots of the game (Divide and the Range, Novembe
 
 ## Status effects on your screen
 
-- **Flashed.** A plain white overlay that fades. Close to Valorant.
+- **Flashed.** A plain white overlay: fully white for the flash's length, then fading out over up to 1 s, as the
+  spec describes. Close to Valorant.
 - **Concussed.** The view turns grey, blurs and shakes, with static over it. Close to Valorant, which the spec
   describes as a blurred, greyscale view with noise.
 - **Nearsight.** The world fades into purple-black fog past the range → a dark tunnel closing in from the
@@ -91,6 +92,27 @@ Tapfire's side comes from screenshots of the game (Divide and the Range, Novembe
   work the defuser.
 - **Detonation.** No visual; the spike just disappears → a huge expanding sphere of light.
 
+## Checked on screen
+
+Numbers and sizes were checked in screenshots and on the HUD (November 2026, second pass):
+
+- **Damage numbers** at 10 m for Vandal, Phantom, Sheriff, Classic, Ghost, Spectre, Guardian, Warden, Bulldog,
+  Marshal, Operator and Odin (head, body, legs): all Valorant's, e.g. Vandal 160 / 40 / 34, Operator
+  255 / 150 / 127.
+- **Shop**: every gun, shield and ability price matches Valorant's (patch 13.10, with the Warden from 13.06).
+- **Round timer**: 0:45 for the first buy phase, 0:30 after, 1:40 for the round. After the plant, Valorant shows
+  only the spike icon, no countdown; Tapfire now does the same, the icon pulsing faster as the spike runs down.
+- **Sizes next to a person (1.8 m)**:
+  - Sky smokes are domes about 7 m across.
+  - Frost Wall is 2.6 m tall, enough to hide someone standing behind it.
+  - Firebreak, Toxic Wall and Static Lanes stand 6.75 m.
+  - The Gridlock cage is a 3.45 m cylinder.
+  - Fire and acid cover 4.5 m.
+  - Sky Hammer and Chill cover 9 m.
+
+  What is drawn is exactly what blocks or hurts.
+- **Flash timing on screen**: a full 1.5 s flash stays fully white for 1.5 s, then fades out over 1 s.
+
 ## Abilities: what they all share
 
 - **Holding an ability.** One generic blocky hand in the agent's colour holding:
@@ -110,6 +132,8 @@ Tapfire's side comes from screenshots of the game (Divide and the Range, Novembe
   of the floor in 0.3 s → animated fire, gas, electricity, water, ice or energy.
 - **Ground effects** (fire, acid, slow fields, Rally, Hive). A flat disc with a bright rim; fire adds a few
   flickering cones → animated pools and particles.
+  They are drawn only as far as they reach: a molly against a wall stops at the wall, as it does in play
+  and in Valorant.
 - **Flash bursts.** One white glow sprite for every flash → each flash has its own look.
 - **Gadgets** (turrets, alarm bots, cameras, trip wires, drones, Boom Bot, tiger, hawk, seekers, prowlers,
   stars, anchors). Built from spheres, boxes and cylinders with a blinking light → detailed, animated models.

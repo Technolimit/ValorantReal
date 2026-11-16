@@ -432,9 +432,10 @@ export class Hud {
       if (!p.grounded && p.input.jumpHeld && p.vel[1] <= -2.2) wind = Math.max(wind, 0.25);
     }
     $('speedlines').style.opacity = wind.toFixed(3);
-    // Flashed: white-out that fades over the last part of the blind.
-    const bl = p.st.blindUntil - now;
-    $('blind').style.opacity = p.alive && bl > 0 ? Math.min(1, bl / Math.max(0.3, p.st.blindLen * 0.5)).toFixed(3) : 0;
+    // Flashed: fully white for the flash's length, then fading out over up to 1 s after it, as Valorant's flashes do
+    // (spec: "Flash fade-out ~1 s"; Dizzy: "1 s full + 1 s fade").
+    const bl = p.st.blindUntil - now, fadeLen = Math.min(1, p.st.blindLen || 1);
+    $('blind').style.opacity = !p.alive ? 0 : bl > 0 ? 1 : bl > -fadeLen ? (1 + bl / fadeLen).toFixed(3) : 0;
     // Concussed: the world goes grey, blurry and shaky with static over it.
     const su = p.alive ? p.st.stunUntil - now : 0, sk = su > 0 ? Math.min(1, su / 0.5) : 0;
     if (sk !== this.lastStun) {

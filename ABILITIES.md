@@ -53,7 +53,7 @@ Passive: **Kindled**: Your own fire heals you instead of hurting you.
 | C | **Rift** (Shrouded Step) | 2 × 100 | bought only | 25 s | Hold it: a marker shows where you will land (up to 15 m) and follows your aim. Left click to go; 0.7 s later you step through the shadows to it, and take another 0.5 s to arrive before you can shoot. |
 | Q | **Dread** (Paranoia) | 1 × 250 | bought only | 30 s | Send a wave of shadow straight ahead (20 m/s, 25 m) that passes through walls. Everyone it touches, teammates included, is nearsighted and deafened for 2 s. |
 | E | **Shade** (Dark Cover) | 2 × 150 (1 free) | 40 s | 40 s | Hold the orb: your view follows the smoke out through walls, and the sphere shows exactly where it will form. It passes through walls: hold right click to push it farther (up to 80 m), press R to make it stop at the first wall instead, left click to cast. The orb flies there at 64 m/s and the smoke lasts 14.7 s. |
-| X | **Nightwalk** (From the Shadows) | 7 points | | | Open the map and click anywhere. You fade out (untouchable) while a shade of you forms there; after 4 s you step out of it. Enemies who shoot the shade first cancel it and you stay where you were. |
+| X | **Nightwalk** (From the Shadows) | 7 points | | | Take out the tablet (0.5 s), then click anywhere on the map. You fade out (untouchable) while a shade of you forms there; after 4 s you step out of it. Enemies who shoot the shade first cancel it and you stay where you were. |
 
 ## Hawke (Sova) · Initiator
 
@@ -88,8 +88,8 @@ Passive: **Kindled**: Your own fire heals you instead of hurting you.
 |---|---|---|---|---|---|
 | C | **Rally** (Stim Beacon) | 1 × 200 | bought only | 30 s | Instantly toss a beacon that sets up a 6 m field for 12 s where it lands. You and teammates in it get Combat Stim (10% faster fire rate, reload, draw and recovery) and 10% faster movement, lasting 4 s after you leave. |
 | Q | **Napalm** (Incendiary) | 1 × 250 | bought only | 25 s | Fire an incendiary grenade from the launcher (29 m/s). It bounces off walls and bursts on the floor into a fire that spreads to 4.5 m and burns for 7 s (60/s). |
-| E | **Overcast** (Sky Smoke) | 3 × 100 (1 free) | once a round | 35 s | Open the map and click up to three spots (one per charge) for sky smokes; press E again to call them in. Each lasts 19.25 s. |
-| X | **Sky Hammer** (Orbital Strike) | 8 points | | | Open the map and click a spot within 60 m: after 2 s a 9 m orbital strike burns it for 3 s (20 every 0.15 s), then shrinks away over 0.75 s. |
+| E | **Overcast** (Sky Smoke) | 3 × 100 (1 free) | once a round | 35 s | Take out the tablet (0.8 s), then the map opens: click up to three spots (one per charge) for sky smokes; press E again to call them in. Each lasts 19.25 s. |
+| X | **Sky Hammer** (Orbital Strike) | 8 points | | | Take out the tablet (0.74 s), then click a spot on the map within 60 m: after 2 s a 9 m orbital strike burns it for 3 s (20 every 0.15 s), then shrinks away over 0.75 s. |
 
 ## Venom (Viper) · Controller
 
@@ -128,9 +128,9 @@ Passive: **Energy**: Overclock runs on energy: a full bar is 16 s of sprinting a
 
 | Key | Ability | 5v5 charges · price | 5v5 recharge | Deathmatch cooldown | What it does |
 |---|---|---|---|---|---|
-| C | **Static Lanes** (Fast Lane) | 1 × 300 | bought only | 25 s | Instantly fire two parallel walls of static, 3.5 m apart and 6.75 m high, from 1.5 m behind you to 45 m ahead, through walls. They block sight for 4 s. |
+| C | **Static Lanes** (Fast Lane) | 1 × 300 | bought only | 25 s | Fire two parallel walls of static (0.3 s to cast), 3.5 m apart and 6.75 m high, from 1.5 m behind you to 45 m ahead, through walls. They block sight for 4 s. |
 | Q | **Ricochet** (Relay Bolt) | 1 × 200 | bought only | 25 s | Instantly throw a bolt (41 m/s) that bounces once. At each of the two surfaces it hits it charges the ground below, and 1 s later everyone within 5 m of that spot is concussed for 2.5 s. |
-| E | **Overclock** (High Gear) | 1 free | — | — | Put your gun away and sprint (9.1 m/s) while energy lasts; press E again to stop. Right click mid-sprint, while moving, to slide 7 m (12 m/s for 0.6 s): the slide ends the sprint and your gun comes back out (one slide per round in 5v5, back after two kills; one every 8 s in deathmatch). |
+| E | **Overclock** (High Gear) | 1 free | — | — | Put your gun away and sprint (9.1 m/s, after 0.6 s) while energy lasts; press E again to stop. Right click mid-sprint, while moving, to slide 7 m (12 m/s for 0.6 s): the slide ends the sprint and your gun comes back out (one slide per round in 5v5, back after two kills; one every 8 s in deathmatch). |
 | X | **Overload** (Overdrive) | 8 points | | | Fire a lightning beam from your fingertip: hold left click (20 shots a second; 18 body / 54 head out to 20 m, falling to 10 body at 43 m; accurate while running and sliding). It has 40 shots that refill by themselves when you stop firing. Starts your sprint with full energy and a fresh slide. Overload lasts 10 s; kills refill it and give your slide back. |
 
 ## Mirage (Yoru) · Duelist
@@ -156,7 +156,7 @@ Passive: **Energy**: Overclock runs on energy: a full bar is 16 s of sprinting a
 | Key | Ability | 5v5 charges · price | 5v5 recharge | Deathmatch cooldown | What it does |
 |---|---|---|---|---|---|
 | C | **Tripline** (Trapwire) | 2 × 200 | bought only | 30 s | Hold the wire, aim at a wall (up to 20 m) and left click to stretch it across the gap at that height (up to 15 m); it arms 1.5 s later. An enemy who crosses it is tethered and slowed by half. 0.7 s later it zaps them: slowed for another second and revealed for as long as it holds them. Tearing free (6.2 m) costs a zap too; shooting the wire (20 HP) frees them. It resets and can catch again. |
-| Q | **Gridlock** (Cyber Cage) | 2 × 100 | bought only | 30 s | Hold a cage, left click to place it where you aim (15 m). To trigger one, look at it and press Q: it becomes a 7.25 s smoke. Each cage is triggered separately. |
+| Q | **Gridlock** (Cyber Cage) | 2 × 100 | bought only | 30 s | Hold a cage, left click to throw it (20 m/s); it sets up 0.35 s after it lands. To trigger one, look at it and press Q: it becomes a 7.25 s smoke. Each cage is triggered separately. |
 | E | **Watcher** (Spycam) | 1 free | 45 s | 45 s | Hold the camera, left click to stick it on the surface you aim at (20 m). Press E again to look through it; enemies it sees are revealed, and left click fires a tracking dart (pings every 2 s for 8 s). E again to leave. One shot destroys it (45 s to get it back; 20 s if you pick it up). |
 | X | **Mindread** (Neural Theft) | 7 points | | | Look at the body of an enemy who died in the last 20 s (12 m) and press X to read their mind: every living enemy is revealed twice, 2 s apart. |
 
@@ -223,7 +223,7 @@ Passive: **Stars**: You have up to 5 stars (in 5v5 one is free each round and mo
 | C | **Scout Drone** (Stealth Drone) | 1 × 400 | bought only | 40 s | Hold the drone, left click to launch it. Fly it with your mouse for up to 6 s (7.5 m/s, 42 HP). Left click pulses (from 0.6 s after launch, then every 1.5 s): enemies within 16 m are revealed and suppressed (no abilities) for 8 s. |
 | Q | **Sticky Charge** (Special Delivery) | 1 × 200 | bought only | 25 s | Hold the charge: left click throws it (41 m/s) to stick to the first thing it hits, right click lets it bounce once first. 0.8 s after it sticks it bursts: 35 damage within 1.25 m, down to 20 at 5.25 m, and everyone caught is concussed for 2.5 s. |
 | E | **Missile Call** (Guided Salvo) | 2 × 150 (1 free) | once a round | 35 s | Open the map and mark a target per charge (2 charges, 45 m); press E (or right click) to fire. Each missile comes down 1.5 s later and goes off three times, half a second apart: 65 within 2.5 m, down to 50 at 4.5 m, each time. |
-| X | **Barrage** (Armageddon) | 9 points | | | Open the map and click where it starts (within 52.5 m), then a second point it runs toward. 3 s later a strike walks 36 m along that line, 2 m at a time: each stretch (12 m wide) is hit four times for 60, a quarter of a second apart. |
+| X | **Barrage** (Armageddon) | 9 points | | | Take out the tablet (0.6 s), then click where it starts on the map (within 52.5 m), then a second point it runs toward. 3 s later a strike walks 36 m along that line, 2 m at a time: each stretch (12 m wide) is hit four times for 60, a quarter of a second apart. |
 
 ## Override (KAY/O) · Initiator
 
@@ -242,7 +242,7 @@ Passive: **Afterlife**: Ruse (E) works even while you are dead, until the round 
 |---|---|---|---|---|---|
 | C | **Pick-Me-Up** (Pick-Me-Up) | 1 × 200 | bought only | 30 s | Absorb the life force of an enemy you killed or damaged who died in the last 6 s. It takes 0.7 s, then gives +50 temporary health (it lasts 10 s, then fades) and 10% haste for 3 s. |
 | Q | **Meddle** (Meddle) | 1 × 250 | bought only | 25 s | Hold the fragment, left click to throw it (29 m/s). 0.75 s after it lands it erupts in a 4 m burst: enemies caught lose 90 health to Decay (never lethal), which comes back over 5 s. |
-| E | **Ruse** (Ruse) | 2 × 150 (1 free) | 40 s | 40 s | Open the map and click up to two spots (one per charge, within 55 m); press E or right click to drop smokes there 1 s later (13.5 s). Works while you are dead: one smoke, 5.5 s, within 42.5 m. |
+| E | **Ruse** (Ruse) | 2 × 150 (1 free) | 40 s | 40 s | Take out the tablet (0.6 s), then click up to two spots on the map (one per charge, within 55 m); press E or right click to drop smokes there 1 s later (13.5 s). Works while you are dead: one smoke, 5.5 s, within 42.5 m. |
 | X | **Not Dead Yet** (Not Dead Yet) | 8 points | | | After you die, press X to come back where you fell. Reviving takes 1.5 s, untouchable. You then have 10 s to get a kill or damage an enemy — otherwise you die again. |
 
 ## Lumen (Waylay) · Duelist

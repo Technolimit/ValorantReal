@@ -195,6 +195,8 @@ th { color: var(--muted); font-weight: 500; }
 .rpips i.ally em { position: absolute; left: 0; right: 0; bottom: 1px; font: 700 10px/1 system-ui, sans-serif; font-style: normal; color: #fff; text-shadow: 0 1px 2px #000; text-align: center; }
 .rmid { text-align: center; min-width: 110px; padding: 4px 12px; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--line); }
 #rtimer { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.spikeicon { display: inline-block; color: #ff4655; vertical-align: middle; animation: spikePulse 1s ease-in-out infinite; }
+@keyframes spikePulse { 0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px #ff4655); } 50% { opacity: 0.45; filter: none; } }
 #rround { font-size: 10px; letter-spacing: 1.5px; color: var(--muted); }
 .warn { color: var(--accent); } .good { color: #4fd1c5; }
 #rbanner { position: absolute; top: 24%; left: 50%; transform: translateX(-50%); text-align: center; opacity: 0; text-shadow: 0 2px 8px #000; pointer-events: none; }

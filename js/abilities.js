@@ -424,7 +424,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Nightwalk', desc: 'Open the map and click anywhere. You fade out (untouchable) while a shade of you forms there; after 4 s you step out of it. Enemies who shoot the shade first cancel it and you stay where you were.', points: 7, equip: 0.5, autoUse: true, unequip: 0.7,
+        name: 'Nightwalk', desc: 'Take out the tablet (0.5 s), then click anywhere on the map. You fade out (untouchable) while a shade of you forms there; after 4 s you step out of it. Enemies who shoot the shade first cancel it and you stay where you were.', points: 7, equip: 0.5, autoUse: true, unequip: 0.7,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -609,7 +609,7 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Overcast', desc: 'Open the map and click up to three spots (one per charge) for sky smokes; press E again to call them in. Each lasts 19.25 s.', charges: 3, cooldown: 35, recharge: 'none', equip: 0.8, autoUse: true, unequip: 0.7,
+        name: 'Overcast', desc: 'Take out the tablet (0.8 s), then the map opens: click up to three spots (one per charge) for sky smokes; press E again to call them in. Each lasts 19.25 s.', charges: 3, cooldown: 35, recharge: 'none', equip: 0.8, autoUse: true, unequip: 0.7,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -628,7 +628,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Sky Hammer', desc: 'Open the map and click a spot within 60 m: after 2 s a 9 m orbital strike burns it for 3 s (20 every 0.15 s), then shrinks away over 0.75 s.', points: 8, equip: 0.74, autoUse: true, unequip: 1,
+        name: 'Sky Hammer', desc: 'Take out the tablet (0.74 s), then click a spot on the map within 60 m: after 2 s a 9 m orbital strike burns it for 3 s (20 every 0.15 s), then shrinks away over 0.75 s.', points: 8, equip: 0.74, autoUse: true, unequip: 1,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -825,7 +825,7 @@ export const AGENTS = {
     passive: { name: 'Energy', desc: 'Overclock runs on energy: a full bar is 16 s of sprinting and takes 60 s to refill.' },
     abilities: {
       c: {
-        name: 'Static Lanes', desc: 'Instantly fire two parallel walls of static, 3.5 m apart and 6.75 m high, from 1.5 m behind you to 45 m ahead, through walls. They block sight for 4 s.', charges: 1, cooldown: 25, equip: 0.3, autoUse: true, unequip: 0.7,
+        name: 'Static Lanes', desc: 'Fire two parallel walls of static (0.3 s to cast), 3.5 m apart and 6.75 m high, from 1.5 m behind you to 45 m ahead, through walls. They block sight for 4 s.', charges: 1, cooldown: 25, equip: 0.3, autoUse: true, unequip: 0.7,
         use(kit) {
           const o = kit.owner, g = o.game, f = fwd2(o.yaw), r = right(o.yaw), H = 6.75;
           for (const side of [-1.75, 1.75]) {
@@ -852,7 +852,7 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Overclock', desc: 'Put your gun away and sprint (9.1 m/s) while energy lasts; press E again to stop. Right click mid-sprint, while moving, to slide 7 m (12 m/s for 0.6 s): the slide ends the sprint and your gun comes back out (one slide per round in 5v5, back after two kills; one every 8 s in deathmatch).', charges: 1, cooldown: 0, equip: 0.6, autoUse: true, noGun: true,
+        name: 'Overclock', desc: 'Put your gun away and sprint (9.1 m/s, after 0.6 s) while energy lasts; press E again to stop. Right click mid-sprint, while moving, to slide 7 m (12 m/s for 0.6 s): the slide ends the sprint and your gun comes back out (one slide per round in 5v5, back after two kills; one every 8 s in deathmatch).', charges: 1, cooldown: 0, equip: 0.6, autoUse: true, noGun: true,
         use(kit) {
           if (kit.energy < 2) return false;
           kit.highGear = { slideAt: kit.slideAt || 0 };
@@ -1025,7 +1025,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'device', name: 'Gridlock', desc: 'Hold a cage, left click to place it where you aim (15 m). To trigger one, look at it and press Q: it becomes a 7.25 s smoke. Each cage is triggered separately.', charges: 2, cooldown: 30,
+        item: 'device', name: 'Gridlock', desc: 'Hold a cage, left click to throw it (20 m/s); it sets up 0.35 s after it lands. To trigger one, look at it and press Q: it becomes a 7.25 s smoke. Each cage is triggered separately.', charges: 2, cooldown: 30,
         use(kit) {
           const o = kit.owner, g = o.game;
           o.game.throwProj(o, 20, 0.7, { color: 0xd8dde6, onStop: (d) => { d.removed = true; const pos = floorUnder(g, d.pos); later(kit, 0.35, () => { if (o.alive) g.addDevice({ kind: 'cage', owner: o, pos, life: 300 }); }); } });
@@ -1562,7 +1562,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Barrage', desc: 'Open the map and click where it starts (within 52.5 m), then a second point it runs toward. 3 s later a strike walks 36 m along that line, 2 m at a time: each stretch (12 m wide) is hit four times for 60, a quarter of a second apart.', points: 9, equip: 0.6, autoUse: true,
+        name: 'Barrage', desc: 'Take out the tablet (0.6 s), then click where it starts on the map (within 52.5 m), then a second point it runs toward. 3 s later a strike walks 36 m along that line, 2 m at a time: each stretch (12 m wide) is hit four times for 60, a quarter of a second apart.', points: 9, equip: 0.6, autoUse: true,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -1677,7 +1677,7 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Ruse', desc: 'Open the map and click up to two spots (one per charge, within 55 m); press E or right click to drop smokes there 1 s later (13.5 s). Works while you are dead: one smoke, 5.5 s, within 42.5 m.', charges: 2, cooldown: 40, equip: 0.6, autoUse: true, unequip: 0.7,
+        name: 'Ruse', desc: 'Take out the tablet (0.6 s), then click up to two spots on the map (one per charge, within 55 m); press E or right click to drop smokes there 1 s later (13.5 s). Works while you are dead: one smoke, 5.5 s, within 42.5 m.', charges: 2, cooldown: 40, equip: 0.6, autoUse: true, unequip: 0.7,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
