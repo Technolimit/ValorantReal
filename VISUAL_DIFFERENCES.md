@@ -30,6 +30,8 @@ Tapfire's side comes from screenshots of the game (Divide and the Range, Novembe
 - **Flashed.** A white bulb floats over a blinded player's head → no marker.
 - **Revealed.** The whole body glows red and is drawn through walls for as long as the reveal lasts → a red
   highlight through walls.
+- **Snapshot reveals** (Mindread, the Watcher's dart). A red ghost of the enemy is left where they stood and
+  stays still, on screen and on the minimap → a frozen red silhouette. Close to Valorant.
 
 ## Your view while moving
 
@@ -66,12 +68,15 @@ Tapfire's side comes from screenshots of the game (Divide and the Range, Novembe
 ## Status effects on your screen
 
 - **Flashed.** A plain white overlay that fades. Close to Valorant.
-- **Concussed.** The view turns grey, blurs and shakes, with static over it → the view blurs and wobbles.
+- **Concussed.** The view turns grey, blurs and shakes, with static over it. Close to Valorant, which the spec
+  describes as a blurred, greyscale view with noise.
 - **Nearsight.** The world fades into purple-black fog past the range → a dark tunnel closing in from the
   screen edges.
 - **Deafened, detained, suppressed, hindered, Vulnerable, Decay.** A line of text at the bottom right →
   status icons next to your health, and greyed or crossed-out ability icons when suppressed.
 - **Inside a smoke.** A light grey haze, with the smoke's wall around you. Close to Valorant.
+- **Minimap.** It goes dark while you're concussed or nearsighted, shows only the last 3 m around you inside a
+  smoke, and the ability map can't be opened while you're flashed. Close to Valorant.
 - **Damage taken.** Arrows around the centre point toward the shooter, with a red vignette. Close to Valorant's
   red arcs.
 - **After you die.** The view drops and turns to face your killer for 2.5 s, then you spectate a teammate.
@@ -98,7 +103,8 @@ Tapfire's side comes from screenshots of the game (Divide and the Range, Novembe
 - **Thrown abilities.** Most fly as a glowing ball in the ability's colour; only rockets, paint shells,
   bomblets and arrows have models → every projectile has its own model and trail.
 - **Smokes.** One smooth sphere per smoke, tinted by agent and lit like a solid object, with no texture or
-  movement → wispy, textured, slowly moving clouds with each agent's own style.
+  movement → wispy, textured, slowly moving clouds with each agent's own style. Both grow in when the smoke
+  goes up (0.75 s) and shrink away as it ends (1 s).
 - **Walls** (Firebreak, Toxic Wall, Static Lanes, Riptide, Frost Wall, Push Wall, Rift Line). Flat
   translucent slabs in one colour, some with a brighter inner layer or bright edges; deployable walls rise out
   of the floor in 0.3 s → animated fire, gas, electricity, water, ice or energy.
@@ -107,6 +113,8 @@ Tapfire's side comes from screenshots of the game (Divide and the Range, Novembe
 - **Flash bursts.** One white glow sprite for every flash → each flash has its own look.
 - **Gadgets** (turrets, alarm bots, cameras, trip wires, drones, Boom Bot, tiger, hawk, seekers, prowlers,
   stars, anchors). Built from spheres, boxes and cylinders with a blinking light → detailed, animated models.
+  Hidden ones only show up close, as in Valorant: a trip wire within 3 m, a Hive within 5.25 m, an alarm bot
+  within 7 m, a camera within 8 m (12 m while someone is looking through it).
 - **Pulses** (sonar, stuns, reveals). A translucent sphere that grows and fades. Close in idea, plainer in look.
 - **Ultimates.** No full-screen moment and no voice line → each ultimate has its own effects, and its voice
   line is heard across the map.
@@ -130,7 +138,7 @@ Only what differs beyond the shared points above.
 | Volt (Neon) | Static Lanes: blue slabs. Overload: a glowing rod from the fingertip. | Electric walls with lightning; Overdrive is a crackling beam. |
 | Mirage (Yoru) | Double: a translucent blue box figure. Phase Out: dark screen tint. | Fakeout is a copy of Yoru; Dimensional Drift shows a mask and another-dimension view. |
 | Fawn (Skye) | Stalker: green box animal. Lantern Hawk: glowing body with flat wings. Hunters: green glowing ovals. Bloom: teammates glow green. | Trailblazer is a Tasmanian tiger, Guiding Light a hawk, Seekers spirit creatures, all modelled. |
-| Lattice (Cypher) | Tripline: thin line between two small boxes. Watcher: dark ball with a light. Gridlock: small hexagon disc, grey smoke sphere. | Modelled wire anchors and camera; cages are thin grey cylinders. |
+| Lattice (Cypher) | Tripline: thin line between two small boxes. Watcher: dark ball with a light. Gridlock: small hexagon disc; the cage is a grey cylinder. | Modelled wire anchors and camera; cages are thin grey cylinders. |
 | Nyx (Fade) | Hound: box animal. Omen Eye: dark sphere with a pink core. Terror: a translucent strip. | Prowlers and the Haunt eye are creature models; Nightfall is a dark wave. |
 | Solace (Sage) | Frost Wall: translucent light-blue segments with bright edges. Chill: cyan disc and ring. | Crystalline ice wall; Slow Orb leaves an icy field. |
 | Stella (Astra) | Stars: a gold octahedron with a halo. Nebulas: spheres. Rift Line: a purple slab across the map. | Stars are glowing points; Astral Form is a cosmic map view; Cosmic Divide is a shimmering wall. |

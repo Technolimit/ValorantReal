@@ -1532,7 +1532,7 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Missile Call', desc: 'Open the map and mark a target per charge (2 charges, 45 m); press E (or right click) to fire. Each missile comes down 1.5 s later and goes off three times, half a second apart: 65 within 2.5 m, down to 50 at 4.5 m, each time.', charges: 2, cooldown: 35, instant: true, recharge: 'none',
+        name: 'Missile Call', desc: 'Open the map and mark a target per charge (2 charges, 45 m); press E (or right click) to fire. Each missile comes down 1.5 s later and goes off three times, half a second apart: 65 within 2.5 m, down to 50 at 4.5 m, each time.', charges: 2, cooldown: 35, instant: true, unequip: 0.42, recharge: 'none',
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -1892,7 +1892,7 @@ export class Kit {
   // The tablet goes away: the gun comes back after the ability's unequip time.
   mapClosed(mp) {
     const o = this.owner, a = mp && this.agent.abilities[mp.key];
-    if (o.alive && !this.busy() && !this.armed && a && !a.instant) o.equip(o.slot, this.now, true, a.unequip);
+    if (o.alive && !this.busy() && !this.armed && a && (!a.instant || a.unequip)) o.equip(o.slot, this.now, true, a.unequip);
   }
 
   cooldownLeft(k, now) { return this.ready[k] ? Math.max(0, this.ready[k] - now) : 0; }

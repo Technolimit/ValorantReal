@@ -34,7 +34,6 @@ These follow one reading of the spec, which may not be what Valorant does:
 
 ## Not taken from the spec
 
-- **Sunflare (Curveball):** only the 0.7 s timing was applied; the flare still flies Tapfire's short curve.
 - **Frost Wall (Barrier Orb):** 2.6 m high.
 - **Sonar Bolt (Recon Bolt):** reveal length unchanged.
 - **Stars (Astra):** a recalled star still comes back after 25 s.
@@ -60,26 +59,52 @@ and to you: damage, Decay, statuses and how long they lasted. Each result was co
 - **Strips touching (Barrage, Terror, Rubble, Aftershock Wave).** Someone standing exactly where two of these
   strips meet was hit by both. Strips no longer overlap.
 
+### Fixed after measuring
+
+The first measurement found these differences. They were fixed and measured again:
+
+- **Equip and unequip times.** Every ability waits for its equip time before it can be used, and your gun waits
+  for the ability's unequip time before it comes back. Ultimates with an equip time are drawn with X and used
+  with a click; pressing X again puts them away.
+- **Map-targeted abilities** (Overcast, Sky Hammer, Barrage, Ruse) equip the tablet first: 0.8, 0.74, 0.6 and
+  0.6 s. Missile Call has no equip time in the spec, so its map still opens at once; your gun now takes the
+  spec's 0.42 s to come back after it.
+- **Overclock (High Gear)** has its 0.6 s equip and **Static Lanes (Fast Lane)** its 0.3 s cast.
+- **Sunflare (Curveball)** flies 4 m straight, then curves: 14 m of path at 20 m/s, popping 0.7 s after the
+  throw, 10.4 m ahead and 6.4 m to the side.
+- **Gridlock (Cyber Cage)** is thrown at 20 m/s and goes up 0.35 s after it lands. The cage is a cylinder.
+- **Miasma (Poison Cloud)** rises over 0.6 s and grows over 1.3 s.
+- **Hound (Prowler)** lives 2.5 s in all.
+- **Splatter (Paint Shells)** bomblets land 1.5 to 5.7 m from the main blast and go off 1.7 to 2 s after it.
+- **Smokes** grow in over 0.75 s and shrink away over 1 s as they end.
+- **Smaller fixes:**
+  - Lantern Hawk can't be set off in its first 0.25 s.
+  - Zero Point's knife lasts 15 s.
+  - Overload has its 1.2 s channel.
+  - Phase Out goes off 0.2 s after the cast.
+  - Whoever kills a player revived by Not Dead Yet gets an ultimate point and a signature charge.
+  - Focus gives orbs for assists.
+  - Mindread and the Watcher's dart are snapshot reveals: they show where the enemy was, not where they are.
+
+### Status effects and area rules
+
+These now follow the spec:
+
+- **Slows** make jumps weaker (to 70%; Tripline's tether 25%, the gravity well 40%) and halve dashes. Slow
+  fields and Detain also silence your footsteps.
+- **Fire and acid on the ground** stop at walls and reach 1.2 to 1.5 m up.
+- **Aftershock Wave and Undertow** limit turning to 180° a second while they go out.
+- **Drones and cameras:** piloting one or watching through one ends when your own body takes damage.
+- **Combat Stim** also speeds up spread recovery.
+
 ### Differences seen in play
 
-- **Sunflare (Curveball)** pops about 4.4 m from you (3 m ahead, 3 m to the side) and blinds you for the full
-  1.5 s if you face forward. Valorant's flies at 20 m/s for its 0.7 s, about 14 m along its curve.
-- **Map-targeted abilities** (Overcast, Sky Hammer, Missile Call, Barrage, Ruse) open the map the moment you
-  press the key. Valorant first equips the tablet: 0.8 s for Sky Smoke, 0.74 s for Orbital Strike, 0.6 s for
-  Ruse and Armageddon.
-- **Overclock (High Gear)** starts sprinting the moment you press it. Valorant: 0.6 s equip.
-- **Static Lanes (Fast Lane)** goes up the moment you press it. Valorant: 0.3 s cast.
-- **Gridlock (Cyber Cage)** appears where you aim, up to 15 m, with no flight. Valorant throws it at 20 m/s.
-- **Miasma (Poison Cloud)** is full size the moment the emitter lands. Valorant: it rises over 0.6 s and grows
-  over 1.3 s.
-- **Grasp (Seize)** holds for 4.5 s. The spec's file value is 5.2 s.
-- **Hound (Prowler)** keeps going 4 s after it locks on to someone. The spec gives 2.5 s of life in total.
+- **Grasp (Seize)** holds for 4.5 s after a 0.7 s expand. That matches the spec's 5.2 s if the 5.2 s counts the
+  expand.
 - **Ricochet (Relay Bolt)** concusses 1 s after each impact. The spec gives no delay.
 - **Rift Line (Cosmic Divide)** blocks 2.7 s after you confirm it. The spec lists a 0.7 s cast and a 3 s warmup.
 - **Acid Vial (Snake Bite)** deals 10 every 0.4 s. That is 12.5 a second doubled by its own Vulnerable, so
   25 a second while you stand in it. The spec lists 12.5 a second, applied as 1 every 0.08 s.
-- **Splatter (Paint Shells)** bomblets go off 0.67 s after the main blast, 0.1 s apart (the wiki's timing). The
-  spec's file values say at least 1.3 s, or 0.3 s after they stop.
 - **Arc Dart (Shock Bolt)** deals 41 to someone 3 m from where it hits; a straight 75-to-30 falloff from 1.5 m to
   4 m would give about 48. Tapfire measures from the middle of the body, not the feet.
 - **Sentry (Turret)** fires its first shot 0.8 s after it is placed.
@@ -98,7 +123,7 @@ and to you: damage, Decay, statuses and how long they lasted. Each result was co
 | **Cinder (Phoenix)** | | |
 | Firebreak (Blaze) | Usable at 0.8 s; wall grows at 20 m/s to 14.6 m; lasts 8 s | Same |
 | Ember (Hot Hands) | Usable at 0.8 s; 18 m/s throw; fire spreads to 4.5 m, 60 a second, 4 s (235 to someone in it) | Same |
-| Sunflare (Curveball) | Usable at 0.8 s; pops 0.7 s after the throw, 4.4 m away; up to 1.5 s blind | Pop distance differs |
+| Sunflare (Curveball) | Usable at 0.8 s; pops 0.7 s after the throw, 10.4 m ahead and 6.4 m to the side; up to 1.5 s blind | Same |
 | Rekindle (Run It Back) | Back to the mark after 10 s | Same |
 | **Umbra (Omen)** | | |
 | Rift (Shrouded Step) | Usable at 0.5 s; teleports 0.7 s after the click, then 0.5 s to arrive; 15 m | Same |
@@ -118,16 +143,16 @@ and to you: damage, Decay, statuses and how long they lasted. Each result was co
 | **Blitz (Raze)** | | |
 | Boomer (Boom Bot) | Usable at 1.1 s; finds an enemy 12 m away and blows up on them (73); 60 HP; 5 s | Same |
 | Kicker (Blast Pack) | Instant; sticks; armed after 1.5 s: 50 at the satchel, 31 at 3 m; 20 HP | Same |
-| Splatter (Paint Shells) | Usable at 0.8 s; main blast 2 s after the throw (55); four bomblets 0.67 s later | Bomblet timing differs |
+| Splatter (Paint Shells) | Usable at 0.8 s; main blast 2 s after the throw (55); four bomblets land 1.5 to 5.7 m away and go off 1.7 to 2 s later | Same |
 | Finale (Showstopper) | Rocket out at 1.4 s; 150 close, falling to 30 at 7 m | Same (bug fixed) |
 | **Granite (Brimstone)** | | |
 | Rally (Stim Beacon) | Instant throw at 16.5 m/s; field 0.5 s later; 6 m, 12 s | Same |
 | Napalm (Incendiary) | Usable at 1.1 s; 29 m/s; fire 7.75 s, 60 a second, 4.5 m | Same |
-| Overcast (Sky Smoke) | Map opens at once; smoke 1 s after you confirm; 4.15 m, 19.25 s | No 0.8 s equip |
-| Sky Hammer (Orbital Strike) | Map opens at once; damage starts 2 s later, 9 m, about 130 a second for 3 s then fading | No 0.74 s equip |
+| Overcast (Sky Smoke) | Tablet out at 0.8 s; smoke 1 s after you confirm; 4.15 m, 19.25 s | Same |
+| Sky Hammer (Orbital Strike) | Tablet out at 0.74 s; damage starts 2 s later, 9 m, about 130 a second for 3 s then fading | Same |
 | **Venom (Viper)** | | |
 | Acid Vial (Snake Bite) | Usable at 0.8 s; 29 m/s; pool 4.5 m, 6.5 s; Vulnerable while inside and 2 s after; 25 a second | Damage rate differs |
-| Miasma (Poison Cloud) | Usable at 0.8 s; gas full size as it lands; Decay 10 on contact, then 10 a second | Gas appears at once |
+| Miasma (Poison Cloud) | Usable at 0.8 s; gas rises over 0.6 s; Decay 10 on contact, then 10 a second | Same |
 | Toxic Wall (Toxic Screen) | Usable at 0.8 s; rises 1 s later; 60 m long, 6.75 m high; Decay anywhere you cross it | Same (bug fixed) |
 | Nest (Viper's Pit) | Spreads to 9 m over 5 s; Decay 50 on contact; nearsight 8.1 m | Same |
 | **Vex (Reyna)** | | |
@@ -141,9 +166,9 @@ and to you: damage, Decay, statuses and how long they lasted. Each result was co
 | Fissure (Fault Line) | Usable at 0.8 s; full charge 1 s, moving at ×0.6; goes off 1.1 s after release; concuss 2.5 s; reaches 64 m | Same |
 | Aftershock Wave (Rolling Thunder) | First zone 0.9 s after the cast, then every 0.255 s; concuss 4 s | Same |
 | **Volt (Neon)** | | |
-| Static Lanes (Fast Lane) | Instant; walls 3.5 m apart, 6.75 m high, 4 s | No 0.3 s cast |
+| Static Lanes (Fast Lane) | Up at 0.3 s; walls 3.5 m apart, 6.75 m high, 4 s | Same |
 | Ricochet (Relay Bolt) | Instant; 41 m/s, bounces once; concuss 2.5 s within 5 m, 1 s after each impact | Delay not in the spec |
-| Overclock (High Gear) | Sprint starts at once | No 0.6 s equip |
+| Overclock (High Gear) | Sprint starts at 0.6 s | Same |
 | Overload (Overdrive) | 20 shots a second; 18 a hit up close | Same |
 | **Mirage (Yoru)** | | |
 | Double (Fakeout) | Usable at 0.8 s; walks at 5.6 m/s for 10 s; shooting it flashes the shooter | Same |
@@ -157,12 +182,12 @@ and to you: damage, Decay, statuses and how long they lasted. Each result was co
 | Hunters (Seekers) | One per enemy; about 7 m/s; nearsight 3 s at 7.5 m; 120 HP, 15 s | Same |
 | **Lattice (Cypher)** | | |
 | Tripline (Trapwire) | Usable at 0.8 s; 20 HP (arming and tether: `check-abilities`) | Same |
-| Gridlock (Cyber Cage) | Placed at 0.25 s where you aim, up to 15 m | Not thrown |
+| Gridlock (Cyber Cage) | Thrown at 0.25 s; the cage goes up 0.35 s after it lands | Same |
 | Watcher (Spycam) | Usable at 0.8 s; up to 20 m; 1 HP | Same |
 | Mindread (Neural Theft) | Reveals all enemies 2 s and 4 s after the cast | Same |
 | **Nyx (Fade)** | | |
-| Hound (Prowler) | Usable at 1.1 s; 10 m/s; nearsight 2.75 s at 6 m; 60 HP; 4 more seconds once it locks on | Lifetime differs |
-| Grasp (Seize) | Usable at 0.8 s; drops after 1.5 s; Decay 75 over 5 s; held and deafened 4.5 s | Hold 4.5 s, spec 5.2 s |
+| Hound (Prowler) | Usable at 1.1 s; 10 m/s; nearsight 2.75 s at 6 m; 60 HP; 2.5 s of life | Same |
+| Grasp (Seize) | Usable at 0.8 s; drops after 1.5 s; Decay 75 over 5 s; held and deafened 4.5 s after a 0.7 s expand | Same if the spec's 5.2 s counts the expand |
 | Omen Eye (Haunt) | Drops after 1.5 s; reveals for 1.5 s; 1 HP | Same |
 | Terror (Nightfall) | Zones 0.325 s apart; Decay 75 once; deafened and marked 8 s | Same (bug fixed) |
 | **Solace (Sage)** | | |
@@ -193,8 +218,8 @@ and to you: damage, Decay, statuses and how long they lasted. Each result was co
 | **Ballast (Tejo)** | | |
 | Scout Drone (Stealth Drone) | Usable at 0.8 s; 6 s; 42 HP; pulse suppresses and reveals 8 s | Same |
 | Sticky Charge (Special Delivery) | Usable at 0.5 s; 41 m/s; goes off 0.8 s after it sticks: 35 close, 28 at 3 m; concuss 2.5 s | Same |
-| Missile Call (Guided Salvo) | Map opens at once; three blasts of 65, 0.5 s apart | Same |
-| Barrage (Armageddon) | First blast 3.08 s after confirming; 60 a blast | Same (overlap fixed) |
+| Missile Call (Guided Salvo) | Map opens at once; three blasts of 65, 0.5 s apart; gun back 0.42 s after firing | Same |
+| Barrage (Armageddon) | Tablet out at 0.6 s; first blast 3.08 s after confirming; 60 a blast | Same (overlap fixed) |
 | **Override (KAY/O)** | | |
 | Fragment (FRAG/ment) | Usable at 0.7 s; first blast 0.5 s after it lands, then 3 more 1 s apart; 60 close, 36 at 3 m | Same |
 | Flashpoint (FLASH/drive) | Usable at 0.8 s; pops about 1.4 s after the throw; blind 2.25 s | Same |
@@ -203,7 +228,7 @@ and to you: damage, Decay, statuses and how long they lasted. Each result was co
 | **Thistle (Clove)** | | |
 | Pick-Me-Up | Takes 0.7 s; +50 temporary health; 10% faster for 3 s | Same |
 | Meddle | Usable at 0.8 s; Decay 90 within 4 m | Same |
-| Ruse | Map opens at once; smoke 1 s after confirming; 4 m, 13.5 s | No 0.6 s equip |
+| Ruse | Tablet out at 0.6 s; smoke 1 s after confirming; 4 m, 13.5 s | Same |
 | Not Dead Yet | Not measured here (needs you to die; covered by `check-abilities`) | — |
 | **Lumen (Waylay)** | | |
 | Saturate | Hinder 3 s within its radius | Same |
@@ -213,6 +238,16 @@ and to you: damage, Decay, statuses and how long they lasted. Each result was co
 
 ## Outside the kits
 
-- **Maps** are original layouts, not Valorant's.
+- **Maps** are original layouts, not Valorant's, paced like Valorant's:
+  - From the attackers' barriers it takes about 5 s to fight for mid and 10 to 15 s to come into view of a site.
+  - No spot a defender would hold can see into the attackers' spawn.
+  - Foundry's halls are 4 to 6 m wide. Divide has cover in its open areas.
+- **Bots** play by the same rules as you: the same guns, spread and movement, and no aim help. They place their
+  crosshair on corners at head height, hold angles still, counter-strafe before shooting, trade teammates and back
+  off when hurt. They share what they see with their team instead of talking. Over 39 measured rounds:
+  - first contact at a median of 17 to 20 s
+  - attackers win 44%
+  - 69% of rounds have a plant
+  - 11 to 22% of deaths are traded
 - **Looks.** How players, guns, effects and abilities look is compared in
   [VISUAL_DIFFERENCES.md](VISUAL_DIFFERENCES.md).
