@@ -787,7 +787,7 @@ const checks = [
     const cross = async (off) => {
       const g = await __start({ agent: 'venom' }), p = g.player, k = p.kit, b = g.bots[0];
       __place(g, p, 30); __tick(g, 0.5);
-      k.agent.abilities.e.use(k); __tick(g, 1.3);
+      k.agent.abilities.e.use(k); __tick(g, 0.3); k.agent.abilities.e.reuse(k); __tick(g, 1.3); // lay the emitters, then E raises the wall
       const y = p.pos[1], x0 = p.pos[0], z = p.pos[2] - (14 + off); // emitters every 2 m from 2 m: 14 is on one, 15 between two
       b.hp = 100; b.armor = 0;
       for (let i = 0; i <= 154; i++) { b.pos = [x0 - 3 + i * 6 / 154, y, z]; b.prevPos = [...b.pos]; b.vel = [0, 0, 0]; g.tick(); }

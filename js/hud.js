@@ -417,7 +417,7 @@ export class Hud {
     const eye = p.eye();
     let inside = 0;
     for (const s of this.game.smokes) {
-      if (now < s.born || s.kind === 'fire' || (s.nest && s.owner === p)) continue; // your own Nest doesn't blind you
+      if (now < s.born || s.kind === 'fire') continue;
       const grow = smokeScale(s, now), fade = Math.min(1, (s.until - now) / 0.4);
       if (s.slab) { if (insideSlab(s, eye, 0.1)) inside = Math.max(inside, 0.85 * fade); continue; }
       const d = s.cyl ? hyp(eye[0] - s.pos[0], eye[2] - s.pos[2]) : hyp(eye[0] - s.pos[0], eye[1] - s.pos[1], eye[2] - s.pos[2]);

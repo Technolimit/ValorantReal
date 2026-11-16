@@ -199,10 +199,11 @@ export class Game {
     this.tickDevices(now);
     this.tickDrops(now);
     this.tickContract(now);
-    // Venom sees enemies inside her own Nest.
+    // Venom's Nest outlines enemies inside it in red for her team. It isn't a reveal through walls: she is as
+    // nearsighted in it as anyone, and the outline only makes those she can see stand out.
     for (const s of this.smokes) {
       if (!s.nest || now >= s.until) continue;
-      for (const c of this.combatants) if (this.affectable(c) && this.isEnemy(s.owner, c) && hyp(c.pos[0] - s.pos[0], c.pos[1] + 1 - s.pos[1], c.pos[2] - s.pos[2]) < s.radius) c.st.revealUntil = now + 0.15;
+      for (const c of this.combatants) if (this.affectable(c) && this.isEnemy(s.owner, c) && hyp(c.pos[0] - s.pos[0], c.pos[1] + 1 - s.pos[1], c.pos[2] - s.pos[2]) < s.radius) { c.st.outlineUntil = now + 0.15; c.st.outlineTeam = s.owner.team; }
     }
     for (const w of this.walls) {
       if (now >= w.until) this.removeWall(w);
@@ -265,10 +266,11 @@ export class Game {
           const sl = z.slab, along = dx * sl.dir[0] + dz * sl.dir[1], across = dz * sl.dir[0] - dx * sl.dir[1];
           if (Math.abs(along) > sl.len / 2 || Math.abs(across) > sl.th / 2 + PLAYER.radius) continue;
         } else if (hyp(dx, dz) > zoneRadius(z, now)) continue;
-        const enemy = this.isEnemy(z.owner, c) || (z.burnsOwner && c === z.owner);
+        const self = z.burnsOwner && c === z.owner; // standing in your own fire: a third of the damage, as for allies
+        const enemy = this.isEnemy(z.owner, c) || self;
         if (z.armAt && now < z.armAt) continue; // orbital strike still charging
         const fx = this.affectable(c);
-        if (fx && z.nearsight && this.isEnemy(z.owner, c)) { c.st.nearUntil = now + 0.3; c.st.nearRange = z.nearsight === true ? 7.5 : z.nearsight; }
+        if (fx && z.nearsight && (this.isEnemy(z.owner, c) || (z.selfNear && c === z.owner))) { c.st.nearUntil = now + 0.3; c.st.nearRange = z.nearsight === true ? 7.5 : z.nearsight; } // Nest: its owner too
         if (fx && z.acid && enemy) c.st.vulnUntil = now + 2; // Vulnerable while inside and for 2 s after
         if (fx && z.slowField && this.isEnemy(z.owner, c)) {
           c.st.slowUntil = now + (z.slowLinger || 0.2); c.st.slowAmt = z.slowField;
@@ -285,7 +287,7 @@ export class Game {
         }
         if (z.kind === 'fire') {
           if (enemy) {
-            c.burn = (c.burn || 0) + z.dps * DT;
+            c.burn = (c.burn || 0) + (self ? z.dps / 3 : z.dps) * DT;
             if (c.burn >= 5) { const n = Math.floor(c.burn); c.burn -= n; this.damage(c, z.owner, n, { part: 'body', def: z.def, dist: 0, point: c.eye(), wallbang: false, dot: true }); }
           } else if (z.allyDps && c !== z.owner) {
             c.burn = (c.burn || 0) + z.allyDps * DT;
@@ -308,7 +310,7 @@ export class Game {
         z.fired = true;
         for (const c of this.combatants) {
           if (!this.affectable(c) || !this.isEnemy(z.owner, c)) continue;
-          if (hyp(c.pos[0] - z.pos[0], c.pos[2] - z.pos[2]) > z.r) continue;
+          if (hyp(c.pos[0] - z.pos[0], c.pos[1] + 1 - z.pos[1], c.pos[2] - z.pos[2]) > z.r) continue; // a sphere, not a column
           c.st.disarmUntil = now + z.dur;
           c.st.slowUntil = now + z.dur; c.st.slowAmt = z.slow; c.st.slowJump = 0.7; c.st.silentUntil = now + z.dur; // detained: weak jumps, silent
         }
@@ -348,12 +350,14 @@ export class Game {
     const now = this.time, hit = [], flat = opts.flat || 1;
     for (const c of this.combatants) {
       if (!this.affectable(c) || !(opts.all || this.isEnemy(owner, c))) continue;
-      if (hyp(c.pos[0] - pos[0], (c.pos[1] + 1 - pos[1]) / flat, c.pos[2] - pos[2]) > r) continue;
+      if (opts.cyl) { // an upright cylinder: r around, cyl.up above and cyl.down below pos (feet to head counted)
+        if (hyp(c.pos[0] - pos[0], c.pos[2] - pos[2]) > r || c.pos[1] > pos[1] + opts.cyl.up || c.pos[1] + PLAYER.standHeight < pos[1] - opts.cyl.down) continue;
+      } else if (hyp(c.pos[0] - pos[0], (c.pos[1] + 1 - pos[1]) / flat, c.pos[2] - pos[2]) > r) continue;
       if (needSight && !this.world.lineOfSight(pos, c.eye()) && !this.world.lineOfSight(pos, [c.pos[0], c.pos[1] + 1, c.pos[2]])) continue;
       hit.push(c);
       for (const type of types.split('+')) this.status(c, type, dur, opts);
     }
-    this.emit('pulse', { pos, r, type: types.split('+')[0], color, owner });
+    this.emit('pulse', { pos, r, type: types.split('+')[0], color, owner, cyl: opts.cyl });
     return hit;
   }
 
@@ -415,7 +419,8 @@ export class Game {
       const body = [c.pos[0], c.pos[1] + 1, c.pos[2]];
       const d = hyp(body[0] - pos[0], body[1] - pos[1], body[2] - pos[2]);
       if (d > r || (!throughWalls && !this.world.lineOfSight(pos, body))) continue;
-      this.damage(c, owner, Math.round(d <= inner ? max : max - (max - min) * (d - inner) / (r - inner)), { part: 'body', def, dist: d, point: body, wallbang: false });
+      const full = d <= inner ? max : max - (max - min) * (d - inner) / (r - inner);
+      this.damage(c, owner, Math.round(c === owner ? full / 3 : full), { part: 'body', def, dist: d, point: body, wallbang: false }); // your own blast hurts you a third as much
     }
     this.emit('pulse', { pos, r, type: 'blast', color, owner });
   }
@@ -519,8 +524,15 @@ export class Game {
       if (d > r) continue;
       const h = hyp(dx, dz) || 1;
       const k = 1 - 0.5 * d / r;
-      c.vel[0] = dx / h * power * k;
-      c.vel[2] = dz / h * power * k;
+      // Forgiving: if you were already moving roughly away from the blast, it throws you more the way you were going.
+      let ux = dx / h, uz = dz / h;
+      const sp = c.horizSpeed();
+      if (sp > 1) {
+        const mx = c.vel[0] / sp, mz = c.vel[2] / sp;
+        if (mx * ux + mz * uz > -0.2) { const bx = ux * 0.4 + mx * 0.6, bz = uz * 0.4 + mz * 0.6, bl = hyp(bx, bz) || 1; ux = bx / bl; uz = bz / bl; }
+      }
+      c.vel[0] = ux * power * k;
+      c.vel[2] = uz * power * k;
       c.vel[1] = up * (0.6 + 0.4 * k);
       c.grounded = false;
       c.airCap = hyp(c.vel[0], c.vel[2]);
@@ -649,7 +661,10 @@ export class Game {
         let sp = 6;
         if (d.target) {
           const c = d.target, dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = hyp(dx, dz);
-          if (!c.alive) d.target = null;
+          // While it can see its target its 5 s doesn't run down; once it loses sight of them it drops them.
+          const sees = c.alive && this.world.lineOfSight([d.pos[0], d.pos[1] + 0.3, d.pos[2]], c.eye());
+          if (sees) d.until += DT;
+          if (!c.alive || !sees) d.target = null;
           else {
             if (dist < 2.5 && Math.abs(c.pos[1] - d.pos[1]) < 5) { d.removed = true; this.explode(d.owner, [d.pos[0], d.pos[1] + 0.4, d.pos[2]], 6, 80, 30, BOOMER, 0xffb547, false, false, 2); continue; }
             d.dir = [dx / dist, 0, dz / dist]; sp = 8;
@@ -1362,6 +1377,7 @@ export class Game {
       if (!c.alive || c.remote || c.st.channelUntil > now) continue;
       // F on your own placed utility picks it back up (before any gun lying there).
       if (pressed && !c.isBot && c.kit) { const d = c.kit.pickupInView(); if (d && c.kit.pickUp([...d.pos])) continue; }
+      if (pressed && !c.isBot && c.kit?.activateInView()) continue; // F on a gadget you set off by hand (a Hive)
       // F with Riftwalk's rift out fakes the teleport, unless F is wanted for an orb or the spike here.
       if (pressed && !c.isBot && c.kit?.gate && !c.kit.gate.removed && !this.fNeeded(c) && c.kit.agent.abilities.e.fake?.(c.kit)) continue;
       if (!this.drops.length) continue;

@@ -133,6 +133,7 @@ export class Gun {
         ? s.walk * (frac - s.deadzone) / (wk - s.deadzone)
         : s.walk + (s.run - s.walk) * Math.min(1, (frac - wk) / (1 - wk));
     }
+    if (owner.slideShootUntil > owner.game?.time) move = 0; // Volt's slide: as accurate as standing still
     const air = owner.grounded ? 0 : s.air;
     const fe = d.fe.max * smoothstep(d.fe.start, d.fe.end, this.heat);
     let total = base + move + air + fe;

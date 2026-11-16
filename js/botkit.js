@@ -39,8 +39,8 @@ const R = {
   thistle: { c: 'afterKill', q: 'molly', e: 'mapSmoke' },
   lumen: { c: 'flash', x: 'ultFight' },
 };
-// Second press needed to set some of them off (swarm grenades, the hawk).
-const REUSE = { 'bastion:c': 1.1, 'fawn:e': 0.9 };
+// Second press needed to set some of them off (swarm grenades, the hawk, Toxic Wall's gas).
+const REUSE = { 'bastion:c': 1.1, 'fawn:e': 0.9, 'venom:e': 0.4 }; // Toxic Wall: lay the emitters, then raise the wall
 
 const dist = (a, b) => hyp(a[0] - b[0], a[2] - b[2]);
 
