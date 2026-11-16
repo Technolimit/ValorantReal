@@ -699,6 +699,7 @@ export class Renderer {
       if (type === 'rebirth') this.fxMarker(pos, 0xff7a3d, () => (kit.rebirth ? Infinity : 0));
       if (type === 'rekindled') this.fxBurst(who.eye(), 0xff7a3d, 2.5, 0.5);
     });
+    g.on('riftMark', ({ pos, life }) => this.fxFloorMark(pos, 0.6, 0xa67bff, life));
     g.on('teleport', ({ from, to }) => { this.fxBurst([from[0], from[1] + 1, from[2]], 0xa67bff, 1.2, 0.4); this.fxBurst([to[0], to[1] + 1, to[2]], 0xa67bff, 1.2, 0.4); });
     g.on('blade', ({ who }) => { if (who === g.player) { this.vm.swingStart = performance.now(); this.vm.swingHeavy = false; this.vm.swingAnim = null; } });
     g.on('ability', ({ who, type }) => {
@@ -929,6 +930,15 @@ export class Renderer {
       m.scale.setScalar(Math.max(0.01, r * (0.2 + 0.8 * Math.sqrt(k))));
       m.material.opacity = 0.35 * (1 - k);
     });
+  }
+
+  // A faint flat mark on the floor (where Riftwalk's fake teleport went off); fades over its last 3 s.
+  fxFloorMark(pos, r, color, life) {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(r, 24), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(pos[0], pos[1] + 0.03, pos[2]);
+    const t0 = this.game.time;
+    this.fxAdd(m, t0 + life, (now) => { m.material.opacity = 0.45 * Math.min(1, (t0 + life - now) / 3); });
   }
 
   // ---------- finishers ----------

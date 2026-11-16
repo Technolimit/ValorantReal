@@ -814,6 +814,14 @@ export class Game {
           if (!this.world.overlap(np[0] - 0.2, np[1] - 0.15, np[2] - 0.2, np[0] + 0.2, np[1] + 0.15, np[2] + 0.2)) d.pos = np;
         }
         d.dir = [f[0], f[1], f[2]];
+        // Enemies it can see hear a warning (patch 11.00), checked a few times a second.
+        if (now >= (d.spotCheck || 0)) {
+          d.spotCheck = now + 0.3;
+          for (const c of enemiesOf(d)) {
+            const e = c.eye(), dx = e[0] - d.pos[0], dy = e[1] - d.pos[1], dz = e[2] - d.pos[2], dist = hyp(dx, dy, dz);
+            if (dist < 40 && (dx * f[0] + dy * f[1] + dz * f[2]) / dist > 0.6 && this.world.lineOfSight(d.pos, e)) this.emit('droneSpotted', { who: c, by: d });
+          }
+        }
       } else if (d.kind === 'hawk' || d.kind === 'sdrone') {
         if (d.owner.alive) {
           const want = dirOf(d.owner.yaw, d.owner.pitch);
@@ -877,6 +885,7 @@ export class Game {
       } else if (d.kind === 'turret') {
         // Sentry: watches a 100 degree cone out to 40 m and fires three-round bursts (12 shots a second, a second
         // between bursts). 8 damage a shot within 20 m, 6 to 35 m, 4 beyond; each hit slows by half for a moment.
+        // It opens fire 0.75 s after it spots someone new.
         if (this.sentinelOff(d, now) || now < d.next) continue;
         const head = [d.pos[0], d.pos[1] + 0.75, d.pos[2]];
         let best = null, bestD = 40;
@@ -888,8 +897,9 @@ export class Game {
           if (off > 50 * Math.PI / 180 || !this.world.lineOfSight(head, body)) continue;
           best = { c, body, ang }; bestD = dist;
         }
-        if (!best) { d.burst = 0; continue; }
+        if (!best) { d.burst = 0; d.spotted = null; continue; }
         d.aimYaw = best.ang;
+        if (d.spotted !== best.c) { d.spotted = best.c; d.burst = 0; d.next = now + 0.75; continue; }
         d.burst = (d.burst || 0) + 1;
         if (d.burst >= 3) { d.burst = 0; d.next = now + 1; } else d.next = now + 1 / 12;
         const hit = Math.random() < 0.7;
@@ -1331,6 +1341,15 @@ export class Game {
     return best;
   }
 
+  // Is F busy at c's feet: an ultimate orb in reach, the spike to plant here or a planted spike to defuse?
+  fNeeded(c) {
+    const m = this.mode, sp = m?.spike;
+    if (!m) return false;
+    if (m.orbNear?.(c)) return true;
+    if (sp?.carrier === c && m.inSite?.(c.pos)) return true;
+    return !!(sp?.state === 'planted' && sp.pos && hyp(c.pos[0] - sp.pos[0], c.pos[2] - sp.pos[2]) < 2);
+  }
+
   tickDrops(now) {
     if (!this.mode) { // deathmatch: guns despawn (filtered only when one is due, so most ticks make no new list)
       let due = false;
@@ -1343,6 +1362,8 @@ export class Game {
       if (!c.alive || c.remote || c.st.channelUntil > now) continue;
       // F on your own placed utility picks it back up (before any gun lying there).
       if (pressed && !c.isBot && c.kit) { const d = c.kit.pickupInView(); if (d && c.kit.pickUp([...d.pos])) continue; }
+      // F with Riftwalk's rift out fakes the teleport, unless F is wanted for an orb or the spike here.
+      if (pressed && !c.isBot && c.kit?.gate && !c.kit.gate.removed && !this.fNeeded(c) && c.kit.agent.abilities.e.fake?.(c.kit)) continue;
       if (!this.drops.length) continue;
       // Walk over a gun with that slot empty: it's picked up automatically (not your own fresh drop).
       const drops = this.drops;

@@ -513,11 +513,11 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'device', name: 'Sentry', desc: 'Deploy a turret (4.5 m) facing where you aim. It fires three-round bursts at enemies in its 100° view out to 40 m (8 damage a shot up close, 6 past 20 m, 4 past 35 m; hits slow) until it is destroyed (45 s to get it back) or picked up (20 s). It switches off while you are more than 40 m away. Placing a new one takes the old one down.', charges: 1, cooldown: 45, equip: 1.1,
+        item: 'device', name: 'Sentry', desc: 'Deploy a turret (4.5 m) facing where you aim. It fires three-round bursts at enemies in its 100° view out to 40 m (8 damage a shot up close, 6 past 20 m, 4 past 35 m; hits slow) until it is destroyed (45 s to get it back) or picked up (20 s). It takes 2 s to set up, and opens fire 0.75 s after it spots someone. It switches off while you are more than 40 m away. Placing a new one takes the old one down.', charges: 1, cooldown: 45, equip: 1.1,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 4.5, { floor: true, back: 0.5 });
           for (const d of o.game.devices) if (d.kind === 'turret' && d.owner === o) d.removed = true; // one turret at a time
-          o.game.addDevice({ kind: 'turret', owner: o, pos, yaw: o.yaw, aimYaw: o.yaw, life: 1e5, next: kit.now + 0.8 });
+          o.game.addDevice({ kind: 'turret', owner: o, pos, yaw: o.yaw, aimYaw: o.yaw, life: 1e5, next: kit.now + 2 }); // 2 s to set up
         },
       },
       x: {
@@ -908,7 +908,7 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Riftwalk', desc: 'Hold the rift: left click sends it along the ground (8 m/s), right click leaves it where you stand. Press E again any time in the next 20 s to teleport to it (0.5 s, untouchable on the way). Enemies can shoot it (60 HP). In 5v5 one is free each round, a second costs 150, and two kills bring a used one back.', charges: 2, cooldown: 30, recharge: 'kills', equip: 0.8, unequip: 0.7,
+        name: 'Riftwalk', desc: 'Hold the rift: left click sends it along the ground (8 m/s), right click leaves it where you stand. Press E again any time in the next 20 s to teleport to it (0.5 s, untouchable on the way). Or press F to fake it: the rift makes the teleport’s sound and flash and you stay where you are, leaving a faint mark on the floor for 30 s. Enemies can shoot it (60 HP). In 5v5 one is free each round, a second costs 150, and two kills bring a used one back.', charges: 2, cooldown: 30, recharge: 'kills', equip: 0.8, unequip: 0.7,
         armHint: 'LEFT CLICK: SEND IT · RIGHT CLICK: LEAVE IT HERE',
         use(kit, mode) {
           const o = kit.owner, f = fwd2(o.yaw), still = mode === 'right';
@@ -925,6 +925,18 @@ export const AGENTS = {
           o.game.emit('ability', { who: o, type: 'step', pos: gt.pos });
           o.st.intangibleUntil = o.st.channelUntil = kit.now + 0.5; // nothing touches him while he steps through
           mine(kit, 0.5, () => o.game.teleportNear(o, [...gt.pos]));
+          return true;
+        },
+        // F with a rift out: a fake teleport. The rift goes off with the real one's sound and flash, you stay put,
+        // and it leaves a faint mark on the floor for 30 s (the tell that it was fake).
+        fake(kit) {
+          const gt = kit.gate;
+          if (!gt || gt.removed) { kit.gate = null; return false; }
+          const o = kit.owner, at = [...gt.pos];
+          kit.gate = null;
+          gt.removed = true;
+          o.game.emit('ability', { who: o, type: 'step', pos: at });
+          later(kit, 0.5, () => { o.game.emit('teleport', { who: o, from: at, to: at, fake: true }); o.game.emit('riftMark', { pos: at, life: 30 }); });
           return true;
         },
       },
@@ -1231,7 +1243,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Rift Line', desc: 'Open the map and click two points: a wall of cosmic energy splits the whole map through the first, running toward the second (it snaps to the map’s grid), for 21 s after a 2.7 s windup. It stops bullets and sight; thrown abilities pass through.', points: 7,
+        name: 'Rift Line', desc: 'Open the map and click two points: a wall of cosmic energy splits the whole map through the first, running toward the second (it snaps to the map’s grid), for 21 s after a 3 s windup. It stops bullets and sight; thrown abilities pass through.', points: 7,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -1241,7 +1253,7 @@ export const AGENTS = {
               kit.lastUse.x = kit.now;
               // Through the first point toward the second; with only one point it runs the way you face.
               const yaw = picks[1] ? Math.atan2(-(picks[1][0] - picks[0][0]), -(picks[1][2] - picks[0][2])) : o.yaw;
-              later(kit, 2.667, () => o.game.divide(o, picks[0], yaw, 21)); // the wall rises after the windup
+              later(kit, 3, () => o.game.divide(o, picks[0], yaw, 21)); // the wall rises after the spec's 3 s warmup
               o.game.emit('ability', { who: o, type: 'ult' });
             },
           };

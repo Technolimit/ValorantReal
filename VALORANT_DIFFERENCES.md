@@ -38,6 +38,9 @@ These follow one reading of the spec, which may not be what Valorant does:
 - **Sonar Bolt (Recon Bolt):** reveal length unchanged.
 - **Stars (Astra):** a recalled star still comes back after 25 s.
 - **Double (Fakeout):** the decoy flashes when it is shot; only bots set it off by looking at it.
+- **Kestrel (Owl Drone):** the spec's "boost charge 1, boost cooldown 3" isn't used; no patch notes or guides
+  describe a drone boost.
+- **Fall damage** isn't in Tapfire. Valorant has some, but no numbers for it are published.
 - **Overload (NULL/cmd):** a downed bot is picked up automatically by a teammate who reaches it.
 
 ## Measured in game
@@ -77,6 +80,16 @@ The first measurement found these differences. They were fixed and measured agai
 - **Hound (Prowler)** lives 2.5 s in all.
 - **Splatter (Paint Shells)** bomblets land 1.5 to 5.7 m from the main blast and go off 1.7 to 2 s after it.
 - **Smokes** grow in over 0.75 s and shrink away over 1 s as they end.
+- **Second pass:**
+  - Sentry (Turret) takes 2 s to set up and opens fire 0.75 s after it spots someone (the spec's raw
+    "2 / 0.75"); it used to fire 0.8 s after being placed.
+  - Rift Line (Cosmic Divide) goes up after the spec's 3 s warmup, not 2.7 s.
+  - Riftwalk (Gatecrash) can fake the teleport: F with the rift out plays its sound and flash where it is, you
+    stay put, and a faint mark is left on the floor for 30 s.
+  - An enemy flying Kestrel (Owl Drone) makes a warning sound when it can see you (patch 11.00).
+- **Checked and kept:**
+  - Ricochet (Relay Bolt)'s 1 s delay before each concuss is Valorant's windup, raised from 0.8 s to 1 s in
+    patch 11.00. The spec file doesn't list it.
 - **Smaller fixes:**
   - Lantern Hawk can't be set off in its first 0.25 s.
   - Zero Point's knife lasts 15 s.
@@ -101,13 +114,11 @@ These now follow the spec:
 
 - **Grasp (Seize)** holds for 4.5 s after a 0.7 s expand. That matches the spec's 5.2 s if the 5.2 s counts the
   expand.
-- **Ricochet (Relay Bolt)** concusses 1 s after each impact. The spec gives no delay.
-- **Rift Line (Cosmic Divide)** blocks 2.7 s after you confirm it. The spec lists a 0.7 s cast and a 3 s warmup.
-- **Acid Vial (Snake Bite)** deals 10 every 0.4 s. That is 12.5 a second doubled by its own Vulnerable, so
-  25 a second while you stand in it. The spec lists 12.5 a second, applied as 1 every 0.08 s.
+- **Acid Vial (Snake Bite)** deals its 12.5 a second, doubled to 25 by its own Vulnerable as in Valorant, but in
+  steps of 10 every 0.4 s instead of 1 every 0.08 s. All fire on the ground lands in steps of 5 damage, so
+  each tick doesn't make its own hit marker, damage number and network message.
 - **Arc Dart (Shock Bolt)** deals 41 to someone 3 m from where it hits; a straight 75-to-30 falloff from 1.5 m to
   4 m would give about 48. Tapfire measures from the middle of the body, not the feet.
-- **Sentry (Turret)** fires its first shot 0.8 s after it is placed.
 
 ### Every ability, measured
 
@@ -131,14 +142,14 @@ These now follow the spec:
 | Shade (Dark Cover) | Usable at 1 s; 64 m/s; smoke 0.3 s after it arrives; 4.1 m, 14.7 s | Same |
 | Nightwalk (From the Shadows) | Teleports 4 s after you pick the spot; the shade has 1 HP | Same |
 | **Hawke (Sova)** | | |
-| Kestrel (Owl Drone) | Launches at 0.9 s; 7 s; 100 HP | Same |
+| Kestrel (Owl Drone) | Launches at 0.9 s; 7 s; 100 HP; enemies it sees hear a warning | Same (no boost) |
 | Arc Dart (Shock Bolt) | Bow out at 0.8 s, full charge 1 s later; 41 m/s; 75 at the impact, 41 at 3 m | Falloff slightly steeper |
 | Sonar Bolt (Recon Bolt) | First ping 0.7 s after it sticks, second 1.6 s later; 20 HP | Same |
 | Talon Strike (Hunter's Fury) | 80 a beam, 66 m long, through walls; reveal 1.2 s | Same |
 | **Bastion (Killjoy)** | | |
 | Hive (Nanoswarm) | Usable at 0.74 s; 18 m/s throw; hides where it lands; 20 HP; damage starts 0.5 s after you set it off | Same (radius 4.5 m, see above) |
 | Watchdog (Alarmbot) | Placed at 0.85 s, 10 m away; arms 1.5 s later; Vulnerable 4 s on an enemy in range; 20 HP | Same |
-| Sentry (Turret) | Placed at 1.1 s, 4.5 m away; bursts of 3 at 12 a second, 1 s apart; 8 a hit; hits slow 50% for 0.5 s; 100 HP | Same (first shot 0.8 s after placing) |
+| Sentry (Turret) | Placed at 1.1 s, 4.5 m away; first shot 2.75 s after placing (2 s setup, 0.75 s after spotting); bursts of 3 at 12 a second, 1 s apart; 8 a hit; hits slow 50% for 0.5 s; 100 HP | Same |
 | Clampdown (Lockdown) | Goes off 13 s after placing; 32 m; detains 8 s (move ×0.167, no gun) | Same |
 | **Blitz (Raze)** | | |
 | Boomer (Boom Bot) | Usable at 1.1 s; finds an enemy 12 m away and blows up on them (73); 60 HP; 5 s | Same |
@@ -151,7 +162,7 @@ These now follow the spec:
 | Overcast (Sky Smoke) | Tablet out at 0.8 s; smoke 1 s after you confirm; 4.15 m, 19.25 s | Same |
 | Sky Hammer (Orbital Strike) | Tablet out at 0.74 s; damage starts 2 s later, 9 m, about 130 a second for 3 s then fading | Same |
 | **Venom (Viper)** | | |
-| Acid Vial (Snake Bite) | Usable at 0.8 s; 29 m/s; pool 4.5 m, 6.5 s; Vulnerable while inside and 2 s after; 25 a second | Damage rate differs |
+| Acid Vial (Snake Bite) | Usable at 0.8 s; 29 m/s; pool 4.5 m, 6.5 s; Vulnerable while inside and 2 s after; 25 a second | Same rate, coarser ticks |
 | Miasma (Poison Cloud) | Usable at 0.8 s; gas rises over 0.6 s; Decay 10 on contact, then 10 a second | Same |
 | Toxic Wall (Toxic Screen) | Usable at 0.8 s; rises 1 s later; 60 m long, 6.75 m high; Decay anywhere you cross it | Same (bug fixed) |
 | Nest (Viper's Pit) | Spreads to 9 m over 5 s; Decay 50 on contact; nearsight 8.1 m | Same |
@@ -167,13 +178,13 @@ These now follow the spec:
 | Aftershock Wave (Rolling Thunder) | First zone 0.9 s after the cast, then every 0.255 s; concuss 4 s | Same |
 | **Volt (Neon)** | | |
 | Static Lanes (Fast Lane) | Up at 0.3 s; walls 3.5 m apart, 6.75 m high, 4 s | Same |
-| Ricochet (Relay Bolt) | Instant; 41 m/s, bounces once; concuss 2.5 s within 5 m, 1 s after each impact | Delay not in the spec |
+| Ricochet (Relay Bolt) | Instant; 41 m/s, bounces once; concuss 2.5 s within 5 m, 1 s after each impact | Same (1 s windup, patch 11.00) |
 | Overclock (High Gear) | Sprint starts at 0.6 s | Same |
 | Overload (Overdrive) | 20 shots a second; 18 a hit up close | Same |
 | **Mirage (Yoru)** | | |
 | Double (Fakeout) | Usable at 0.8 s; walks at 5.6 m/s for 10 s; shooting it flashes the shooter | Same |
 | Rebound (Blindside) | Usable at 0.8 s; 29 m/s; pops 0.7 s after it bounces; blind 1.5 s | Same |
-| Riftwalk (Gatecrash) | Usable at 0.8 s; teleport 0.5 s after the second press; tether 60 HP, 20 s | Same |
+| Riftwalk (Gatecrash) | Usable at 0.8 s; teleport 0.5 s after the second press; F fakes it; tether 60 HP, 20 s | Same |
 | Phase Out (Dimensional Drift) | Untouchable and unseen 10 s | Same |
 | **Fawn (Skye)** | | |
 | Bloom (Regrowth) | Not measured here (needs teammates; covered by `check-abilities`) | — |
@@ -199,7 +210,7 @@ These now follow the spec:
 | Gravity Well | Pulls for 2 s after 1.25 s; Fragile 2.5 s | Same |
 | Nova Pulse | Goes off 1 s after the press; concuss 2.5 s | Same |
 | Astral Form | Stars placed where you click | Same |
-| Rift Line (Cosmic Divide) | Blocks 2.7 s after you confirm | Spec reads about 3.7 s |
+| Rift Line (Cosmic Divide) | Blocks 3 s after you confirm | Same |
 | **Regent (Chamber)** | | |
 | Snare (Trademark) | Arms 2 s after placing; slows 0.9 s after spotting someone; field 6 m, 6 s, slow 50%; 20 HP | Same |
 | Sovereign (Headhunter) | 55 to the body | Same |

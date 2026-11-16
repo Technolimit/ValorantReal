@@ -70,7 +70,7 @@ Passive: **Kindled**: Your own fire heals you instead of hurting you.
 |---|---|---|---|---|---|
 | C | **Hive** (Nanoswarm) | 2 × 200 | bought only | 40 s | Throw a swarm grenade (left click) or lob it short (right click); it hides where it lands. Once both are out — or you have none left — press C again to set them off: 0.5 s later, 45/s for 5 s in a 4.5 m radius. |
 | Q | **Watchdog** (Alarmbot) | 1 × 200 | bought only | 40 s | Deploy an alarm bot (10 m); it takes 1.5 s to dig in. When an enemy comes within 6 m it chases them and bursts 2.5 m from them: Vulnerable (double damage taken) for 4 s. It switches off while you are more than 40 m away. |
-| E | **Sentry** (Turret) | 1 free | 45 s | 45 s | Deploy a turret (4.5 m) facing where you aim. It fires three-round bursts at enemies in its 100° view out to 40 m (8 damage a shot up close, 6 past 20 m, 4 past 35 m; hits slow) until it is destroyed (45 s to get it back) or picked up (20 s). It switches off while you are more than 40 m away. Placing a new one takes the old one down. |
+| E | **Sentry** (Turret) | 1 free | 45 s | 45 s | Deploy a turret (4.5 m) facing where you aim. It fires three-round bursts at enemies in its 100° view out to 40 m (8 damage a shot up close, 6 past 20 m, 4 past 35 m; hits slow) until it is destroyed (45 s to get it back) or picked up (20 s). It takes 2 s to set up, and opens fire 0.75 s after it spots someone. It switches off while you are more than 40 m away. Placing a new one takes the old one down. |
 | X | **Clampdown** (Lockdown) | 9 points | | | Plant a device (200 HP) that charges for 13 s, then detains every enemy within 32 m for 8 s: they cannot fire or use abilities and can barely move. |
 
 ## Blitz (Raze) · Duelist
@@ -139,7 +139,7 @@ Passive: **Energy**: Overclock runs on energy: a full bar is 16 s of sprinting a
 |---|---|---|---|---|---|
 | C | **Double** (Fakeout) | 1 × 200 | bought only | 30 s | Send out a decoy of yourself that walks forward for 10 s. An enemy who shoots it sets it off: it bursts into a flash that blinds for up to 2 s. |
 | Q | **Rebound** (Blindside) | 1 × 250 | bought only | 18 s | Throw a flash (29 m/s) that bounces off the first surface it hits and bursts 0.7 s later (or 2 s after the throw if it hits nothing), blinding anyone facing it for up to 1.5 s. |
-| E | **Riftwalk** (Gatecrash) | 2 × 150 (1 free) | 2 kills | 30 s | Hold the rift: left click sends it along the ground (8 m/s), right click leaves it where you stand. Press E again any time in the next 20 s to teleport to it (0.5 s, untouchable on the way). Enemies can shoot it (60 HP). In 5v5 one is free each round, a second costs 150, and two kills bring a used one back. |
+| E | **Riftwalk** (Gatecrash) | 2 × 150 (1 free) | 2 kills | 30 s | Hold the rift: left click sends it along the ground (8 m/s), right click leaves it where you stand. Press E again any time in the next 20 s to teleport to it (0.5 s, untouchable on the way). Or press F to fake it: the rift makes the teleport’s sound and flash and you stay where you are, leaving a faint mark on the floor for 30 s. Enemies can shoot it (60 HP). In 5v5 one is free each round, a second costs 150, and two kills bring a used one back. |
 | X | **Phase Out** (Dimensional Drift) | 8 points | | | Slip into another dimension for 10 s: enemies can’t see or hurt you, but you can’t shoot. Press X to come back early. |
 
 ## Fawn (Skye) · Initiator
@@ -187,7 +187,7 @@ Passive: **Stars**: You have up to 5 stars (in 5v5 one is free each round and mo
 | C | **Gravity Well** (Gravity Well) | 1 free | 60 s | 60 s | Look at one of your stars and press C: after 1.25 s it pulls nearby enemies (4.75 m) to its centre for 2 s, then makes them Vulnerable (double damage) for 2.5 s. One charge, back after 60 s. |
 | Q | **Nova Pulse** (Nova Pulse) | 1 free | 60 s | 60 s | Look at one of your stars and press Q: after 1 s it bursts, concussing enemies within 5.25 m for 2.5 s. One charge, back after 60 s. |
 | E | **Astral Form** (Nebula / Dissipate) | 5 × 150 (1 free) | — | — | Press E to open the map and click to place your stars (as many as you have). Look at a placed star and press E to turn it into a Nebula: a 14.25 s smoke that forms 0.75 s later (two charges, 35 s each to come back). Pick a star back up (F) and it leaves a 1.75 s fake smoke; the star returns after 25 s. |
-| X | **Rift Line** (Astral Form / Cosmic Divide) | 7 points | | | Open the map and click two points: a wall of cosmic energy splits the whole map through the first, running toward the second (it snaps to the map’s grid), for 21 s after a 2.7 s windup. It stops bullets and sight; thrown abilities pass through. |
+| X | **Rift Line** (Astral Form / Cosmic Divide) | 7 points | | | Open the map and click two points: a wall of cosmic energy splits the whole map through the first, running toward the second (it snaps to the map’s grid), for 21 s after a 3 s windup. It stops bullets and sight; thrown abilities pass through. |
 
 ## Regent (Chamber) · Sentinel
 
