@@ -836,7 +836,9 @@ export class RoundMode {
           const k = fresh || !br.goal || rotating ? Math.max(0, idx) : Math.floor(Math.random() * list.length);
           const h = list[k % list.length];
           br.goal = { kind: 'hold', role, pos: jitter(h.pos, 2), look: h.look, hold: true };
-          br.nextShift = now + 6 + Math.random() * 7;
+          // Hold it a good while (counted from when the round goes live) before moving to another spot:
+          // walking across the site is how a defender gets caught in the open.
+          br.nextShift = (this.phase === 'buy' ? this.phaseEnd : now) + 15 + Math.random() * 15;
           if (br.rotateAt) br.rotatedTo = role;
           br.rotateAt = 0;
         }
@@ -883,20 +885,39 @@ export class RoundMode {
           // defenders who rotate off it (or the spike is down, or it's late).
           const o = other(plan.site);
           if (now > this.goTime + 5 || since > 45) { if (!br.goal || br.goal.kind !== 'entry') br.goal = { kind: 'entry', pos: siteSpot(o, 0.8), look: siteSpot(o, 0.2), hold: true }; }
-          else if (!br.goal || br.goal.kind !== 'stage' || now >= (br.nextShift || 0)) { br.goal = { kind: 'stage', pos: jitter(pick(map.stage[o].main), 3), look: map.sites[o].center, hold: true, quiet: true }; br.nextShift = now + 6 + Math.random() * 5; }
+          else if (!br.goal || br.goal.kind !== 'stage' || now >= (br.nextShift || 0)) { br.goal = { kind: 'stage', pos: jitter(pick(this.stageFor(o, 'main')), 3), look: map.sites[o].center, hold: true, quiet: true }; br.nextShift = now + 6 + Math.random() * 5; }
           continue;
         }
-        const st = map.stage[plan.site][role === 'lurk' ? 'main' : role]; // a lurker holding the spike stages with the main group
+        const st = this.stageFor(plan.site, role === 'lurk' ? 'main' : role); // a lurker holding the spike stages with the main group
         const executing = now >= this.goTime;
         if (!executing) {
           // Staging: keep moving between spots in the lane rather than standing still, quietly.
-          if (!br.goal || br.goal.kind !== 'stage' || now >= (br.nextShift || 0)) { br.goal = { kind: 'stage', pos: jitter(pick(st), 3), look: map.sites[plan.site].center, hold: true, quiet: plan.style !== 'rush' }; br.nextShift = now + 3 + Math.random() * 3; }
+          if (!br.goal || br.goal.kind !== 'stage' || now >= (br.nextShift || 0)) { br.goal = { kind: 'stage', pos: jitter(pick(st), 3), look: map.sites[plan.site].center, hold: true, quiet: plan.style !== 'rush' }; br.nextShift = now + 6 + Math.random() * 6; }
         } else if (sp.carrier === b) {
           // The carrier lets the entry players go first, then follows to plant (above).
           if (!br.goal || br.goal.kind !== 'stage') br.goal = { kind: 'stage', pos: jitter(pick(st), 2), look: map.sites[plan.site].center, hold: true };
         } else if (!br.goal || br.goal.kind !== 'entry' || br.goal.site !== plan.site) br.goal = { kind: 'entry', site: plan.site, pos: siteSpot(plan.site, 0.9), look: siteSpot(plan.site, 0.2), hold: true };
       }
     }
+  }
+
+  // Attackers wait for the call out of the defenders' sight, like players stacking up behind the last corner
+  // before a site: a staging spot that a defender hold can see is moved back along the way to the attackers'
+  // spawn until it's hidden. Worked out once per map, in the live phase (barriers down).
+  stageFor(site, lane) {
+    const g = this.game, map = g.map, cache = (map.safeStage ||= {}), key = site + lane;
+    if (cache[key]) return cache[key];
+    const eyes = Object.values(map.holds).flat().map(h => [h.pos[0], h.pos[1] + PLAYER.standEye, h.pos[2]]);
+    const seen = (p) => eyes.some(e => g.world.lineOfSight(e, [p[0], p[1] + PLAYER.standEye, p[2]]));
+    const s0 = map.teamSpawns.atk?.[0], home = s0 && map.nearestWalkable(...map.cellOf(s0.x, s0.z));
+    return (cache[key] = map.stage[site][lane].map(p => {
+      if (!home || !seen(p)) return p;
+      for (const [cx, cz] of map.findPath(map.nearestWalkable(...map.cellOf(p[0], p[2])), home) || []) {
+        const c = map.cellCenter(cx, cz), q = [c.x, map.heights[cz][cx] ?? 0, c.z];
+        if (!seen(q)) return q;
+      }
+      return p;
+    }));
   }
 
   // The attack changed its call: everyone drops their spot and stages for the new site.
