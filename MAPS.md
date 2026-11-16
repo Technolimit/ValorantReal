@@ -223,6 +223,9 @@ so you don't need to list the modes.
 - A site is a rectangle on the floor: two corners `[x, z]`. That's where the spike can be planted.
 - Barriers hold a team in their spawn during the buy phase. Make them cover the whole doorway and go a little below
   the floor.
+- Where the barriers stand sets the pace. In Valorant, attackers leaving their barriers can first fight for mid after
+  about 5 s and first come into view of a site's defenders after about 10–15 s. Divide and Foundry are set up that way.
+  Make sure no spot a defender would hold can see the attackers' barriers or spawn.
 - In a grid map you can draw both instead, with `"site": "A"` and `"barrier": "atk"` squares.
 
 **Ultimate orbs** come back at the start of every round. Holding F on one for 3 seconds gives 1 ultimate point.
@@ -231,7 +234,7 @@ map with an `"orb": true` square. Put them somewhere both teams can reach in abo
 
 **Bots** need to know where to wait and what to watch. If the map has no `bots` section, the game works out
 sensible spots from the sites, spawns and paths between them, so a new map is playable straight away. To place them
-yourself (Divide does):
+yourself (Divide and Foundry do):
 
 ```json
 "bots": {

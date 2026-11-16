@@ -6,7 +6,7 @@ import { MELEE, GUN_INSPECT, MODEL_INSPECTS, EQUIP_ANIMS, SWINGS, meleeId, inspe
 import { SwingTrails } from './swingfx.js';
 import { skinFor, skinFits, meleeSkin, SKINS, onSkinsChanged } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
-import { BLADES, SMOKE, bloomTargets } from './abilities.js';
+import { BLADES, SMOKE, bloomTargets, smokeScale } from './abilities.js';
 import { zoneRadius } from './game.js';
 import { VM_SHINE, shineMaterial, fitShine, updateShine, sweepAt, ViewmodelPost } from './shine.js';
 
@@ -245,6 +245,9 @@ function worldGun(id, skin) {
 }
 // An edited or deleted custom skin is rebuilt the next time it is shown.
 onSkinsChanged((id) => { for (const k of worldGuns.keys()) if (k.endsWith(':' + id)) worldGuns.delete(k); });
+
+// How close an enemy has to be to see a hidden gadget (VALORANT_SPECS.md: stealth utility).
+const STEALTH = { wire: 3, swarm: 5.25, alarm: 7, cam: 8 };
 
 // Swaps two corners of every triangle of a non-indexed geometry.
 function flipWinding(g) {
@@ -652,7 +655,7 @@ export class Renderer {
       if (vm.swingAnim) { const sk = SKINS[vm.skin]; this.trails.play(vm.swingAnim.trail, { glow: sk?.glow?.color, accent: sk?.accent?.color, trim: sk?.trim?.color }); }
     });
     g.on('equip', ({ who, gun }) => {
-      if (who === g.player) { this.vm.equipStart = performance.now(); this.vm.equipDur = gun.def.equip * 1000; this.resetRecoil(); this.cycle = null; }
+      if (who === g.player) { this.vm.equipStart = performance.now(); this.vm.equipDur = Math.max(1, (gun.equipEnd - g.time) * 1000); this.resetRecoil(); this.cycle = null; }
     });
     g.on('kill', ({ victim, killer, def }) => {
       const ch = this.characters.get(victim);
@@ -689,6 +692,7 @@ export class Renderer {
     g.on('quakeLine', (q) => this.fxQuake(q));
     g.on('orb', ({ kit, orb }) => { if (orb) this.fxOrb(orb, kit.owner === g.player); });
     g.on('beam', (b) => this.fxBeam(b));
+    g.on('snapshot', (e) => { const me = g.player; if (me && !g.isEnemy(me, e.by) && g.isEnemy(me, e.who)) this.fxSnapshot(e); });
     g.on('tag', ({ pos }) => this.fxRing(pos, 0.8, 0xff3344, 0.4));
     g.on('ability', ({ who, type, pos, kit }) => {
       if (type === 'step') { const t = this.game.time + 1; this.fxMarker(pos, 0xa67bff, () => t); }
@@ -786,9 +790,11 @@ export class Renderer {
     const shell = new THREE.Mesh(this.smokeGeo, shellMat);
     shell.scale.setScalar(R * 0.98); shell.visible = false; shell.userData.shell = true; shell.userData.spin = 0; shell.frustumCulled = false; shell.renderOrder = 2;
     group.add(shell); group.userData.shell = shell;
-    // One sphere, exactly the smoke's radius, so what you see is what blocks sight.
-    const ball = new THREE.Mesh(this.smokeGeo, mat);
-    ball.scale.set(R, R * (fire ? 1.3 : 1), R);
+    // One sphere, exactly the smoke's radius, so what you see is what blocks sight (a cage is a cylinder).
+    const cyl = s.cyl && (this.smokeCylGeo ||= new THREE.CylinderGeometry(1, 1, 1, 32, 1));
+    const ball = new THREE.Mesh(cyl || this.smokeGeo, mat);
+    if (cyl) { ball.scale.set(R, s.cyl.up + s.cyl.down, R); ball.position.y = (s.cyl.up - s.cyl.down) / 2; shell.geometry = cyl; shell.scale.set(R * 0.98, s.cyl.up + s.cyl.down, R * 0.98); shell.position.y = ball.position.y; }
+    else ball.scale.set(R, R * (fire ? 1.3 : 1), R);
     ball.userData.spin = 0;
     group.add(ball);
     group.position.set(...s.pos);
@@ -885,6 +891,20 @@ export class Renderer {
       }
       for (const c of g.children) if (c.userData.ph != null) c.scale.y = 0.6 + 0.5 * Math.abs(Math.sin(now * 9 + c.userData.ph));
     });
+  }
+
+  // Snapshot reveal: a frozen red silhouette where the enemy stood, seen through walls, fading out.
+  fxSnapshot({ pos, yaw, crouch, until }) {
+    const g = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ color: 0xff2244, transparent: true, opacity: 0.75, depthTest: false, depthWrite: false });
+    for (const part of ['legs', 'body', 'head']) {
+      const s = HITBOX.stand[part], k = HITBOX.crouch[part], y0 = lerp(s[0], k[0], crouch), y1 = lerp(s[1], k[1], crouch), hw = lerp(s[2], k[2], crouch);
+      const m = new THREE.Mesh(this.unitBox ||= new THREE.BoxGeometry(1, 1, 1), mat);
+      m.position.y = (y0 + y1) / 2; m.scale.set(hw * 2, y1 - y0, part === 'body' ? hw * 1.3 : hw * 2); m.renderOrder = 10;
+      g.add(m);
+    }
+    g.position.set(...pos); g.rotation.y = yaw;
+    const t0 = this.game.time;
+    this.fxAdd(g, until, (now) => { mat.opacity = 0.75 * Math.min(1, (until - now) / 0.5); });
   }
 
   // A bright pop (flash, teleport).
@@ -1635,6 +1655,12 @@ export class Renderer {
     this.fxAdd(g, () => (d.removed ? 0 : d.until), (now) => {
       g.position.set(...d.pos);
       g.visible = !(this.shadowSight && this.game.isEnemy(this.game.player, d.owner)); // shadow sight shows no enemy gadgets
+      // Hidden gadgets only show to enemies close by: Trapwire 3 m, Hive 5.25 m, Watchdog 7 m, Watcher 8 m (12 m in use).
+      const hideR = STEALTH[d.kind];
+      if (hideR && this.game.player && this.game.isEnemy(this.game.player, d.owner)) {
+        const cp = this.camera.position, r = d.kind === 'cam' && d.owner.kit?.view === d ? 12 : hideR;
+        g.visible &&= hyp(cp.x - d.pos[0], cp.y - d.pos[1], cp.z - d.pos[2]) <= r;
+      }
       if (d.kind === 'drone') g.rotation.y = Math.atan2(-d.dir[0], -d.dir[2]);
       if (g.userData.aim && !d.rest && (d.vel[0] || d.vel[1] || d.vel[2])) g.lookAt(d.pos[0] + d.vel[0], d.pos[1] + d.vel[1], d.pos[2] + d.vel[2]);
       if (g.userData.flame) g.userData.flame.scale.set(1, 0.7 + Math.random() * 0.6, 1);
@@ -1696,7 +1722,9 @@ export class Renderer {
     const now = this.game.time;
     this.smokes = this.smokes.filter(sm => {
       if (now >= sm.s.until) { this.scene.remove(sm.group); return false; }
-      const grow = Math.min(1, (now - sm.s.born) / SMOKE.grow);
+      if (now < sm.s.born) { sm.group.visible = false; return true; } // not up yet (a gas wall rises emitter by emitter)
+      sm.group.visible = true;
+      const grow = sm.slab ? Math.min(1, (now - sm.s.born) / 0.25) : smokeScale(sm.s, now);
       const fade = Math.min(1, (sm.s.until - now) / 0.4);
       if (sm.slab) { // a wall grows up out of the floor
         const k = 1 - (1 - grow) ** 3;
@@ -1707,7 +1735,7 @@ export class Renderer {
         sm.group.userData.slab.scale.y = 0.92 + 0.08 * Math.sin(now * 7 + sm.s.pos[2]);
         return true;
       }
-      sm.group.scale.setScalar((0.2 + 0.8 * (1 - (1 - grow) ** 3)) * (sm.s.radius / (sm.r0 ||= sm.s.radius))); // Nest spreads out
+      sm.group.scale.setScalar(Math.max(0.001, grow) * (sm.s.radius / (sm.r0 ||= sm.s.radius))); // grows in and shrinks away; Nest spreads out
       sm.group.position.set(sm.s.pos[0], sm.s.pos[1], sm.s.pos[2]); // rolling water moves
       let op = sm.fire ? 0.38 + 0.08 * Math.sin(now * 23 + sm.s.pos[0]) : 1; // smokes can't be seen through
       if (sm.s.nest && sm.s.owner === this.game.player && this.camera.position.distanceTo(new THREE.Vector3(...sm.s.pos)) < sm.s.radius) op = 0.12; // Venom sees through her own Nest
@@ -1715,7 +1743,7 @@ export class Renderer {
       const shell = sm.group.userData.shell;
       if (shell && !sm.fire) {
         const R = (sm.s.radius || SMOKE.radius) * sm.group.scale.x, cp = this.camera.position;
-        const inside = hyp(cp.x - sm.s.pos[0], cp.y - sm.s.pos[1], cp.z - sm.s.pos[2]) < R * 0.95;
+        const inside = sm.s.cyl ? hyp(cp.x - sm.s.pos[0], cp.z - sm.s.pos[2]) < R * 0.95 && Math.abs(cp.y - sm.s.pos[1]) < sm.s.cyl.up : hyp(cp.x - sm.s.pos[0], cp.y - sm.s.pos[1], cp.z - sm.s.pos[2]) < R * 0.95;
         shell.visible = inside;
         shell.material.opacity = op * fade; // from inside you see the pocket, not the world beyond the cloud
         for (const m of sm.group.children) if (m !== shell) m.visible = !inside;

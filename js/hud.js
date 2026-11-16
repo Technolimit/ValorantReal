@@ -7,7 +7,7 @@ import { patternPreview } from './gun.js';
 import { MELEE } from './melee.js';
 import { KillBanner, bannerColors } from './killbanner.js';
 import { keyLabel } from './keybinds.js';
-import { AGENTS, SMOKE, BLADES, BEAMS, insideSlab, bloomTargets, BLOOM, PICKUPS } from './abilities.js';
+import { AGENTS, SMOKE, BLADES, BEAMS, insideSlab, bloomTargets, BLOOM, PICKUPS, smokeScale } from './abilities.js';
 import { hyp } from './vmath.js';
 
 const DEG = Math.PI / 180;
@@ -418,9 +418,9 @@ export class Hud {
     let inside = 0;
     for (const s of this.game.smokes) {
       if (now < s.born || s.kind === 'fire' || (s.nest && s.owner === p)) continue; // your own Nest doesn't blind you
-      const grow = Math.min(1, (now - s.born) / SMOKE.grow), fade = Math.min(1, (s.until - now) / 0.4);
+      const grow = smokeScale(s, now), fade = Math.min(1, (s.until - now) / 0.4);
       if (s.slab) { if (insideSlab(s, eye, 0.1)) inside = Math.max(inside, 0.85 * fade); continue; }
-      const d = hyp(eye[0] - s.pos[0], eye[1] - s.pos[1], eye[2] - s.pos[2]);
+      const d = s.cyl ? hyp(eye[0] - s.pos[0], eye[2] - s.pos[2]) : hyp(eye[0] - s.pos[0], eye[1] - s.pos[1], eye[2] - s.pos[2]);
       const r = s.radius * grow;
       if (d < r) inside = Math.max(inside, Math.min(1, (r - d) / 0.6) * fade * 0.16); // inside a smoke is a clear pocket; only a light haze
     }
@@ -456,9 +456,10 @@ export class Hud {
     if (want) $('shadowhint').innerHTML = `<b style="color:${mp.color}">${mp.title}</b> ${mp.hint}`;
     if (want && !this.mapOpen) { this.mapOpen = true; this.mapCursor = { x: innerWidth / 2, y: innerHeight / 2 }; }
     if (!want && this.mapOpen) this.mapOpen = false;
-    $('shadowmap').hidden = !want;
-    $('shadowhint').hidden = !want;
-    if (want) this.drawShadowMap(p);
+    const flashed = p.alive && p.st.blindUntil > this.game.time; // a flash hides an open ability map (13.09)
+    $('shadowmap').hidden = !want || flashed;
+    $('shadowhint').hidden = !want || flashed;
+    if (want && !flashed) this.drawShadowMap(p);
   }
 
   // Where map picks are measured from: where you stand, or where you fell for abilities used while dead.

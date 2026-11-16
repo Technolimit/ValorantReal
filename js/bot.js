@@ -90,6 +90,10 @@ export class Bot {
     this.rotateAt = 0; // team AI: when this defender starts a called rotation, and where to
     this.rotatedTo = null;
     this.aggr = 0.35 + Math.random() * 0.5; // how readily this bot pushes a contact instead of holding
+    this.lookCheckAt = 0; this.pathLookPt = null; this.pathLookFor = null;
+    this.clearFor = null; this.angle = null; this.angleCheckAt = 0;
+    this.backOffUntil = 0;
+    this.killSeen = this.lastKillAt ?? -1;
   }
 
   hear(source, now) {
@@ -189,8 +193,23 @@ export class Bot {
       if (!this.path) this.steer(orb.pos[0] - me.pos[0], orb.pos[2] - me.pos[2], now);
       return;
     }
+    // Got a kill holding a spot: often move off it, since the enemy's teammates now know where it is.
+    if (this.lastKillAt > this.killSeen) {
+      this.killSeen = this.lastKillAt;
+      if (gl?.kind === 'hold' && Math.random() < 0.5) this.nextShift = now + rand(0.4, 1.2);
+    }
+    // Hurt: no pushing a fight (a trade or a flash-and-go still goes). Just out of a fight, back off a few
+    // steps with the crosshair still on the angle, like a player who knows one more hit kills them.
+    const weak = me.hp + me.armor * 0.5 < 45 && !gl?.commit && !gl?.action;
+    if (weak && lsp && ago < 2.5 && now >= this.pushUntil && this.backOffUntil < this.lastSeen) this.backOffUntil = now + rand(0.8, 1.6);
+    if (weak && lsp && now < this.backOffUntil) {
+      const bx = me.pos[0] - lsp[0], bz = me.pos[2] - lsp[2];
+      this.steer(bx, bz, now);
+      this.turnToward(lsp, PLAYER.standEye, dt, 0.6);
+      return;
+    }
     if (gl && lsp && !gl.action && !gl.commit && hyp(me.pos[0] - lsp[0], me.pos[2] - lsp[2]) > 2 &&
-        (now < this.pushUntil || (ago > 0.4 && ago < 3.5 && this.aggr > (side === 'atk' ? 0.3 : 0.6)))) {
+        (now < this.pushUntil || (!weak && ago > 0.4 && ago < 3.5 && this.aggr > (side === 'atk' ? 0.3 : 0.6)))) {
       this.moveTo(lsp, now, dt);
       if (!this.path) this.steer(lsp[0] - me.pos[0], lsp[2] - me.pos[2], now);
       this.turnToward(lsp, PLAYER.standEye, dt, 0.6);
@@ -310,7 +329,9 @@ export class Bot {
     const size = Math.atan((useHead ? 0.11 : 0.2) / Math.max(dist, 0.5));
     const onTarget = off < size * this.d.tol;
 
-    if (now < this.reactUntil) { this.strafe(now); return; }
+    // Still reacting: a player who was holding still stays still; one who was moving keeps going the same way
+    // (nobody reverses direction before they've even registered the enemy).
+    if (now < this.reactUntil) { if (me.horizSpeed() > 1) this.moveDir(me.vel[0], me.vel[2]); return; }
 
     if (this.phase === 'strafe') {
       this.strafe(now);
@@ -329,7 +350,10 @@ export class Bot {
       this.ignoreStop = Math.random() > this.d.stop; // weaker bots sometimes shoot on the move
       this.lastShotSeen = gun.lastShot;
     }
-    const slowEnough = this.ignoreStop || me.horizSpeed() <= def.move * def.spread.deadzone;
+    const speed = me.horizSpeed(), slowEnough = this.ignoreStop || speed <= def.move * def.spread.deadzone;
+    // Counter-strafe: tap the opposite direction to stop faster than just letting go, and let go before it
+    // turns into movement the other way.
+    if (!this.ignoreStop && speed > 0.6 && me.grounded) this.moveDir(-me.vel[0], -me.vel[2]);
 
     if (gun.lastShot !== this.lastShotSeen) {
       this.lastShotSeen = gun.lastShot;
@@ -381,15 +405,16 @@ export class Bot {
     if (look) this.turnToward(look, PLAYER.standEye * 0.85, dt, 0.35);
     // Plant or defuse once nobody has been seen for a moment.
     if (gl.action && (gl.commit || now - this.lastSeen > 1.2)) { inp.use = true; return; }
-    // Holding an angle isn't standing still: jiggle-peek side to side, crouch now and then, glance around.
+    // Holding an angle: mostly still with the crosshair on it (moving ruins the first shot), with a small
+    // shuffle, a crouch or a glance now and then. An info push (pushing out for a look) jiggle-peeks instead.
     if (gl.hold) {
       const ha = this.holdAct;
       if (!ha || now >= ha.until) {
-        const r = Math.random();
-        this.holdAct = r < 0.6 ? { until: now + rand(0.25, 0.6), side: Math.random() < 0.5 ? -1 : 1 }
-          : r < 0.7 ? { until: now + rand(0.4, 0.8), crouch: true }
-          : r < 0.85 ? { until: now + rand(0.3, 0.7), glance: rand(-0.9, 0.9), side: Math.random() < 0.5 ? -1 : 1 }
-          : { until: now + rand(0.3, 0.8) };
+        const r = Math.random(), peek = gl.kind === 'push';
+        this.holdAct = r < (peek ? 0.6 : 0.14) ? { until: now + rand(0.2, peek ? 0.6 : 0.35), side: Math.random() < 0.5 ? -1 : 1 }
+          : r < (peek ? 0.7 : 0.22) ? { until: now + rand(0.6, 1.5), crouch: true }
+          : r < (peek ? 0.85 : 0.32) ? { until: now + rand(0.3, 0.7), glance: rand(-0.9, 0.9) }
+          : { until: now + rand(0.8, 2.2) };
       }
       const a = this.holdAct;
       if (a.side) inp.side = a.side;
@@ -442,9 +467,57 @@ export class Bot {
     const c = clearSpot(this.game, this.path[this.pathIdx]);
     const dx = c[0] - me.pos[0], dz = c[2] - me.pos[2];
     if (hyp(dx, dz) < 0.8) { this.pathIdx++; return; }
-    // Look where we're going, keeping the crosshair at head height.
-    this.turnTo(Math.atan2(-dx, -dz), 0, dt, 0.35);
+    // Crosshair placement: aim at head height where an enemy would show up along the way (the next corner,
+    // or down the lane), not at the floor ahead; never more than ~100° off the way we're walking.
+    const moveYaw = Math.atan2(-dx, -dz), L = this.angleLook(now, moveYaw) || this.pathLook(now);
+    if (L) {
+      const e = me.eye(), ly = Math.atan2(-(L[0] - e[0]), -(L[2] - e[2]));
+      if (Math.abs(wrap(ly - moveYaw)) < 1.75) this.turnTo(ly, Math.atan2(L[1] - e[1], hyp(L[0] - e[0], L[2] - e[2])), dt, 0.35);
+      else this.turnTo(moveYaw, 0, dt, 0.35);
+    } else this.turnTo(moveYaw, 0, dt, 0.35);
     this.steer(dx, dz, now);
+  }
+
+  // Going onto a site: check the spots defenders usually hold there, one at a time, the one nearest the way
+  // we're walking first. A spot counts as checked once the crosshair has sat on it for a moment.
+  angleLook(now, moveYaw) {
+    const gl = this.goal, g = this.game, map = g.map;
+    if (!gl || (gl.kind !== 'entry' && gl.kind !== 'plant') || !map.holds) return null;
+    if (this.clearFor !== gl) {
+      this.clearFor = gl; this.clearT = new Map();
+      const site = gl.site || g.mode?.zoneOf?.(gl.pos);
+      this.angles = (map.holds[site] || []).map(h => [h.pos[0], h.pos[1] + PLAYER.standEye, h.pos[2]]);
+      this.angle = null;
+    }
+    const eye = this.me.eye(), a = this.angle;
+    if (a && now < this.angleCheckAt) {
+      this.clearT.set(a, (this.clearT.get(a) || 0) + 1 / 128);
+      if (this.clearT.get(a) > 0.6) this.angleCheckAt = 0;
+      return a;
+    }
+    this.angleCheckAt = now + 0.15;
+    let best = null, bd = 1.75;
+    for (const p of this.angles) {
+      if ((this.clearT.get(p) || 0) > 0.6 || hyp(p[0] - eye[0], p[2] - eye[2]) > 35) continue;
+      const d = Math.abs(wrap(Math.atan2(-(p[0] - eye[0]), -(p[2] - eye[2])) - moveYaw));
+      if (d < bd && g.world.lineOfSight(eye, p)) { bd = d; best = p; }
+    }
+    return (this.angle = best);
+  }
+
+  // The point on the path ahead to pre-aim: the first stretch hidden from view (just past a corner's edge),
+  // or the furthest point still in sight. Head height of someone standing there. Rechecked a few times a second.
+  pathLook(now) {
+    if (now < this.lookCheckAt && this.pathLookFor === this.path) return this.pathLookPt;
+    this.lookCheckAt = now + 0.15; this.pathLookFor = this.path;
+    const g = this.game, map = g.map, eye = this.me.eye(), p = this.path;
+    let seen = null, hidden = null;
+    for (let i = this.pathIdx, n = 0; i < p.length && n < 14; i++, n++) {
+      const [cx, cz] = p[i], c = map.cellCenter(cx, cz), q = [c.x, (map.heights[cz][cx] ?? 0) + PLAYER.standEye, c.z];
+      if (hyp(q[0] - eye[0], q[2] - eye[2]) < 3) continue;
+      if (g.world.lineOfSight(eye, q)) seen = q; else { hidden = q; break; }
+    }
+    return (this.pathLookPt = hidden || seen);
   }
 
   // Walk toward (dx, dz), sliding around whatever corner is in the way. If the body still hasn't moved for

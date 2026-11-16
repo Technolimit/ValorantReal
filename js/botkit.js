@@ -230,7 +230,7 @@ export function botAbilities(bot, now) {
     }
     if (!target) continue;
     const ab = kit.agent.abilities[k];
-    if (k !== 'x' && !ab.instant) {
+    if ((k !== 'x' || ab.equip) && !ab.instant) {
       // Equip first: hands come up holding it, then it's thrown / placed ~0.4 s later.
       kit.armed = { k, at: now };
       me.gun.onHolster();

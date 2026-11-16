@@ -118,7 +118,7 @@ export class Combatant {
     return this.inv[def.slot];
   }
 
-  equip(slot, now, force = false) {
+  equip(slot, now, force = false, dur) { // dur: draw time other than the gun's own (see Gun.onEquip)
     if (this.kit?.blades) { this.kit.bladesAway = this.kit.blades.left; this.kit.blades = null; } // switching weapons puts the blades away (X takes them back out)
     if (this.kit?.armed && !force) this.kit.armed = null; // ...and any ability you were holding
     if (this.kit?.highGear && !force) this.kit.highGear = null;
@@ -127,7 +127,7 @@ export class Combatant {
     if (old) old.onHolster();
     if (slot !== this.slot) this.prevSlot = this.slot;
     this.slot = slot;
-    this.inv[slot].onEquip(now);
+    this.inv[slot].onEquip(now, dur);
     this.game.emit('equip', { who: this, gun: this.inv[slot] });
     return true;
   }
@@ -245,7 +245,7 @@ export class Combatant {
       if (dl <= rate) { this.vel[0] = tx; this.vel[2] = tz; }
       else { this.vel[0] += (dvx / dl) * rate; this.vel[2] += (dvz / dl) * rate; }
       if (this.jumpBuffer > 0) {
-        this.vel[1] = PLAYER.jumpVelocity * (this.st.hinderUntil > now ? 0.8 : 1);
+        this.vel[1] = PLAYER.jumpVelocity * (this.st.hinderUntil > now ? 0.8 : 1) * (this.st.slowUntil > now ? (this.st.slowJump ?? 0.7) : 1); // slowed: weaker jump
         this.grounded = false;
         this.jumpBuffer = 0;
         this.airCap = Math.max(this.horizSpeed(), 1.5);
@@ -282,7 +282,7 @@ export class Combatant {
     const sp = this.horizSpeed();
     if (this.grounded && sp > this.gun.def.move * PLAYER.walkMult + 0.15) {
       this.stepDist += sp * dt;
-      if (this.stepDist > 1.9) { this.stepDist = 0; this.game.emit('footstep', { who: this }); }
+      if (this.stepDist > 1.9) { this.stepDist = 0; if (!(this.st.silentUntil > now)) this.game.emit('footstep', { who: this }); }
     } else if (sp < 0.5) this.stepDist = 1.2;
   }
 

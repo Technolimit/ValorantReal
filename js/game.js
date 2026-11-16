@@ -224,8 +224,12 @@ export class Game {
     return c.alive && !(c.st.intangibleUntil > this.time) && !(c.st.hiddenUntil > this.time);
   }
 
-  addSmoke(owner, pos, now, { radius = SMOKE.radius, life = SMOKE.life, color = 0xcfdbe6, kind = 'smoke', nest = false, slab = null } = {}) {
-    const s = { owner, pos, born: now, until: now + life, radius, color, kind, nest, slab };
+  // grow / contract: seconds to reach full size and to shrink away at the end (default 0.75 s and 1 s; walls appear
+  // at once). cyl: a vertical cylinder instead of a sphere (Cyber Cage).
+  addSmoke(owner, pos, now, { radius = SMOKE.radius, life = SMOKE.life, color = 0xcfdbe6, kind = 'smoke', nest = false, slab = null, grow, contract, cyl = null } = {}) {
+    const s = { owner, pos, born: now, until: now + life, radius, color, kind, nest, slab, cyl };
+    if (grow != null) s.grow = grow; else if (slab || nest) s.grow = 0;
+    if (contract != null) s.contract = contract; else if (slab) s.contract = 0;
     if (SHOOTABLE[kind]) s.hp = SHOOTABLE[kind].hp;
     this.smokes.push(s);
     this.emit('smoke', s);
@@ -250,15 +254,27 @@ export class Game {
       if (now >= z.until) continue;
       for (const c of this.combatants) {
         if (!c.alive) continue;
-        const d = hyp(c.pos[0] - z.pos[0], c.pos[2] - z.pos[2]);
-        const dy = c.pos[1] - z.pos[1];
-        if (d > zoneRadius(z, now) || dy < -1.0 || dy > 3) continue;
+        const dx = c.pos[0] - z.pos[0], dz = c.pos[2] - z.pos[2], dy = c.pos[1] - z.pos[1];
+        if (dy < -1.0 || dy > 3) continue;
+        if (!z.wall && !z.gas && !z.orbital && (z.kind === 'fire' || z.kind === 'slowfield')) {
+          // A patch on the floor (molly, acid, swarm, slow field): it reaches a short way up (acid 1.2 m, others 1.5 m)
+          // and stops at walls, as Valorant's grid patches do.
+          if (dy > (z.acid ? 1.2 : 1.5) || !this.world.lineOfSight([z.pos[0], z.pos[1] + 0.4, z.pos[2]], [c.pos[0], c.pos[1] + 0.4, c.pos[2]])) continue;
+        }
+        if (z.slab) { // a strip (Toxic Wall): along its length, and touching its thickness
+          const sl = z.slab, along = dx * sl.dir[0] + dz * sl.dir[1], across = dz * sl.dir[0] - dx * sl.dir[1];
+          if (Math.abs(along) > sl.len / 2 || Math.abs(across) > sl.th / 2 + PLAYER.radius) continue;
+        } else if (hyp(dx, dz) > zoneRadius(z, now)) continue;
         const enemy = this.isEnemy(z.owner, c) || (z.burnsOwner && c === z.owner);
         if (z.armAt && now < z.armAt) continue; // orbital strike still charging
         const fx = this.affectable(c);
         if (fx && z.nearsight && this.isEnemy(z.owner, c)) { c.st.nearUntil = now + 0.3; c.st.nearRange = z.nearsight === true ? 7.5 : z.nearsight; }
         if (fx && z.acid && enemy) c.st.vulnUntil = now + 2; // Vulnerable while inside and for 2 s after
-        if (fx && z.slowField && this.isEnemy(z.owner, c)) { c.st.slowUntil = now + (z.slowLinger || 0.2); c.st.slowAmt = z.slowField; }
+        if (fx && z.slowField && this.isEnemy(z.owner, c)) {
+          c.st.slowUntil = now + (z.slowLinger || 0.2); c.st.slowAmt = z.slowField;
+          c.st.slowJump = z.slowJump ?? 0.7; // jumps are weaker too (and dashes, see applyDash)
+          if (z.silent) c.st.silentUntil = c.st.slowUntil; // Slow Orb, Trademark: footsteps make no sound
+        }
         if (fx && z.toxin && this.isEnemy(z.owner, c) && c.toxinTick !== now) {
           // Toxin is Decay: a hit on first contact, then a steady drain while inside. It can't kill, and the health
           // climbs back once you've been out of the gas for a moment.
@@ -271,7 +287,10 @@ export class Game {
           if (enemy) {
             c.burn = (c.burn || 0) + z.dps * DT;
             if (c.burn >= 5) { const n = Math.floor(c.burn); c.burn -= n; this.damage(c, z.owner, n, { part: 'body', def: z.def, dist: 0, point: c.eye(), wallbang: false, dot: true }); }
-          } else if (z.heal && (!z.healPool || z.healPool.left > 0)) {
+          } else if (z.allyDps && c !== z.owner) {
+            c.burn = (c.burn || 0) + z.allyDps * DT;
+            if (c.burn >= 5) { const n = Math.floor(c.burn); c.burn -= n; this.damage(c, z.owner, n, { part: 'body', def: z.def, dist: 0, point: c.eye(), wallbang: false, dot: true }); }
+          } else if (z.heal && c === z.owner && (!z.healPool || z.healPool.left > 0)) {
             // The owner's own fire heals him; a pool caps the total one cast can give back.
             const h = Math.max(0, Math.min(z.heal * DT, z.healPool ? z.healPool.left : Infinity, Math.max(PLAYER.hp, c.hp) - c.hp));
             c.hp += h;
@@ -291,7 +310,7 @@ export class Game {
           if (!this.affectable(c) || !this.isEnemy(z.owner, c)) continue;
           if (hyp(c.pos[0] - z.pos[0], c.pos[2] - z.pos[2]) > z.r) continue;
           c.st.disarmUntil = now + z.dur;
-          c.st.slowUntil = now + z.dur; c.st.slowAmt = z.slow;
+          c.st.slowUntil = now + z.dur; c.st.slowAmt = z.slow; c.st.slowJump = 0.7; c.st.silentUntil = now + z.dur; // detained: weak jumps, silent
         }
         this.emit('lockdown', { zone: z });
       }
@@ -367,7 +386,7 @@ export class Game {
       if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
       const dx = c.pos[0] - from[0], dz = c.pos[2] - from[2];
       const along = dx * fx + dz * fz, across = dx * fz - dz * fx;
-      if (along >= d0 && along <= d1 && Math.abs(across) <= half && Math.abs(c.pos[1] - from[1]) <= up) out.push(c);
+      if (along >= d0 && along < d1 && Math.abs(across) <= half && Math.abs(c.pos[1] - from[1]) <= up) out.push(c); // half-open, so back-to-back strips never both take someone on the line between them
     }
     return out;
   }
@@ -425,7 +444,7 @@ export class Game {
       const dx = pos[0] - c.pos[0], dz = pos[2] - c.pos[2], d = hyp(dx, dz);
       if (d > r || d < 0.3) continue;
       c.vel[0] = dx / d * speed; c.vel[2] = dz / d * speed;
-      c.st.slowUntil = this.time + 0.3; c.st.slowAmt = 0.7;
+      c.st.slowUntil = this.time + 0.3; c.st.slowAmt = 0.7; c.st.slowJump = 0.4;
     }
   }
 
@@ -665,7 +684,7 @@ export class Game {
         if (!hit) d.pos = np;
         if (hit || now + DT >= d.until) {
           d.removed = true;
-          this.addSmoke(d.owner, [...d.pos], now, { radius: d.radius, life: d.smokeLife, color: d.color });
+          this.addSmoke(d.owner, [...d.pos], now, { radius: d.radius, life: d.smokeLife, color: d.color, grow: 0.6, contract: 0.5 });
         }
       } else if (d.kind === 'trademark') {
         // Snare: spots an enemy it can see within 10 m (4 m above it, 10 m below), and 0.9 s later breaks the ground
@@ -678,7 +697,7 @@ export class Game {
         } else if (now >= d.seenAt + 0.9) {
           d.seenAt = 0;
           d.armAt = now + 10;
-          this.addZone({ kind: 'slowfield', color: 0xe8c26a, owner: d.owner, pos: [...d.pos], r: 6, life: 6, slowField: 0.5 }, now);
+          this.addZone({ kind: 'slowfield', color: 0xe8c26a, owner: d.owner, pos: [...d.pos], r: 6, life: 6, slowField: 0.5, silent: true }, now);
         }
       } else if (d.kind === 'pushwall') {
         // Contingency: the wall slides forward until it hits something.
@@ -706,13 +725,13 @@ export class Game {
           d.nextSeg += d.seg.spacing;
           const h = d.h || SLAB.h;
           this.addSmoke(d.owner, d.seg.slab ? [nx, f[1] + h / 2, nz] : [nx, f[1] + 1.2, nz], now, d.seg.slab ? { ...d.seg.smoke, slab: { dir: [-Math.sin(d.yaw), -Math.cos(d.yaw)], len: d.seg.spacing + 0.2, th: SLAB.th, h } } : d.seg.smoke);
-          this.addZone({ ...d.seg.zone, owner: d.owner, pos: [nx, f[1], nz] }, now);
+          this.addZone({ ...d.seg.zone, owner: d.owner, pos: [nx, f[1], nz], wall: true }, now);
         } else if (!d.seg && d.travelled >= d.nextSeg) {
           d.nextSeg += 1.25;
           const h = d.h || SLAB.h;
           this.addSmoke(d.owner, [nx, f[1] + h / 2, nz], now, { radius: 1, life: 8, color: 0xff7a2e, kind: 'fire', slab: { dir: [-Math.sin(d.yaw), -Math.cos(d.yaw)], len: 1.45, th: SLAB.th, h } });
           // Firebreak heals its owner 1 HP every 0.16 s, up to 50 from one wall.
-          this.addZone({ kind: 'fire', owner: d.owner, pos: [nx, f[1], nz], r: 0.75, life: 8, dps: 30, heal: 6.25, healPool: d.pool, def: { id: 'firebreak', name: 'Firebreak', cat: 'Ability', dmg: [[50, 0, 0, 0]] } }, now);
+          this.addZone({ kind: 'fire', owner: d.owner, wall: true, pos: [nx, f[1], nz], r: 0.75, life: 8, dps: 30, heal: 6.25, healPool: d.pool, def: { id: 'firebreak', name: 'Firebreak', cat: 'Ability', dmg: [[50, 0, 0, 0]] } }, now);
         }
       } else if (d.kind === 'decoy' || d.kind === 'gate' || d.kind === 'tiger' || d.kind === 'prowler') {
         // Ground runners. Steered ones follow the owner's aim.
@@ -726,7 +745,7 @@ export class Game {
             for (const c of enemiesOf(d)) {
               const dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = hyp(dx, dz);
               const trail = c.st.trailUntil > now && dist < 10;
-              if (trail || (dist < 15 && (dx * d.dir[0] + dz * d.dir[2]) / dist > 0.5 && this.world.lineOfSight([d.pos[0], d.pos[1] + 0.4, d.pos[2]], c.eye()))) { d.target = c; d.onTrail = trail; d.steer = false; d.until = now + 4; break; }
+              if (trail || (dist < 15 && (dx * d.dir[0] + dz * d.dir[2]) / dist > 0.5 && this.world.lineOfSight([d.pos[0], d.pos[1] + 0.4, d.pos[2]], c.eye()))) { d.target = c; d.onTrail = trail; d.steer = false; break; } // its 2.5 s of life don't grow when it locks on
             }
           }
           if (d.target) {
@@ -823,7 +842,7 @@ export class Game {
           if (hyp(v.pos[0] - d.hold[0], v.pos[2] - d.hold[2]) > 6.2) { zap(v); d.victim = null; d.armAt = now + 1; continue; }
           if (!d.zapped && now >= d.caughtAt + 0.7) { d.zapped = true; zap(v); }
           if (d.zapped) v.st.revealUntil = Math.max(v.st.revealUntil, now + 0.3);
-          if (!(v.st.slowUntil > now + 0.15)) { v.st.slowUntil = now + 0.15; v.st.slowAmt = 0.5; }
+          if (!(v.st.slowUntil > now + 0.15)) { v.st.slowUntil = now + 0.15; v.st.slowAmt = 0.5; v.st.slowJump = 0.25; } // tethered: barely a jump
           continue;
         }
         for (const c of enemiesOf(d)) {
@@ -844,7 +863,7 @@ export class Game {
         }
         if (d.dart) {
           if (now >= d.dart.until || !d.dart.target.alive) d.dart = null;
-          else if (now >= d.dart.next) { d.dart.next = now + 2; d.dart.target.st.revealUntil = now + 1; this.emit('tag', { pos: d.dart.target.eye() }); }
+          else if (now >= d.dart.next) { d.dart.next = now + 2; this.snapshot(d.owner, [d.dart.target], 1); this.emit('tag', { pos: d.dart.target.eye() }); } // a snapshot every 2 s
         }
       } else if (d.kind === 'leer') {
         // Nearsights anyone looking at it from up to 47.5 m, once it has opened (0.4 s after it arrives).
@@ -934,6 +953,15 @@ export class Game {
     if (hyp(d.owner.pos[0] - d.pos[0], d.owner.pos[2] - d.pos[2]) > 40) d.offUntil = now + 2;
     d.off = now < (d.offUntil || 0);
     return d.off;
+  }
+
+  // Snapshot reveal (Neural Theft, Spycam dart): where each enemy stood at this moment, shown frozen for dur
+  // seconds; unlike a live reveal it doesn't follow them (render.js and minimap.js draw it).
+  snapshot(owner, targets, dur) {
+    for (const c of targets) {
+      if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
+      this.emit('snapshot', { who: c, by: owner, pos: [...c.pos], yaw: c.yaw, crouch: c.crouchAmount(), until: this.time + dur });
+    }
   }
 
   revealAll(owner, dur) {
@@ -1358,7 +1386,15 @@ export class Game {
       if (killer.brain) killer.brain.lastKillAt = this.time;
       if (killer.kit) killer.kit.onKill(info.def, victim);
       // Soul Harvest: a Vex who hurt them in the last 3 s gets an orb too, whoever got the kill.
-      if (victim.hurtAt) for (const [a, t] of victim.hurtAt) if (a !== killer && a.alive && a.kit?.id === 'vex' && this.time - t <= 3 && this.isEnemy(a, victim)) a.kit.dropOrb(victim);
+      if (victim.kit?.secondLifeNDY) { // Not Dead Yet's second life: her killer gets an ultimate point and a signature point
+        victim.kit.secondLifeNDY = false;
+        if (killer?.kit && killer !== victim && this.isEnemy(killer, victim)) { killer.kit.ultPoints = Math.min(killer.kit.ultCost, killer.kit.ultPoints + 1); killer.kit.signaturePoint(); }
+      }
+      if (victim.hurtAt) for (const [a, t] of victim.hurtAt) {
+        if (a === killer || !a.alive || !this.isEnemy(a, victim)) continue;
+        if (a.kit?.id === 'vex' && this.time - t <= 3) a.kit.dropOrb(victim);
+        if (a.kit && this.time < a.kit.focusUntil && this.time - t <= 8) a.kit.focusOrb(victim); // Focus: assists count
+      }
       if (!this.mode && MATCH.healOnKill && killer.alive) killer.heal();
     }
     // The body drops its best gun: the primary, or the sidearm if there's no primary.
