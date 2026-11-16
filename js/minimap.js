@@ -2,6 +2,7 @@
 // (in their field of view, with no wall or smoke in the way), or while revealed by an ability. An enemy
 // that drops out of sight leaves a fading "last seen" marker for a couple of seconds.
 import { hyp } from './vmath.js';
+import { smokeScale } from './abilities.js';
 const SMALL = 210; // CSS pixels (corner minimap)
 const bigSize = () => Math.round(Math.min(innerHeight * 0.86, innerWidth * 0.62, 820)); // M: the full map
 const SEEN_FADE = 2.5; // seconds a last-seen marker lingers
@@ -20,6 +21,8 @@ export class Minimap {
     this.size = SMALL;
     game.on('map', () => { this.base = null; this.seen.clear(); });
     game.on('start', () => { this.base = null; this.seen.clear(); });
+    // A snapshot reveal for your team: a frozen marker where they stood (it fades like a last sighting).
+    game.on('snapshot', ({ who, by, pos }) => { const me = game.player; if (me && !game.isEnemy(me, by) && game.isEnemy(me, who)) this.seen.set(who, { pos: [...pos], at: game.time, live: false }); });
     game.on('roundClear', () => this.seen.clear());
   }
 
@@ -110,17 +113,27 @@ export class Minimap {
     x.setTransform(dpr, 0, 0, dpr, 0, 0);
     x.clearRect(0, 0, SIZE, SIZE);
     x.drawImage(this.base.canvas, 0, 0, SIZE, SIZE);
+    // Concussed or nearsighted: the minimap is blinded. Inside a smoke it only shows what is within 3 m of you.
+    const blind = me.alive && (me.st.stunUntil > now || me.st.nearUntil > now);
+    const eye = me.eye();
+    const capped = me.alive && g.smokes.some(s => !s.slab && s.kind !== 'fire' && !(s.nest && s.owner === me) && now >= s.born && now < s.until && hyp(eye[0] - s.pos[0], eye[1] - s.pos[1], eye[2] - s.pos[2]) < s.radius * smokeScale(s, now));
+    const shows = (pos) => !capped || hyp(pos[0] - me.pos[0], pos[2] - me.pos[2]) <= 3;
+    if (blind) {
+      x.fillStyle = 'rgba(10, 12, 16, 0.85)'; x.fillRect(0, 0, SIZE, SIZE);
+      if (me.alive) this.arrow(me.pos, me.yaw, '#ffffff', 6 * k);
+      return;
+    }
 
     // Smokes as grey discs.
     for (const s of g.smokes) {
-      if (s.until <= now || s.slab) continue;
+      if (s.until <= now || s.slab || !shows(s.pos)) continue;
       const p = this.toMap(s.pos[0], s.pos[2]);
       x.fillStyle = 'rgba(210,210,225,0.45)';
       x.beginPath(); x.arc(p[0], p[1], Math.max(3 * k, s.radius * this.scale), 0, Math.PI * 2); x.fill();
     }
     // Ultimate orbs still on the map: small cyan dots.
     for (const o of g.mode?.orbs || []) {
-      if (o.taken) continue;
+      if (o.taken || !shows(o.pos)) continue;
       const p = this.toMap(o.pos[0], o.pos[2]);
       x.fillStyle = '#4fd1ff'; x.strokeStyle = 'rgba(0,0,0,0.75)'; x.lineWidth = 1;
       x.beginPath(); x.arc(p[0], p[1], 2.6 * k, 0, Math.PI * 2); x.fill(); x.stroke();
@@ -130,7 +143,7 @@ export class Minimap {
     if (sp) {
       const sideAtk = g.mode.side(me) === 'atk';
       const pos = sp.state === 'carried' ? (sideAtk || this.seen.get(sp.carrier)?.live ? sp.carrier?.pos : null) : (sp.state === 'dropped' && !sideAtk ? null : sp.pos);
-      if (pos) {
+      if (pos && shows(pos)) {
         // The spike: a diamond (red once planted). Attackers always see it, dropped or carried.
         const p = this.toMap(pos[0], pos[2]), r = 4.5 * k;
         x.fillStyle = sp.state === 'planted' ? '#ff4655' : '#ffd54a'; x.strokeStyle = 'rgba(0,0,0,0.75)'; x.lineWidth = 1.2;
@@ -143,6 +156,7 @@ export class Minimap {
       const age = now - s.at;
       if (!e.alive || (!s.live && age > SEEN_FADE)) { this.seen.delete(e); continue; }
       const pos = s.live ? e.pos : s.pos;
+      if (!shows(pos)) continue;
       const p = this.toMap(pos[0], pos[2]);
       x.globalAlpha = s.live ? 1 : Math.max(0.15, 1 - age / SEEN_FADE);
       x.fillStyle = '#ff4655';
@@ -152,7 +166,7 @@ export class Minimap {
     }
     // Teammates (and you): arrows showing where they're looking.
     for (const c of g.combatants) {
-      if (!c.alive || g.isEnemy(me, c)) continue;
+      if (!c.alive || g.isEnemy(me, c) || (c !== me && !shows(c.pos))) continue;
       this.arrow(c.pos, c.yaw, c === me ? '#ffffff' : '#4fd1c5', (c === me ? 6 : 5) * k);
       if (this.big && c !== me) { x.fillStyle = '#bdf3ee'; x.font = `600 ${Math.round(5 * k)}px system-ui`; x.textAlign = 'center'; const q = this.toMap(c.pos[0], c.pos[2]); x.fillText(c.kit?.agent.name || c.name, q[0], q[1] + 9 * k); }
     }

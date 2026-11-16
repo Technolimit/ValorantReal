@@ -161,12 +161,14 @@ function gasOn(kit, gr) {
   gr.active = true;
   gr.onAt = kit.now;
   gr.items = [];
-  const h = gr.h || SLAB.h;
+  const h = gr.h || SLAB.h, o = kit.owner;
   for (const p of gr.points) {
-    if (gr.slab) gr.items.push(g.addSmoke(kit.owner, [p[0], p[1] + h / 2, p[2]], kit.now, { radius: 1, life: 999, color: 0x58c76a, kind: 'gas', slab: { dir: gr.slab, len: 2.1, th: SLAB.th, h } }));
-    else gr.items.push(g.addSmoke(kit.owner, [p[0], p[1] + 1.3, p[2]], kit.now, { radius: gr.r, life: 999, color: 0x58c76a, kind: 'gas' }));
+    // A wall rises emitter by emitter, the far end 0.55 s after the near one; a cloud rises for 0.6 s, then grows for 1.3 s.
+    const at = kit.now + (gr.slab ? 0.55 * hyp(p[0] - o.pos[0], p[2] - o.pos[2]) / 60 : 0.6);
+    if (gr.slab) gr.items.push(g.addSmoke(o, [p[0], p[1] + h / 2, p[2]], at, { radius: 1, life: 999, color: 0x58c76a, kind: 'gas', slab: { dir: gr.slab, len: 2.1, th: SLAB.th, h } }));
+    else gr.items.push(g.addSmoke(o, [p[0], p[1] + 1.3, p[2]], at, { radius: gr.r, life: 999, color: 0x58c76a, kind: 'gas', grow: 1.3, contract: gr.off }));
     // A wall's gas covers its whole length: each emitter's stretch is a strip (zone.slab), so there are no gaps.
-    gr.items.push(g.addZone({ kind: 'fire', color: 0x58c76a, owner: kit.owner, pos: p, r: gr.r, life: 999, dps: 0, heal: 0, toxin: TOXIN, def: src('toxin', 'Toxin'), gas: true, slab: gr.slab ? { dir: gr.slab, len: 2.1, th: SLAB.th } : null }, kit.now));
+    gr.items.push(g.addZone({ kind: 'fire', color: 0x58c76a, owner: o, pos: p, r: gr.r, life: 999, armAt: at, dps: 0, heal: 0, toxin: TOXIN, def: src('toxin', 'Toxin'), gas: true, slab: gr.slab ? { dir: gr.slab, len: 2.1, th: SLAB.th } : null }, kit.now));
   }
   g.emit('ability', { who: kit.owner, type: 'gas' });
   return true;
@@ -177,7 +179,7 @@ function gasOff(kit, gr) {
   if (!gr.active) return;
   gr.active = false;
   gr.readyAt = kit.now + (gr.cd || 0);
-  for (const it of gr.items) it.until = kit.now;
+  for (const it of gr.items) it.until = Math.min(it.until, kit.now + (gr.off || 0)); // it takes a moment to drop
   gr.items = [];
 }
 
@@ -192,7 +194,7 @@ export const PICKUPS = {
   turret: { k: 'e', cd: 20 },          // Turret
   trademark: { k: 'c', cd: 30 },       // Trademark
   anchor: { k: 'e', cd: 0 },           // Rendezvous
-  emitter: { k: 'q', buyOnly: true },  // Poison Cloud
+  emitter: { k: 'q', cd: 0, reach: 4 },  // Poison Cloud: any time, within 4 m
   star: { star: true, cd: 25, far: true },
 };
 
@@ -266,7 +268,7 @@ function smokeTarget(kit, radius) {
   const p = [eye[0] + d[0] * t, eye[1] + d[1] * t, eye[2] + d[2] * t];
   const top = Math.max(p[1], eye[1]) + 0.5; // aiming at the floor can put the point underground
   const f = g.world.raycast([p[0], top, p[2]], [0, -1, 0], 60);
-  p[1] = f ? top - f.t + 2.0 : 2.0;
+  p[1] = f ? top - f.t + 2.0 : 2.0; // a full sphere where you put it, its core 2 m over the floor below
   return p;
 }
 
@@ -350,7 +352,7 @@ export const AGENTS = {
           const o = kit.owner, g = o.game;
           toss(o, mode === 'right' ? 'lob' : 'c2', { color: 0xff7a2e, drop: { at: 1.5, g: 2 }, onStop: (d) => {
             d.removed = true;
-            g.addZone({ kind: 'fire', owner: o, pos: floorUnder(g, d.pos), r: 4.5, spread: 6, life: 4, dps: 60, heal: 12.5, healPool: { left: 50 }, def: src('ember', 'Ember') }, g.time);
+            g.addZone({ kind: 'fire', owner: o, pos: floorUnder(g, d.pos), r: 4.5, spread: 6, life: 4, dps: 60, allyDps: 20, heal: 12.5, healPool: { left: 50 }, def: src('ember', 'Ember') }, g.time);
           } });
         },
       },
@@ -360,12 +362,17 @@ export const AGENTS = {
         use(kit, mode) {
           const o = kit.owner, g = o.game, eye = o.eye();
           const f = fwd2(o.yaw), r = right(o.yaw), side = mode === 'right' ? 1 : -1;
-          const mid = [eye[0] + f[0] * 3, eye[1] + 0.2, eye[2] + f[1] * 3];
-          let pop = [mid[0] + r[0] * side * 3.2, mid[1], mid[2] + r[1] * side * 3.2];
-          if (!g.world.lineOfSight(eye, mid)) pop = aimPoint(o, 3, { back: 0.5 });
-          else if (!g.world.lineOfSight(mid, pop)) pop = mid;
+          // 20 m/s for 0.7 s: 4 m straight out, then a quarter turn to the side (radius 6.4 m), 14 m of flight in all.
+          const pts = [], STRAIGHT = 4, R = 6.4;
+          for (let i = 1; i <= 4; i++) pts.push([eye[0] + f[0] * STRAIGHT * i / 4, eye[1] + 0.05 * i, eye[2] + f[1] * STRAIGHT * i / 4]);
+          for (let i = 1; i <= 8; i++) {
+            const a = (Math.PI / 2) * i / 8, fw = STRAIGHT + R * Math.sin(a), sd = side * R * (1 - Math.cos(a));
+            pts.push([eye[0] + f[0] * fw + r[0] * sd, eye[1] + 0.2, eye[2] + f[1] * fw + r[1] * sd]);
+          }
+          let pop = aimPoint(o, 1, { back: 0.3 }); // it stops at the first wall in its way
+          for (let i = 0, prev = eye; i < pts.length; prev = pts[i], i++) { if (!g.world.lineOfSight(prev, pts[i])) break; pop = pts[i]; }
           const ft2 = 0.7; // it goes off 0.7 s after the throw
-          g.emit('throw', { who: o, from: eye, via: mid, to: pop, time: ft2, color: 0xffc061 });
+          g.emit('throw', { who: o, from: eye, via: pts[5], to: pop, time: ft2, color: 0xffc061 });
           later(kit, ft2, () => g.flash(o, pop, 1.5));
         },
       },
@@ -421,7 +428,7 @@ export const AGENTS = {
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
-            key: 'x', title: 'NIGHTWALK', hint: 'Click a spot to teleport there · Right click or X to cancel', max: 1, color: '#a67bff',
+            key: 'x', title: 'NIGHTWALK', hint: 'Click a spot to teleport there · Right click or X to cancel', max: 1, color: '#a67bff', range: 85,
             valid: (p) => o.game.canStand(o, p),
             confirm: (picks) => kit.chooseShadow(picks[0]),
           };
@@ -517,7 +524,7 @@ export const AGENTS = {
         name: 'Clampdown', desc: 'Plant a device (200 HP) that charges for 13 s, then detains every enemy within 32 m for 8 s: they cannot fire or use abilities and can barely move.', points: 9, equip: 0.8, unequip: 0.15,
         use(kit) {
           const o = kit.owner;
-          o.game.addZone({ kind: 'lockdown', owner: o, pos: [...o.pos], r: 32, life: 13.1, armAt: kit.now + 13, dur: 8, slow: 0.833 }, kit.now); // detained: move x0.167
+          o.game.addZone({ kind: 'lockdown', owner: o, pos: aimPoint(o, 2.5, { floor: true, back: 0.5 }), r: 32, life: 13.1, armAt: kit.now + 13, dur: 8, slow: 0.833 }, kit.now); // detained: move x0.167
           o.game.emit('ability', { who: o, type: 'ult' });
         },
       },
@@ -557,11 +564,14 @@ export const AGENTS = {
           toss(o, mode === 'right' ? 'lob' : 'c2', { rule: 'bounce', bounces: Infinity, model: 'paintshell', color: 0xffb547, fuse: 2, onFuse: (d) => {
             const at = [d.pos[0], d.pos[1] + 0.15, d.pos[2]];
             g.explode(o, at, 5.5, 55, 1, src('splatter', 'Splatter'), 0xffb547, false, false, 2.5);
-            // Four bomblets thrown out at 45 degrees (9 m/s, full gravity), popping 0.667 s later, 0.1 s apart.
+            // Four bomblets thrown out at 45 degrees (6.3 m/s, full gravity: they land about 4 m out; the spec's 9 m/s is
+            // an inference and throws them twice as far as in play). Each goes off 0.3 s after it comes to rest,
+            // but not before 1.3 s, 0.1 s apart (game files); one still rolling at 3 s goes off anyway.
             const a0 = Math.random() * Math.PI * 2;
             for (let i = 0; i < 4; i++) {
               const a = a0 + i * Math.PI / 2, k = Math.SQRT1_2;
-              g.throwProj(o, 9, 1, { from: at, dir: [Math.cos(a) * k, k, Math.sin(a) * k], rule: 'bounce', bounces: Infinity, model: 'bomblet', color: 0xff7ab8, fuse: 0.667 + i * 0.1,
+              g.throwProj(o, 6.3, 1, { from: at, dir: [Math.cos(a) * k, k, Math.sin(a) * k], rule: 'bounce', bounces: Infinity, bounce: 0.3, friction: 0.4, model: 'bomblet', color: 0xff7ab8, fuse: 3 + i * 0.1,
+                onStop: (b) => { b.fuse = Math.max(1.3, g.time - b.born + 0.3) + i * 0.1; },
                 onFuse: (b) => g.explode(o, [b.pos[0], b.pos[1] + 0.15, b.pos[2]], 5.25, 55, 1, src('splatter', 'Splatter'), 0xff7ab8, false, false, 2.5) });
             }
           } });
@@ -659,7 +669,7 @@ export const AGENTS = {
           toss(o, mode === 'right' ? 'lob' : 'c2', { color: 0x58c76a, onStop: (d) => {
             d.removed = true;
             if (!o.alive) return; // the gas needs her alive
-            const pos = floorUnder(g, d.pos), gr = { points: [pos], r: 4.5, active: false, items: [], cd: 5.5 };
+            const pos = floorUnder(g, d.pos), gr = { points: [pos], r: 4.5, active: false, items: [], cd: 5.5, off: 1.2 };
             kit.gas.groups.cloud = gr;
             g.addDevice({ kind: 'emitter', owner: o, pos, life: 99999 });
             gasOn(kit, gr);
@@ -681,7 +691,7 @@ export const AGENTS = {
             const fl = g.floorAt(x, z);
             if (fl && fl[1] < o.pos[1] + 3) pts.push(fl);
           }
-          const gr = { points: pts, r: 0.7, active: false, items: [], slab: f, h: 6.75, cd: 5 };
+          const gr = { points: pts, r: 0.7, active: false, items: [], slab: f, h: 6.75, cd: 5, off: 0.8 };
           kit.gas.groups.wall = gr;
           mine(kit, 1, () => gasOn(kit, gr)); // the emitters fly out and the wall rises 1 s after the cast
         },
@@ -788,7 +798,9 @@ export const AGENTS = {
           const o = kit.owner, g = o.game, f = fwd2(o.yaw), len = 8 + 48 * (kit.power ?? 1);
           const a = [o.pos[0] + f[0] * 8, o.pos[1] + 1, o.pos[2] + f[1] * 8], b = [a[0] + f[0] * len, a[1], a[2] + f[1] * len];
           g.emit('quakeLine', { from: a, to: b, width: 8 });
-          later(kit, 1.1, () => g.lineEffect(o, a, b, 4, 'stun', 2.5)); // 1.1 s windup, 8 m wide
+          // 1.1 s windup, then it runs out at 150 m/s: each 4 m stretch goes off as the line reaches it (8 m wide).
+          const n = Math.max(1, Math.ceil(len / 4)), at = (t) => [a[0] + (b[0] - a[0]) * t, a[1], a[2] + (b[2] - a[2]) * t];
+          for (let i = 0; i < n; i++) { const pa = at(i / n), pb = at((i + 1) / n); later(kit, 1.1 + len * i / n / 150, () => g.lineEffect(o, pa, pb, 4, 'stun', 2.5)); }
         },
       },
       x: {
@@ -875,9 +887,15 @@ export const AGENTS = {
     abilities: {
       c: {
         name: 'Double', desc: 'Send out a decoy of yourself that walks forward for 10 s. An enemy who shoots it sets it off: it bursts into a flash that blinds for up to 2 s.', charges: 1, cooldown: 30, equip: 0.8, unequip: 0.7,
-        use(kit) {
+        use(kit, mode) {
           const o = kit.owner, f = fwd2(o.yaw);
-          o.game.addDevice({ kind: 'decoy', owner: o, pos: [o.pos[0] + f[0], o.pos[1], o.pos[2] + f[1]], dir: [f[0], 0, f[1]], life: 10, armAt: kit.now + 0.7 });
+          kit.decoy = o.game.addDevice({ kind: 'decoy', owner: o, pos: [o.pos[0] + f[0], o.pos[1], o.pos[2] + f[1]], dir: [f[0], 0, f[1]], life: 10, armAt: kit.now + 0.7, still: mode === 'right' });
+        },
+        reuse(kit) { // a decoy left standing: press C again to send it forward
+          const d = kit.decoy;
+          if (!d || d.removed || !d.still) return false;
+          d.still = false; d.until = Math.max(d.until, kit.now + 0.05);
+          return true;
         },
       },
       q: {
@@ -914,8 +932,8 @@ export const AGENTS = {
         name: 'Phase Out', desc: 'Slip into another dimension for 10 s: enemies can’t see or hurt you, but you can’t shoot. Press X to come back early.', points: 8, equip: 0.8,
         use(kit) {
           const o = kit.owner;
-          kit.drift = { until: kit.now + 10 };
-          o.st.hiddenUntil = o.st.intangibleUntil = kit.now + 10;
+          o.st.channelUntil = kit.now + 0.2;
+          mine(kit, 0.2, () => { kit.drift = { until: kit.now + 10 }; o.st.hiddenUntil = o.st.intangibleUntil = kit.now + 10; }); // 0.2 s to slip away
           o.game.emit('ability', { who: o, type: 'ult' });
         },
       },
@@ -955,6 +973,7 @@ export const AGENTS = {
         reuse(kit) {
           const h = kit.hawk;
           if (!h || h.removed) { kit.hawk = null; return false; }
+          if (kit.now - h.born < 0.25) return true; // it needs 0.25 s in the air first
           h.removed = true;
           kit.hawk = null;
           const len = 1 + 1.25 * Math.min(1, (kit.now - h.born) / 0.75); // the longer it flew, the longer the blind (1-2.25 s, full after 0.75 s)
@@ -967,7 +986,7 @@ export const AGENTS = {
         use(kit) {
           const o = kit.owner, g = o.game;
           const targets = g.combatants.filter(c => c.alive && g.isEnemy(o, c)).sort((a, b) => hyp(a.pos[0] - o.pos[0], a.pos[2] - o.pos[2]) - hyp(b.pos[0] - o.pos[0], b.pos[2] - o.pos[2])).slice(0, 3);
-          for (const t of targets) g.addDevice({ kind: 'seeker', owner: o, pos: o.eye(), target: t, life: 15 });
+          later(kit, 0.1, () => { for (const t of targets) if (t.alive) g.addDevice({ kind: 'seeker', owner: o, pos: o.eye(), target: t, life: 15 }); }); // they leave 0.1 s after the cast
           g.emit('ability', { who: o, type: 'ult' });
         },
       },
@@ -996,8 +1015,8 @@ export const AGENTS = {
       q: {
         item: 'device', name: 'Gridlock', desc: 'Hold a cage, left click to place it where you aim (15 m). To trigger one, look at it and press Q: it becomes a 7.25 s smoke. Each cage is triggered separately.', charges: 2, cooldown: 30,
         use(kit) {
-          const o = kit.owner, pos = aimPoint(o, 15, { floor: true, back: 0.4 });
-          o.game.addDevice({ kind: 'cage', owner: o, pos, life: 300 });
+          const o = kit.owner, g = o.game;
+          o.game.throwProj(o, 20, 0.7, { color: 0xd8dde6, onStop: (d) => { d.removed = true; const pos = floorUnder(g, d.pos); later(kit, 0.35, () => { if (o.alive) g.addDevice({ kind: 'cage', owner: o, pos, life: 300 }); }); } });
         },
         reuse(kit) {
           // Look at one of your cages and press Q to set off that one.
@@ -1011,7 +1030,7 @@ export const AGENTS = {
           }
           if (!best) return false;
           best.removed = true;
-          g.addSmoke(o, [best.pos[0], best.pos[1] + 1.6, best.pos[2]], kit.now, { radius: 3.45, life: 7.25, color: 0xb9c3d1, kind: 'cage' });
+          g.addSmoke(o, [best.pos[0], best.pos[1], best.pos[2]], kit.now, { radius: 3.45, life: 7.25, color: 0xb9c3d1, kind: 'cage', cyl: { up: 3.63, down: 0.5 }, grow: 0.35, contract: 0.5 });
           return true;
         },
       },
@@ -1036,7 +1055,8 @@ export const AGENTS = {
         use(kit) {
           if (!allyInView(kit, { dead: true, enemy: true, range: 12, maxDeg: 18, maxAge: 20 })) return false;
           const g = kit.owner.game;
-          for (const t of [2, 4]) later(kit, t, () => g.revealAll(kit.owner, 2));
+          // Two snapshots, 2 s apart: every enemy shown where they stood at that moment (not followed).
+          for (const t of [2, 4]) later(kit, t, () => { g.snapshot(kit.owner, g.combatants, 2); g.emit('pulse', { pos: kit.owner.eye(), r: 90, type: 'reveal', color: 0xd8dde6, owner: kit.owner }); });
           g.emit('ability', { who: kit.owner, type: 'ult' });
         },
       },
@@ -1120,7 +1140,7 @@ export const AGENTS = {
         item: 'orb', name: 'Chill', desc: 'Hold the orb, left click to throw it (29 m/s). It shatters on the floor into a field up to 9 m across the ground for 7 s that slows enemies by 50%.', charges: 2, cooldown: 25, equip: 0.5, throw: 'c3', unequip: 0.4,
         use(kit) {
           const o = kit.owner, g = o.game;
-          toss(o, 'c3', { color: 0x9ff3ff, onStop: (d) => { d.removed = true; g.addZone({ kind: 'slowfield', color: 0x9ff3ff, owner: o, pos: floorUnder(g, d.pos), r: 9, spread: 12, life: 7, slowField: 0.5 }, g.time); } });
+          toss(o, 'c3', { color: 0x9ff3ff, onStop: (d) => { d.removed = true; g.addZone({ kind: 'slowfield', color: 0x9ff3ff, owner: o, pos: floorUnder(g, d.pos), r: 9, spread: 12, life: 7, slowField: 0.5, silent: true }, g.time); } });
         },
       },
       e: {
@@ -1206,7 +1226,7 @@ export const AGENTS = {
           mine(kit, 35, () => { kit.nebulas = Math.min(2, kit.nebulas + 1); });
           st.removed = true;
           const at = [st.pos[0], st.pos[1] + 2, st.pos[2]];
-          later(kit, 0.75, () => kit.owner.game.addSmoke(kit.owner, at, kit.now, { radius: 4.75, life: 14.25, color: 0x6b4d8f }));
+          kit.owner.game.addSmoke(kit.owner, at, kit.now, { radius: 4.75, life: 14.25, color: 0x6b4d8f }); // grows over 0.75 s
           return true;
         },
       },
@@ -1265,7 +1285,7 @@ export const AGENTS = {
           const a = kit.anchor, o = kit.owner;
           if (!a || a.removed) return false;
           if (kit.now < (kit.tpReady || 0) || hyp(o.pos[0] - a.pos[0], o.pos[2] - a.pos[2]) > 18) { o.game.emit('abilityFail', { who: o, key: 'e' }); return true; }
-          kit.tpReady = kit.now + 30;
+          kit.tpReady = kit.now + (o.game.mode?.phase === 'buy' ? 3 : 30);
           o.game.emit('ability', { who: o, type: 'step', pos: a.pos });
           o.st.invulnUntil = kit.now + 1.3; // can't be hurt from the press until he has arrived
           o.st.channelUntil = kit.now + 1.3; // and can't shoot while teleporting
@@ -1317,7 +1337,7 @@ export const AGENTS = {
           if (pos[1] < fl[1] + 1.4) pos[1] = fl[1] + 1.4; // not sunk into the floor
           const ft = Math.max(0.05, hyp(pos[0] - e[0], pos[1] - e[1], pos[2] - e[2]) / 64);
           g.emit('throw', { who: o, from: e, to: pos, time: ft, color: 0x2fb3a8, straight: true });
-          later(kit, ft, () => g.addSmoke(o, pos, kit.now, { radius: 4.6, life: 19.25, color: 0x2fb3a8, kind: 'cove' }));
+          later(kit, ft, () => g.addSmoke(o, pos, kit.now, { radius: 4.6, life: 19.25, color: 0x2fb3a8, kind: 'cove', grow: 0.8 }));
         },
       },
       x: {
@@ -1325,10 +1345,11 @@ export const AGENTS = {
         use(kit) {
           const o = kit.owner, g = o.game, f = fwd2(o.yaw), r = right(o.yaw);
           o.st.castLockUntil = kit.now + 1;
+          const cast = kit.now;
           later(kit, 0.6, () => {
             const at = [o.pos[0] + f[0] * 1.5, o.pos[1] + SLAB.h / 2, o.pos[2] + f[1] * 1.5];
             const wave = g.addSmoke(o, at, kit.now, { radius: 1, life: 5.2, color: 0x2fb3a8, kind: 'water', slab: { dir: r, len: 28, th: SLAB.th * 1.6, h: SLAB.h } });
-            g.sweep(o, at, [f[0], 0, f[1]], 8, 40, {
+            kit.waveSweep = g.sweep(o, at, [f[0], 0, f[1]], 8, 40, {
               onMove: (d) => { // the water follows the ground
                 const fl = g.floorAt(d.pos[0], d.pos[2], d.pos[1] - SLAB.h / 2 + 1.5);
                 if (fl && Math.abs(fl[1] - (d.pos[1] - SLAB.h / 2)) < 1.5) d.pos[1] = fl[1] + SLAB.h / 2;
@@ -1340,8 +1361,16 @@ export const AGENTS = {
               },
               apply: (c) => g.status(c, 'near', 3, { near: 7.5 }),
             });
+            kit.wave = { sweep: kit.waveSweep, smoke: wave, cast };
           });
           g.emit('ability', { who: o, type: 'ult' });
+        },
+        reuse(kit) { // X again (0.92 s after the cast at the earliest): the wave stops and holds for up to 7 s
+          const w = kit.wave;
+          if (!w || w.held || w.sweep?.removed || kit.now - w.cast < 0.92) return false;
+          w.held = true;
+          w.sweep.speed = 0; w.sweep.until = kit.now + 7; w.smoke.until = kit.now + 7;
+          return true;
         },
       },
     },
@@ -1462,8 +1491,8 @@ export const AGENTS = {
           g.emit('quakeLine', { from: a, to: b, width: 1, color: 0xffe680, life: 1 });
           later(kit, 1, () => {
             g.emit('quakeLine', { from: a, to: b, width: 13.5, color: 0xfff2b0, life: 0.8 });
-            // The expanded area lingers for 4 ticks, 0.125 s apart, catching anyone who walks in.
-            for (let i = 0; i < 4; i++) later(kit, i * 0.125, () => g.lineEffect(o, a, b, 6.75, 'hinder', 6, 4));
+            // The area stays until 3 s after the cast, catching anyone who walks in (every 0.125 s).
+            for (let i = 0; i <= 16; i++) later(kit, i * 0.125, () => g.lineEffect(o, a, b, 6.75, 'hinder', 6, 4));
             // She and teammates standing in the beam run 10% faster for 7 s.
             for (const c of g.combatants) {
               if (!c.alive || g.isEnemy(o, c)) continue;
@@ -1579,7 +1608,7 @@ export const AGENTS = {
           const ft = flight(o.eye(), pos, 22), g = o.game;
           g.emit('throw', { who: o, from: o.eye(), to: pos, time: ft, color: 0x6fa8ff });
           later(kit, ft, () => {
-            const knife = g.addDevice({ kind: 'zknife', owner: o, pos, life: 2 });
+            const knife = g.addDevice({ kind: 'zknife', owner: o, pos, life: 15 });
             later(kit, 1, () => { if (!knife.removed) g.pulse(o, pos, 15, 'suppress', 8, 0x6fa8ff); });
           });
         },
@@ -1588,10 +1617,11 @@ export const AGENTS = {
         name: 'Overload', desc: 'Overload for 12 s: pulses every 2 s reveal and suppress enemies within 42.5 m for 4 s, and you get Combat Stim (10% faster fire rate, reload and draw). If you would die, you go down instead: a teammate within 3 m who holds F for 1.5 s (bots just need to stand there) gets you back up at full health. Nobody comes within 15 s, or the enemy finishes you (850 HP), and you’re dead.', points: 8,
         use(kit) {
           const o = kit.owner, g = o.game;
-          kit.nullUntil = kit.now + 12;
+          kit.nullUntil = kit.now + 1.2 + 12; // 1.2 s to cast, then 12 s
           kit.nullSaved = false;
           kit.nullArmor = o.armor; // comes back with the shields it had, not free ones
-          for (let t = 0; t < 12; t += 2) mine(kit, t, () => g.pulse(o, o.eye(), 42.5, 'suppress', 4, 0x6fa8ff));
+          o.st.channelUntil = kit.now + 1.2;
+          for (let t = 0; t < 12; t += 2) mine(kit, 1.2 + t, () => g.pulse(o, o.eye(), 42.5, 'suppress', 4, 0x6fa8ff));
           g.emit('ability', { who: o, type: 'ult' });
         },
       },
@@ -1736,6 +1766,8 @@ export class Kit {
     this.nestZone = null;
     this.nebulas = 2; // Stella: Nebula charges
     this.mustScoreUntil = 0;
+    this.secondLifeNDY = false;
+    this.wave = null; this.waveSweep = null; this.decoy = null;
     this.dist = undefined; this.phase = false; this.bounces = 0;
     this.secondLife = 0;
     this.focusUntil = 0;
@@ -1800,7 +1832,7 @@ export class Kit {
       const rule = PICKUPS[d.kind];
       if (!rule || d.owner !== o || d.removed || !this.canPickUp(d)) continue;
       const c = [d.pos[0], d.pos[1] + 0.2, d.pos[2]], dx = c[0] - e[0], dy = c[1] - e[1], dz = c[2] - e[2], dist = hyp(dx, dy, dz);
-      if (!rule.far && (hyp(d.pos[0] - o.pos[0], d.pos[2] - o.pos[2]) > 2.6 || Math.abs(d.pos[1] - o.pos[1]) > 2.2 || !g.world.lineOfSight(e, c))) continue;
+      if (!rule.far && (hyp(d.pos[0] - o.pos[0], d.pos[2] - o.pos[2]) > (rule.reach || 2.6) || Math.abs(d.pos[1] - o.pos[1]) > 2.2 || !g.world.lineOfSight(e, c))) continue;
       const near = !rule.far && dist < 1.2; // standing over it counts as looking at it
       const cos = near ? 1 : (f[0] * dx + f[1] * dy + f[2] * dz) / Math.max(dist, 0.01);
       if (cos > bestCos) { bestCos = cos; best = d; }
@@ -1830,7 +1862,7 @@ export class Kit {
     if (d.kind === 'anchor' && this.anchor === d) this.anchor = null;
     if (d.kind === 'emitter' && this.gas.groups.cloud) { gasOff(this, this.gas.groups.cloud); delete this.gas.groups.cloud; }
     const back = () => { if (rule.star) this.starsLeft++; else this.charges[rule.k]++; };
-    if (rule.star) g.addSmoke(o, [d.pos[0], d.pos[1] + 2, d.pos[2]], this.now, { radius: 4.75, life: 1.75, color: 0x6b4d8f }); // Dissipate: a brief fake Nebula
+    if (rule.star) g.addSmoke(o, [d.pos[0], d.pos[1] + 2, d.pos[2]], this.now, { radius: 4.75, life: 1.75, color: 0x6b4d8f, contract: 0.5 }); // Dissipate: a brief fake Nebula
     if (!rule.cd || g.mode?.phase === 'buy') back();
     else this.timers.push({ at: this.now + rule.cd, fn: back, refund: rule.star ? null : rule.k }); // 5v5: still owed at the next round
     g.emit('pickedUp', { who: o, kind: d.kind, pos: [...d.pos] });
@@ -1997,6 +2029,7 @@ export class Kit {
         this.bladesAway = 0;
         o.gun.onHolster();
       }
+      else if (ab.x.reuse?.(this)) { /* a second press of a running ultimate (Undertow) */ }
       else if (this.armed?.k === 'x') { this.armed = null; o.equip(o.slot, now, true); } // X again puts it away
       else if (this.ultPoints >= this.ultCost && !this.busy() && !this.rebirth) {
         if (ab.x.equip && !ab.x.instant) { this.armed = { k: 'x', at: now }; o.gun.onHolster(); g.emit('abilityArm', { who: o, key: 'x' }); } // equip it, then click (as in Valorant)
@@ -2058,7 +2091,9 @@ export class Kit {
   }
 
   onDamaged() {
-    if (this.pilot && this.pilot.kind === 'owl') { this.pilot.removed = true; this.pilot = null; } // body hit: drone drops
+    // Hit while your body stands alone: control ends (Owl Drone, Spycam, Trailblazer, Stealth Drone).
+    if (this.pilot) { this.pilot.removed = true; this.pilot = null; }
+    if (this.view) this.view = null;
   }
 
   // Agents that act from the grave (Thistle): smokes from the map and her ultimate.
@@ -2098,6 +2133,7 @@ export class Kit {
     o.respawnAt = Infinity;
     o.st.intangibleUntil = o.st.channelUntil = this.now + 1.5; // 1.5 s to revive: nothing touches her, and no gun yet
     this.mustScoreUntil = this.now + 1.5 + 10;
+    this.secondLifeNDY = true; // killing her now rewards the killer (13.09)
     o.equip(o.inv.primary ? 'primary' : 'secondary', this.now, true);
     g.emit('respawn', { who: o, revived: true });
     g.emit('ability', { who: o, type: 'rekindled' });
@@ -2225,25 +2261,32 @@ export class Kit {
 
   onKill(def, victim) {
     this.lastKillAt = this.now;
-    if (this.now < this.focusUntil && victim) {
-      const e = victim.eye();
-      this.owner.game.addDevice({ kind: 'focusorb', owner: this.owner, pos: [e[0], e[1] + 0.6, e[2]], life: 3 });
-    }
+    if (this.now < this.focusUntil && victim) this.focusOrb(victim);
     if (def?.id === 'tourdeforce' && victim) this.owner.game.addZone({ kind: 'slowfield', color: 0xe8c26a, owner: this.owner, pos: [...victim.pos], r: 6, life: 4, slowField: 0.5 }, this.now);
     if (this.overdrive) { this.overdrive.fuel = 100; this.energy = 100; this.slideAt = 0; } // Overload: kills refill it and give the slide back
     else if (this.slideAt === Infinity && ++this.slideKills >= 2) { this.slideAt = 0; this.slideKills = 0; } // 5v5: two kills give the slide back
-    // Tailwind, Hot Hands, Paint Shells, Refract: every two kills bring a used charge back.
-    for (const k of ABILITY_KEYS) {
-      const a = this.agent.abilities[k];
-      if (a.recharge !== 'kills' || this.charges[k] >= a.charges) continue;
-      if (++this.killCharge[k] >= 2) { this.charges[k]++; this.killCharge[k] = 0; }
-    }
+    this.signaturePoint();
     if (this.blades && def === BLADES) this.blades.left = BLADES.count; // a blade kill refills the set
     else if (!this.blades && !this.beams) this.ultPoints = Math.min(this.ultCost, this.ultPoints + 1);
     if (this.id === 'vex' && victim) {
       this.dropOrb(victim);
       if (this.now < this.empressUntil) this.healOver(50, 2.5, 150); // Ravenous: every kill Feasts by itself and keeps the orb
     }
+  }
+
+  // Tailwind, Curveball, Paint Shells, Gatecrash, Refract: every two kills (or kill points) bring a used charge back.
+  signaturePoint() {
+    for (const k of ABILITY_KEYS) {
+      const a = this.agent.abilities[k];
+      if (a.recharge !== 'kills' || this.charges[k] >= a.charges) continue;
+      if (++this.killCharge[k] >= 2) { this.charges[k]++; this.killCharge[k] = 0; }
+    }
+  }
+
+  // Focus: a kill or an assist leaves an orb (1 HP) over the body for 3 s; shooting it gives the shield.
+  focusOrb(victim) {
+    const e = victim.eye();
+    this.owner.game.addDevice({ kind: 'focusorb', owner: this.owner, pos: [e[0], e[1] + 0.6, e[2]], life: 3 });
   }
 
   // Soul Harvest: an enemy Vex killed, or hurt in the 3 s before they died, leaves her an orb for 3 s.
@@ -2419,8 +2462,9 @@ export class Kit {
 export function applyDash(c, now, dt) {
   if (!c.dash) return;
   if (now < c.dash.until) {
-    c.vel[0] = c.dash.dir[0] * (c.dash.speed || DASH.speed);
-    c.vel[2] = c.dash.dir[1] * (c.dash.speed || DASH.speed);
+    const k = c.st.slowUntil > now || c.st.stunUntil > now || c.st.hinderUntil > now ? 0.5 : 1; // slowed, concussed, hindered: dash x0.5
+    c.vel[0] = c.dash.dir[0] * (c.dash.speed || DASH.speed) * k;
+    c.vel[2] = c.dash.dir[1] * (c.dash.speed || DASH.speed) * k;
     c.vel[1] = Math.max(0, c.vel[1]) + PLAYER.gravity * dt; // hover: cancels this tick's gravity
   } else {
     const ex = c.dash.exit || DASH.exit;
@@ -2437,6 +2481,22 @@ export function applyGlide(c) {
 
 // Thin wall-shaped smokes (fire wall, water wall, gas wall, static lanes): an oriented box `len` long along
 // `dir`, `th` thick and `h` tall, centred on pos. Segment test in the slab's own frame.
+// Cyber Cage: a hollow-looking vertical cylinder (radius r, s.cyl.down below and s.cyl.up above its centre).
+export function segHitsCyl(s, r, a, b) {
+  const c = s.pos, dx = b[0] - a[0], dz = b[2] - a[2], fx = a[0] - c[0], fz = a[2] - c[2];
+  const A = dx * dx + dz * dz, B = 2 * (fx * dx + fz * dz), C = fx * fx + fz * fz - r * r;
+  let t0, t1;
+  if (A < 1e-9) { if (C > 0) return false; t0 = 0; t1 = 1; }
+  else {
+    const disc = B * B - 4 * A * C;
+    if (disc < 0) return false;
+    const q = Math.sqrt(disc);
+    t0 = Math.max(0, (-B - q) / (2 * A)); t1 = Math.min(1, (-B + q) / (2 * A));
+    if (t0 > t1) return false;
+  }
+  const ya = a[1] + (b[1] - a[1]) * t0, yb = a[1] + (b[1] - a[1]) * t1;
+  return Math.max(ya, yb) >= c[1] - s.cyl.down && Math.min(ya, yb) <= c[1] + s.cyl.up;
+}
 export function segHitsSlab(s, a, b) {
   const { dir, len, th, h } = s.slab, c = s.pos;
   const ux = dir[0], uz = dir[1], vx = -uz, vz = ux; // along, across
@@ -2461,11 +2521,22 @@ export function insideSlab(s, p, pad = 0) {
 export const SLAB = { h: 3.9, th: 0.35 };
 
 // Does any active smoke (or fire wall) block the segment a -> b?
+// How big a smoke is right now, as a share of its radius. Smokes grow to full size over `grow` seconds and shrink
+// away over the last `contract` seconds of their life (Valorant: about 0.75 s and 1 s; spec per ability).
+export const SMOKE_GROW = 0.75, SMOKE_CONTRACT = 1;
+export function smokeScale(s, now) {
+  const grow = s.grow ?? SMOKE_GROW, contract = s.contract ?? SMOKE_CONTRACT;
+  const a = grow > 0 ? (now - s.born) / grow : (now >= s.born ? 1 : 0), b = contract > 0 ? (s.until - now) / contract : 1;
+  return Math.max(0, Math.min(1, a, b));
+}
+
 export function smokeBlocks(smokes, a, b, now) {
   for (const s of smokes) {
-    if (now < s.born + SMOKE.grow * 0.6 || now > s.until) continue;
-    if (s.slab) { if (segHitsSlab(s, a, b)) return true; continue; }
-    const r = s.radius; // the cloud is one sphere of this radius: block exactly what is drawn
+    if (now < s.born || now > s.until) continue;
+    if (s.slab) { if (now >= s.born + (s.grow ?? 0) * 0.5 && segHitsSlab(s, a, b)) return true; continue; }
+    const r = s.radius * smokeScale(s, now); // the cloud is one sphere of this radius: block exactly what is drawn
+    if (r < 0.2) continue;
+    if (s.cyl) { if (segHitsCyl(s, r, a, b)) return true; continue; }
     const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
     const len2 = dx * dx + dy * dy + dz * dz || 1e-9;
     let t = ((s.pos[0] - a[0]) * dx + (s.pos[1] - a[1]) * dy + (s.pos[2] - a[2]) * dz) / len2;

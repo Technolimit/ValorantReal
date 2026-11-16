@@ -245,7 +245,7 @@ export class Combatant {
       if (dl <= rate) { this.vel[0] = tx; this.vel[2] = tz; }
       else { this.vel[0] += (dvx / dl) * rate; this.vel[2] += (dvz / dl) * rate; }
       if (this.jumpBuffer > 0) {
-        this.vel[1] = PLAYER.jumpVelocity * (this.st.hinderUntil > now ? 0.8 : 1);
+        this.vel[1] = PLAYER.jumpVelocity * (this.st.hinderUntil > now ? 0.8 : 1) * (this.st.slowUntil > now ? (this.st.slowJump ?? 0.7) : 1); // slowed: weaker jump
         this.grounded = false;
         this.jumpBuffer = 0;
         this.airCap = Math.max(this.horizSpeed(), 1.5);
@@ -282,7 +282,7 @@ export class Combatant {
     const sp = this.horizSpeed();
     if (this.grounded && sp > this.gun.def.move * PLAYER.walkMult + 0.15) {
       this.stepDist += sp * dt;
-      if (this.stepDist > 1.9) { this.stepDist = 0; this.game.emit('footstep', { who: this }); }
+      if (this.stepDist > 1.9) { this.stepDist = 0; if (!(this.st.silentUntil > now)) this.game.emit('footstep', { who: this }); }
     } else if (sp < 0.5) this.stepDist = 1.2;
   }
 

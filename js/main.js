@@ -315,7 +315,11 @@ document.addEventListener('mousemove', (e) => {
   // Same scale as Valorant: 0.07 degrees per count times sensitivity; zoomed views scale by 1/zoom.
   let deg = YAW_PER_COUNT * settings.sensitivity;
   if (zoom > 1) deg *= settings.zoomSensMult / zoom;
-  if (p.st.castLockUntil > game.time) deg *= 0.25; // casting Convergent Paths: aim held back
+  if (p.st.castLockUntil > game.time) { // casting a sitewide ultimate: turning is capped at 180 degrees a second
+    const t = performance.now(), dt = Math.min(0.1, (t - (castTurnT || t)) / 1000); castTurnT = t;
+    const want = Math.abs(e.movementX) * deg, max = 180 * Math.max(dt, 1 / 240);
+    if (want > max) deg *= max / want;
+  } else castTurnT = 0;
   p.yaw -= e.movementX * deg * DEG;
   p.pitch -= e.movementY * deg * DEG * (settings.invertY ? -1 : 1);
   p.pitch = Math.max(-89 * DEG, Math.min(89 * DEG, p.pitch));
@@ -1679,6 +1683,7 @@ function updateFps(t) {
   el.className = rate < 30 ? 'low' : rate < 55 ? 'mid' : '';
 }
 
+let castTurnT = 0; // last mouse event while a cast caps turning (see the mousemove handler)
 function frame(t) {
   requestAnimationFrame(frame);
   updateFps(t);

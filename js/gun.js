@@ -226,7 +226,7 @@ export class Gun {
     if (this.burstLeft === 0 && now - this.lastShot > delay) {
       if (!this.recovering) {
         this.recovering = true;
-        this.recRate = Math.max(1, this.heat) / d.recovery;
+        this.recRate = Math.max(1, this.heat) / d.recovery * (this.buffRate || 1); // Combat Stim: recovers 10% faster
       }
       if (this.heat > 0) {
         const nh = Math.max(0, this.heat - this.recRate * dt);
