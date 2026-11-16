@@ -794,7 +794,7 @@ export class NetSession {
   }
 
   standings() {
-    return this.game.combatants.filter(c => c.nid).map(c => ({ n: c.nid, k: c.stats.kills, d: c.stats.deaths }));
+    return this.game.combatants.filter(c => c.nid).map(c => ({ n: c.nid, k: c.stats.kills, d: c.stats.deaths, a: c.stats.assists || 0 }));
   }
 
   // ---- client side ----
@@ -854,7 +854,7 @@ export class NetSession {
       const d = g.drops.find(x => x.nid === m.id);
       if (d) { g.drops.splice(g.drops.indexOf(d), 1); g.emit('pickup', d); }
     } else if (m.k === 'end') {
-      for (const s of m.standings || []) { const c = this.byNid.get(s.n); if (c) { c.stats.kills = s.k; c.stats.deaths = s.d; } }
+      for (const s of m.standings || []) { const c = this.byNid.get(s.n); if (c) { c.stats.kills = s.k; c.stats.deaths = s.d; c.stats.assists = s.a || 0; } }
       if (g.mode?.mirror && Array.isArray(m.sc)) g.mode.score = g.mode.flip ? [m.sc[1], m.sc[0]] : [m.sc[0], m.sc[1]];
       g.netRole = 'client-ended';
       g.end();

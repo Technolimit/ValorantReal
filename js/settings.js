@@ -16,7 +16,7 @@ export const DEFAULTS = {
   volume: 0.6,
   showImpacts: true,
   impactSeconds: 6,
-  damageNumbers: true,
+  damageNumbers: false, // Valorant shows none
   debug: false,
   recoilFeel: 1, // physical recoil strength (camera punch, gun kick); 0 turns it off
   sprayTrainer: true, // overlay that draws the spray pattern and where your shots went
@@ -57,6 +57,7 @@ export const DEFAULTS = {
 export function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || '{}');
+    if (s.dmgNumV !== 2) { s.damageNumbers = false; s.dmgNumV = 2; } // damage numbers are now off unless you turn them on
     return { ...DEFAULTS, ...s, loadout: { ...DEFAULTS.loadout, ...(s.loadout || {}) }, skins: { ...(s.skins || {}) }, binds: { ...DEFAULT_BINDS, ...(s.binds || {}) }, binds2: { ...DEFAULT_BINDS2, ...(s.binds2 || {}) } };
   } catch {
     return { ...DEFAULTS, loadout: { ...DEFAULTS.loadout }, skins: {}, binds: { ...DEFAULT_BINDS }, binds2: { ...DEFAULT_BINDS2 } };

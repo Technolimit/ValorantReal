@@ -62,7 +62,7 @@ export class Combatant {
     this.slot = 'melee';
     this.prevSlot = 'secondary';
     this.loadout = { primary: 'vandal', secondary: 'classic' };
-    this.stats = { kills: 0, deaths: 0, shots: 0, hits: 0, head: 0, body: 0, legs: 0, damage: 0 };
+    this.stats = { kills: 0, deaths: 0, assists: 0, shots: 0, hits: 0, head: 0, body: 0, legs: 0, damage: 0 };
     this.report = new Map(); // opponent -> { dealt, dealtHits, taken, takenHits }, cleared on respawn
   }
 

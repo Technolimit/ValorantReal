@@ -21,6 +21,27 @@ spec; see [Measured in game](#measured-in-game).
 - **Missing agents.** Hush, Gekko, Miks, Deadlock, Vyse and Veto are in the spec and have no Tapfire counterpart.
 - **Names and looks.** Agents, abilities and weapons have their own names and models.
 
+## Changed at the request of issues #77 and #78
+
+These follow what the issues asked, where Valorant's own behaviour is uncertain or the spec's file value felt wrong
+in play:
+
+- **Fast Lane and High Gear (Static Lanes, Overclock)** are instant. Valorant's text for High Gear starts with
+  "INSTANTLY"; the spec lists a 0.6 s equip and a 0.3 s cast.
+- **Curveball (Sunflare)** pops 0.5 s after the throw, about 8 m along its curve. The spec: 0.7 s at 20 m/s (14 m).
+- **ZERO/point (Zero Point)** only suppresses; it no longer reveals the enemies it catches.
+- **Neon's slide** brings your best gun out at once and is as accurate as standing still.
+- **Blast Pack (Kicker)** knocks back out to 5 m, 14 m/s sideways and 8.5 m/s up, leaning toward the way you were
+  moving. The spec estimates 12 m/s with 8.5 up, replacing your velocity.
+- **Paint Shells (Splatter)** fly a higher arc under more gravity (x0.5, not x0.3) and lose most of their speed when
+  they land.
+- **Kept as Valorant has them:**
+  - The Phantom still loses damage past 30 m (124 / 31 / 26), as in Valorant.
+  - Showstopper's damage still falls off to 30 at 7 m (the spec's 4.5 / 7 m).
+- **Not done:**
+  - The maps have no breakable walls for Missile Call to break, so its missiles fly around walls instead.
+  - Iso's right click (Contingency at half speed) works in testing; the issue doesn't say which part fails.
+
 ## Where the spec was unclear
 
 These follow one reading of the spec, which may not be what Valorant does:

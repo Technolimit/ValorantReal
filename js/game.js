@@ -369,7 +369,7 @@ export class Game {
     if (type === 'stun') this.concuss(c, dur);
     if (type === 'near') { c.st.nearUntil = now + dur; c.st.nearRange = opts.near || 7.5; }
     if (type === 'reveal') c.st.revealUntil = now + dur;
-    if (type === 'suppress') { c.st.suppressUntil = now + dur; c.st.revealUntil = now + dur; }
+    if (type === 'suppress') c.st.suppressUntil = now + dur; // no abilities (it doesn't reveal by itself: add 'reveal')
     if (type === 'vuln') { c.st.vulnUntil = now + dur; c.st.revealUntil = now + dur; }
     if (type === 'hold') { c.st.slowUntil = now + dur; c.st.slowAmt = 0.95; c.st.revealUntil = now + dur; }
     if (type === 'hinder') c.st.hinderUntil = now + dur;
@@ -405,8 +405,10 @@ export class Game {
   // onStop(d, n), onBounce(d, n) and onFuse(d) (after `fuse` seconds, flying or not) are the ability's own.
   throwProj(owner, speed, g, opts = {}) {
     const e = owner.eye(), dir = opts.dir || dirOf(owner.yaw, owner.pitch);
+    // A thrown grenade carries the thrower's own movement, so jump- and run-throws go further, as in Valorant.
+    const iv = opts.inherit && !opts.from ? owner.vel : [0, 0, 0];
     return this.addDevice({
-      kind: 'proj', physics: true, owner, pos: opts.from ? [...opts.from] : [e[0], e[1] - 0.05, e[2]], vel: [dir[0] * speed, dir[1] * speed, dir[2] * speed], g,
+      kind: 'proj', physics: true, owner, pos: opts.from ? [...opts.from] : [e[0], e[1] - 0.05, e[2]], vel: [dir[0] * speed + iv[0], dir[1] * speed + iv[1], dir[2] * speed + iv[2]], g,
       rule: 'floor', bounces: 0, life: 12, color: 0xffffff, ...opts,
     });
   }
@@ -748,11 +750,11 @@ export class Game {
           // Firebreak heals its owner 1 HP every 0.16 s, up to 50 from one wall.
           this.addZone({ kind: 'fire', owner: d.owner, wall: true, pos: [nx, f[1], nz], r: 0.75, life: 8, dps: 30, heal: 6.25, healPool: d.pool, def: { id: 'firebreak', name: 'Firebreak', cat: 'Ability', dmg: [[50, 0, 0, 0]] } }, now);
         }
-      } else if (d.kind === 'decoy' || d.kind === 'gate' || d.kind === 'tiger' || d.kind === 'prowler') {
-        // Ground runners. Steered ones follow the owner's aim.
+      } else if (d.kind === 'decoy' || d.kind === 'gate' || d.kind === 'tiger' || d.kind === 'prowler' || d.kind === 'sdrone') {
+        // Ground runners. Steered ones follow the owner's aim. (Tejo's Stealth Drone drops to the floor and runs.)
         if (d.still) continue; // a rift left in place
         if (d.steer && d.owner.alive) { const yaw = d.owner.yaw; d.dir = [-Math.sin(yaw), 0, -Math.cos(yaw)]; }
-        let sp = d.kind === 'gate' ? 8 : d.kind === 'decoy' ? 5.6 : d.kind === 'tiger' ? 6.4 : 10;
+        let sp = d.kind === 'gate' ? 8 : d.kind === 'decoy' ? 5.6 : d.kind === 'tiger' ? 6.4 : d.kind === 'sdrone' ? 7.5 : 10;
         if (d.kind === 'prowler') {
           // Hunts the first enemy it sees ahead of it within 15 m (12 m/s), or one marked by a terror trail within
           // 10 m, seen or not (15 m/s). It bites from 2.5 m: nearsighted for 2.75 s.
@@ -823,11 +825,13 @@ export class Game {
         const v = [0, 0, 0];
         for (let i = 0; i < 3; i++) v[i] = f[i] * (pin.fwd || 0) + r[i] * (pin.side || 0);
         v[1] += (pin.jumpHeld ? 1 : 0) - (pin.crouch ? 1 : 0);
-        const l = hyp(v[0], v[1], v[2]);
-        if (l > 0) {
-          const sp = 7 * DT, np = [d.pos[0] + v[0] / l * sp, d.pos[1] + v[1] / l * sp, d.pos[2] + v[2] / l * sp];
-          if (!this.world.overlap(np[0] - 0.2, np[1] - 0.15, np[2] - 0.2, np[0] + 0.2, np[1] + 0.15, np[2] + 0.2)) d.pos = np;
-        }
+        // It eases up to 5 m/s and back down instead of starting and stopping dead, so it flies smoothly.
+        const l = hyp(v[0], v[1], v[2]), top = 5, k = Math.min(1, 5 * DT);
+        d.vel ||= [0, 0, 0];
+        for (let i = 0; i < 3; i++) d.vel[i] += ((l > 0 ? v[i] / l * top : 0) - d.vel[i]) * k;
+        const np = [d.pos[0] + d.vel[0] * DT, d.pos[1] + d.vel[1] * DT, d.pos[2] + d.vel[2] * DT];
+        if (!this.world.overlap(np[0] - 0.2, np[1] - 0.15, np[2] - 0.2, np[0] + 0.2, np[1] + 0.15, np[2] + 0.2)) d.pos = np;
+        else d.vel = [0, 0, 0];
         d.dir = [f[0], f[1], f[2]];
         // Enemies it can see hear a warning (patch 11.00), checked a few times a second.
         if (now >= (d.spotCheck || 0)) {
@@ -837,7 +841,15 @@ export class Game {
             if (dist < 40 && (dx * f[0] + dy * f[1] + dz * f[2]) / dist > 0.6 && this.world.lineOfSight(d.pos, e)) this.emit('droneSpotted', { who: c, by: d });
           }
         }
-      } else if (d.kind === 'hawk' || d.kind === 'sdrone') {
+      } else if (d.kind === 'missile') {
+        // Missile Call: flies from Tejo along the shortest walkable route to its target (never through walls), then
+        // goes off three times, half a second apart.
+        const t = d.route[d.idx], dx = t[0] - d.pos[0], dy = t[1] - d.pos[1], dz = t[2] - d.pos[2], dist = hyp(dx, dy, dz), step = d.speed * DT;
+        if (dist <= step) {
+          d.pos = [...t];
+          if (++d.idx >= d.route.length) { d.removed = true; d.onArrive?.(d); continue; }
+        } else { d.vel = [dx / dist * d.speed, dy / dist * d.speed, dz / dist * d.speed]; d.pos = [d.pos[0] + dx / dist * step, d.pos[1] + dy / dist * step, d.pos[2] + dz / dist * step]; }
+      } else if (d.kind === 'hawk') {
         if (d.owner.alive) {
           const want = dirOf(d.owner.yaw, d.owner.pitch);
           for (let i = 0; i < 3; i++) d.dir[i] += (want[i] - d.dir[i]) * Math.min(1, 4 * DT);
@@ -1070,6 +1082,7 @@ export class Game {
     const now = this.time;
     let r = Infinity;
     if (c.st.nearUntil > now) r = c.st.nearRange || 7.5;
+    if (c.kit?.pilot?.kind === 'sdrone') r = Math.min(r, 12); // seeing through the Stealth Drone's camera: only 12 m
     if (this.eventide && this.eventide.owner !== c) r = Math.min(r, 8);
     return r;
   }
@@ -1427,6 +1440,8 @@ export class Game {
         victim.kit.secondLifeNDY = false;
         if (killer?.kit && killer !== victim && this.isEnemy(killer, victim)) { killer.kit.ultPoints = Math.min(killer.kit.ultCost, killer.kit.ultPoints + 1); killer.kit.signaturePoint(); }
       }
+      // Assists: everyone else on the killer's side who hurt them this life.
+      if (victim.hurtAt) for (const [a] of victim.hurtAt) if (a !== killer && a !== victim && this.isEnemy(a, victim)) a.stats.assists = (a.stats.assists || 0) + 1;
       if (victim.hurtAt) for (const [a, t] of victim.hurtAt) {
         if (a === killer || !a.alive || !this.isEnemy(a, victim)) continue;
         if (a.kit?.id === 'vex' && this.time - t <= 3) a.kit.dropOrb(victim);

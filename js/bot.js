@@ -4,6 +4,10 @@ import { dirFromAngles } from './entity.js';
 import { PLAYER } from './config.js';
 import { botAbilities } from './botkit.js';
 import { hyp } from './vmath.js';
+import { SHOOTABLE } from './game.js';
+
+// How close an enemy has to be to make out hidden gadgets (as players see them: render.js STEALTH).
+const HIDDEN = { wire: 3, swarm: 5.25, alarm: 7, cam: 8 };
 
 export const BOT_NAMES = ['Kestrel', 'Rook', 'Ember', 'Quill', 'Talon', 'Vesper', 'Drift', 'Nova', 'Hex', 'Moth'];
 
@@ -172,6 +176,12 @@ export class Bot {
     if (t && !t.alive) this.target = null;
     this.crouchSpray = false;
     this.burstLeft = 0;
+    // Enemy utility in sight with nobody to fight (a turret, camera, trap wire, alarm bot...): shoot it out.
+    if (this.mode === 'fight' && now - this.lastSeen > 1.5 && !this.goal?.commit && !this.goal?.action) {
+      if (now >= (this.utilCheck || 0)) { this.utilCheck = now + 0.3; this.util = this.findUtil(); }
+      const u = this.util;
+      if (u && !u.removed && u.hp > 0 && this.shootUtil(u, now, dt)) return;
+    }
 
     // Reload when it's safe: straight after a fight only if nearly empty, otherwise once nobody's been seen for
     // a moment. A magazine reload can't be cut short, so starting one with an enemy around is how you die.
@@ -378,6 +388,38 @@ export class Bot {
       if (def.auto) inp.fire = true;
       else if (now >= gun.nextFire) inp.firePressed = true;
     }
+  }
+
+  // The nearest enemy gadget this bot can see and shoot: in view, in line of sight, within 30 m (hidden ones only
+  // from close up, as a player would spot them).
+  findUtil() {
+    const me = this.me, g = this.game, eye = me.eye(), f = dirFromAngles(me.yaw, 0), cosFov = Math.cos(this.d.fov * DEG);
+    let best = null, bd = 30;
+    for (const d of g.devices) {
+      const sh = SHOOTABLE[d.kind];
+      if (!sh || sh.y === undefined || d.removed || !(d.hp > 0) || !d.pos || !g.isEnemy(me, d.owner)) continue;
+      const p = [d.pos[0], d.pos[1] + sh.y, d.pos[2]], dx = p[0] - eye[0], dz = p[2] - eye[2], dist = hyp(dx, dz, p[1] - eye[1]);
+      if (dist > Math.min(bd, HIDDEN[d.kind] ?? 30) || (f[0] * dx + f[2] * dz) / Math.max(hyp(dx, dz), 0.01) < cosFov) continue;
+      if (!g.world.lineOfSight(eye, p)) continue;
+      bd = dist; best = d;
+    }
+    return best;
+  }
+
+  // Aim at a gadget and fire once the crosshair is on it and the body has stopped. False if the gun can't fire.
+  shootUtil(u, now, dt) {
+    const me = this.me, gun = me.gun, def = gun.def, inp = me.input;
+    if (def.melee || gun.reloading || gun.mag === 0) return false;
+    const sh = SHOOTABLE[u.kind], p = [u.pos[0], u.pos[1] + sh.y, u.pos[2]], e = me.eye();
+    const dx = p[0] - e[0], dy = p[1] - e[1], dz = p[2] - e[2], dist = hyp(dx, dz, dy);
+    const yaw = Math.atan2(-dx, -dz), pitch = Math.atan2(dy, hyp(dx, dz));
+    this.turnTo(yaw - gun.offY * this.d.comp, pitch - gun.offP * this.d.comp, dt, 0.8);
+    const off = hyp(wrap(me.yaw + gun.offY - yaw), me.pitch + gun.offP - pitch), size = Math.atan((sh.r || 0.25) / Math.max(dist, 0.5));
+    if (me.horizSpeed() > 0.6 && me.grounded) this.moveDir(-me.vel[0], -me.vel[2]); // stop to shoot
+    if (off < size * 1.5 && me.horizSpeed() <= def.move * def.spread.deadzone && this.clearShot(e, me.yaw + gun.offY, me.pitch + gun.offP, dist)) {
+      if (def.auto) inp.fire = true; else if (now >= gun.nextFire) inp.firePressed = true;
+    }
+    return true;
   }
 
   // Would a bullet fired along (yaw, pitch) reach range dist without crossing a wall (or an ability wall)?
