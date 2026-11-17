@@ -35,9 +35,9 @@ in play:
   moving. The spec estimates 12 m/s with 8.5 up, replacing your velocity.
 - **Paint Shells (Splatter)** fly a higher arc under more gravity (x0.5, not x0.3) and lose most of their speed when
   they land.
-- **Kept as Valorant has them:**
-  - The Phantom still loses damage past 30 m (124 / 31 / 26), as in Valorant.
-  - Showstopper's damage still falls off to 30 at 7 m (the spec's 4.5 / 7 m).
+- **The Phantom** no longer loses damage past 30 m. Since Valorant patch 9.10 it has two bands: 156 / 39 / 33
+  out to 20 m and 140 / 35 / 29 beyond. Tapfire had the older three bands (the last one 124 / 31 / 26 past 30 m).
+- **Kept as Valorant has it:** Showstopper's damage still falls off to 30 at 7 m (the spec's 4.5 / 7 m).
 - **Not done:**
   - The maps have no breakable walls for Missile Call to break, so its missiles fly around walls instead.
   - Iso's right click (Contingency at half speed) works in testing; the issue doesn't say which part fails.

@@ -151,7 +151,7 @@ export const WEAPONS = {
   phantom: {
     name: 'Phantom', cat: 'Rifle', slot: 'primary', cost: 2900, model: 'rifle', auto: true, suppressed: true,
     rate: 11, mag: 30, reserve: 60, reload: 2.5, equip: 1.0, pen: 'medium', move: RIFLE_MOVE,
-    dmg: [[15, 156, 39, 33], [30, 140, 35, 29], [50, 124, 31, 26]],
+    dmg: [[20, 156, 39, 33], [50, 140, 35, 29]], // patch 9.10: two bands, no more drop past 30 m
     spread: { hip: 0.2, ads: 0.11, run: 5.0, walk: 2.2, air: 8.0, deadzone: 0.27 },
     fe: { max: 1.1, start: 4, end: 10 }, recovery: 0.32,
     recoil: { v: [0.05, 0.1, 0.2, 0.35, 0.5, 0.55, 0.55, 0.5, 0.45, 0.35, 0.25, 0.15, 0.1], tail: 0.05, h: [[0,0],[5,-0.1],[10,-0.8],[14,-1.0],[18,0.2],[23,1.4],[30,1.8]], hJit: 0.05, vJit: 0.05 },
