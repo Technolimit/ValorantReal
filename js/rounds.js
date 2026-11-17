@@ -111,7 +111,7 @@ export class RoundMode {
     // Clear the world.
     for (const w of g.walls) g.removeWall(w);
     g.walls = []; g.smokes = []; g.zones = []; g.devices = []; g.eventide = null; g.drops = [];
-    if (g.contract) g.contract = null;
+    if (g.contract) g.clearContract();
     this.emit('roundClear');
     for (const c of g.combatants) {
       if (half) { c.credits = ECON.start; c.survived = false; c.inv.primary = null; c.inv.secondary = new Gun(WEAPONS.classic); c.armor = 0; c.inv.ability = null; if (c.kit) { c.kit.charges.c = 0; c.kit.charges.q = 0; c.kit.charges.e = 0; c.kit.ultPoints = 0; } }
@@ -1026,7 +1026,7 @@ export class NetRoundMode extends RoundMode {
     if (ss) this.startSide = this.flip ? (ss === 'atk' ? 'def' : 'atk') : ss;
     for (const w of g.walls) g.removeWall(w);
     g.walls = []; g.smokes = []; g.zones = []; g.devices = []; g.eventide = null; g.drops = [];
-    if (g.contract) g.contract = null;
+    if (g.contract) g.clearContract();
     this.emit('roundClear');
     if (half) { p.survived = false; p.inv.primary = null; p.inv.secondary = new Gun(WEAPONS.classic); p.armor = 0; p.inv.ability = null; if (p.kit) { p.kit.charges.c = 0; p.kit.charges.q = 0; p.kit.charges.e = 0; p.kit.ultPoints = 0; } }
     this.boughtThisRound = new Map();

@@ -472,38 +472,119 @@ export class Game {
     this.emit('wall', w);
   }
 
-  // ---- Duel arena (Vanta) ----
-  startContract(a, b, dur) {
+  // ---- Duel arena (Vanta: Iso's Kill Contract) ----
+  // Valorant: Iso and the first enemy the column reaches are pulled into an arena of their own: a flat, empty
+  // floor walled in on every side, the two of them 21 m apart and facing each other, both healed to 150 (full
+  // health and heavy shields). Iso gets two Contingency walls in front of him (front left and front right), the
+  // enemy one straight ahead. Nobody can shoot for the 1.5 s face-off, the cover walls come down 2.5 s into
+  // the fight, and no abilities work inside. The fight lasts up to 13 s: when one dies the other goes back 2 s
+  // later, to the spot they were pulled from; if neither dies in time, both do. While they are away a purple
+  // hexagon on the map marks each spot they will come back to (and where the loser's body, gun and spike end up).
+  startContract(a, b) {
+    const FACE = 1.5, FIGHT = 13, COVER = 2.5;
     if (!this.arena) {
-      // A sealed room far off the map: floor, four walls and a couple of low covers.
       const bx = this.map.boxes.filter(x => !x.floor);
       let x1 = -Infinity, z0 = Infinity;
       for (const q of bx) { x1 = Math.max(x1, q.max[0]); z0 = Math.min(z0, q.min[2]); }
-      const cx = x1 + 80, cz = z0 + 20, S = 9;
+      const cx = x1 + 120, cz = z0 + 30, W = 8, L = 15, H = 12, T = 0.5;
+      const CW = 2.62, CH = 3, CT = 0.2; // Push Wall: half width, height, half thickness
       const mk = (min, max) => ({ min, max, pen: false, mat: 'wall', temp: true, arena: true });
-      this.arena = { center: [cx, 0, cz], boxes: [
-        mk([cx - S, -1, cz - S], [cx + S, 0, cz + S]),
-        mk([cx - S - 0.5, 0, cz - S], [cx - S, 6, cz + S]), mk([cx + S, 0, cz - S], [cx + S + 0.5, 6, cz + S]),
-        mk([cx - S, 0, cz - S - 0.5], [cx + S, 6, cz - S]), mk([cx - S, 0, cz + S], [cx + S, 6, cz + S + 0.5]),
-        mk([cx - 3, 0, cz - 0.6], [cx - 1.5, 1.2, cz + 0.6]), mk([cx + 1.5, 0, cz - 0.6], [cx + 3, 1.2, cz + 0.6]),
-      ] };
+      this.arena = {
+        center: [cx, 0, cz], half: [W, L], height: H,
+        boxes: [
+          mk([cx - W, -1, cz - L], [cx + W, 0, cz + L]),
+          mk([cx - W - T, 0, cz - L - T], [cx - W, H, cz + L + T]), mk([cx + W, 0, cz - L - T], [cx + W + T, H, cz + L + T]),
+          mk([cx - W, 0, cz - L - T], [cx + W, H, cz - L]), mk([cx - W, 0, cz + L], [cx + W, H, cz + L + T]),
+        ],
+        // Iso stands at +10.5 (z) facing -z, the enemy at -10.5 facing +z. The covers are Contingency walls, the
+        // same size as his Push Wall (5.24 m wide, 3 m tall, 0.4 m thick), 2.5 m ahead: his two to his front left
+        // and front right with a 1.2 m gap between them, theirs straight in front of them.
+        covers: [
+          mk([cx - 0.6 - 2 * CW, 0, cz + 8 - CT], [cx - 0.6, CH, cz + 8 + CT]), mk([cx + 0.6, 0, cz + 8 - CT], [cx + 0.6 + 2 * CW, CH, cz + 8 + CT]),
+          mk([cx - CW, 0, cz - 8 - CT], [cx + CW, CH, cz - 8 + CT]),
+        ],
+      };
     }
-    for (const q of this.arena.boxes) this.world.boxes.push(q);
-    const c = this.arena.center;
-    this.contract = { a, b, until: this.time + dur, backA: [...a.pos], backB: [...b.pos], walls: [] };
-    for (const q of this.arena.boxes) { const w = { box: q, owner: a, until: this.time + dur + 1, born: this.time, style: 'arena' }; this.contract.walls.push(w); this.emit('wall', w); }
-    this.teleport(a, [c[0], 0, c[2] + 6]); a.yaw = 0;
-    this.teleport(b, [c[0], 0, c[2] - 6]); b.yaw = Math.PI;
-    this.emit('contract', { a, b });
+    const A = this.arena, c = A.center, now = this.time;
+    for (const q of A.boxes) this.world.boxes.push(q);
+    const k = this.contract = { a, b, start: now, fightAt: now + FACE, until: now + FACE + FIGHT, coverUntil: now + FACE + COVER, exitAt: null, backA: [...a.pos], backB: [...b.pos], covers: [] };
+    for (const q of A.covers) {
+      this.world.boxes.push(q);
+      const w = { box: q, owner: a, until: k.coverUntil, born: now, style: 'iso', arena: true };
+      k.covers.push(w); this.emit('wall', w);
+    }
+    for (const [p, pos, yaw] of [[a, [c[0], 0, c[2] + 10.5], 0], [b, [c[0], 0, c[2] - 10.5], Math.PI]]) {
+      p.kit?.dropHeld?.(now);
+      this.teleport(p, pos); p.yaw = yaw; p.pitch = 0;
+      p.hp = PLAYER.hp; p.armor = PLAYER.armor; p.burn = 0; p.decay = 0;
+      for (const s of ['slowUntil', 'blindUntil', 'stunUntil', 'nearUntil', 'revealUntil', 'deafUntil', 'vulnUntil', 'hinderUntil', 'disarmUntil', 'downedUntil']) p.st[s] = 0;
+      p.st.suppressUntil = k.until + 2; // no abilities in the arena
+      p.st.channelUntil = k.fightAt; // the face-off: no shooting yet
+      if (p.brain) p.brain.goal = null;
+    }
+    this.emit('contract', { a, b, k });
+  }
+
+  inArena(p) {
+    const A = this.arena; if (!A) return false;
+    return Math.abs(p[0] - A.center[0]) <= A.half[0] + 1 && Math.abs(p[2] - A.center[2]) <= A.half[1] + 1;
   }
 
   tickContract(now) {
     const k = this.contract;
-    if (!k || (k.a.alive && k.b.alive && now < k.until)) return;
-    for (const [c, back] of [[k.a, k.backA], [k.b, k.backB]]) if (c.alive) this.teleportNear(c, back);
+    if (!k) return;
+    if (k.covers.length && now >= k.coverUntil) this.dropCovers(k);
+    if (k.exitAt == null) {
+      if (!k.a.alive || !k.b.alive) k.exitAt = now + 2; // the winner has 2 s (to shoot a Focus orb) before going back
+      else if (now >= k.until) { // time's up: both die
+        const def = { id: 'ability', name: 'Duel' };
+        for (const p of [k.a, k.b]) this.kill(p, p, { part: 'body', def });
+        k.exitAt = now;
+      }
+    }
+    if (k.exitAt != null && now >= k.exitAt) this.endContract(k);
+  }
+
+  dropCovers(k) {
+    for (const w of k.covers) {
+      const i = this.world.boxes.indexOf(w.box); if (i >= 0) this.world.boxes.splice(i, 1);
+      w.removed = true; w.goneAt = this.time; this.emit('wallGone', w);
+    }
+    k.covers = [];
+  }
+
+  // Send the survivor back, and put the loser's body, dropped gun and the spike on the spot they were pulled from.
+  endContract(k = this.contract) {
+    if (!k) return;
+    this.dropCovers(k);
+    for (const [p, back] of [[k.a, k.backA], [k.b, k.backB]]) {
+      if (p.alive) {
+        if (!this.teleportNear(p, back)) this.teleport(p, back);
+        p.st.suppressUntil = 0; p.st.channelUntil = 0;
+        if (p.brain) p.brain.goal = null;
+        continue;
+      }
+      if (!this.inArena(p.pos)) continue; // already respawned
+      const f = this.floorAt(back[0], back[2], back[1] + 0.9) || back;
+      p.pos = [...f]; p.prevPos = [...f]; p.deathPos = [...f];
+      for (const d of this.drops) if (this.inArena(d.pos)) { d.pos = [f[0] + 0.6, f[1] + 0.06, f[2]]; d.from = [...d.pos]; }
+      const sp = this.mode?.spike;
+      if (sp?.state === 'dropped' && sp.pos && this.inArena(sp.pos)) { sp.pos = [f[0] - 0.4, f[1], f[2]]; this.emit('spikeDrop', { pos: sp.pos }); }
+    }
+    for (const d of this.devices) if (!d.removed && d.pos && this.inArena(d.pos)) d.removed = true; // an unshot Focus orb
     for (const q of this.arena.boxes) { const i = this.world.boxes.indexOf(q); if (i >= 0) this.world.boxes.splice(i, 1); }
-    for (const w of k.walls) { w.removed = true; this.emit('wallGone', w); }
     this.contract = null;
+    this.emit('contractEnd', { k });
+  }
+
+  // A new round: take the arena down without sending anyone anywhere (everyone is about to respawn anyway).
+  clearContract() {
+    const k = this.contract;
+    if (!k) return;
+    this.dropCovers(k);
+    for (const q of this.arena.boxes) { const i = this.world.boxes.indexOf(q); if (i >= 0) this.world.boxes.splice(i, 1); }
+    this.contract = null;
+    this.emit('contractEnd', { k });
   }
 
   // Everyone within `range` and `half` radians of the owner's facing, through walls.

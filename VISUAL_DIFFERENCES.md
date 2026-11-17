@@ -170,7 +170,7 @@ Only what differs beyond the shared points above.
 | Stella (Astra) | Stars: a gold octahedron with a halo. Nebulas: spheres. Rift Line: a purple slab across the map. | Stars are glowing points; Astral Form is a cosmic map view; Cosmic Divide is a shimmering wall. |
 | Regent (Chamber) | Snare: small dark puck with a gold light. Anchor: gold ring and post. | Modelled gold devices; the guns have their own gold models. |
 | Marina (Harbor) | Riptide and Squall: teal slabs and rings. Lagoon: teal dome. Undertow: teal columns. | Moving water with ripples and spray; Cove is a bubble of water. |
-| Vanta (Iso) | Push Wall: purple translucent rectangle. Duel: a dark purple box room. | Purple hexagon-pattern energy; Kill Contract pulls both into an arena. |
+| Vanta (Iso) | Push Wall: purple translucent rectangle. Duel: a tall violet honeycomb sheet sweeps forward; the arena is a grid floor walled in by violet honeycomb, under a dark violet void, with Push Wall covers; a purple hexagon marks each return spot on the map. | Purple hexagon-pattern energy; Kill Contract’s arena is a bare holodeck-like space with Contingency walls; hexagons mark the exit points. |
 | Ballast (Tejo) | Scout Drone: sphere with four rotor discs. Missile Call and Barrage: flat discs and glows. | Modelled drone and missiles; visible missile trails. |
 | Override (KAY/O) | Zero Point: blue box blade. Fragment and Flashpoint: glowing balls. | A modelled knife and grenades; suppression shows on screen. |
 | Thistle (Clove) | Ruse: pink spheres. | Smokes in Clove's style; butterflies show on their abilities. |

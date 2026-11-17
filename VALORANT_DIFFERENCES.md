@@ -246,7 +246,7 @@ These now follow the spec:
 | Push Wall (Contingency) | Usable at 0.8 s; 5.24 m wide wall that moves forward; stops bullets | Same |
 | Sever (Undercut) | Usable at 0.8 s; 22.5 m/s through walls, 29.3 m; Fragile 4 s | Same |
 | Focus (Double Tap) | 1 s wind-up | Same |
-| Duel (Kill Contract) | Column starts 0.8 s after the cast; takes the first enemy it touches; 1.5 s face-off | Same |
+| Duel (Kill Contract) | Column starts 0.8 s after the cast; takes the first enemy it touches. Arena: 21 m apart, both healed to 150, two Push Wall covers for Vanta and one for the enemy, dropping 2.5 s into the fight; 1.5 s face-off, 13 s fight, no abilities. Winner back 2 s after the kill; both die on time-out. Casting gives the Focus shield | Same (wiki: column 36 m long and 15 m wide since 11.08; this keeps the 13.10 spec’s 40 m and r 7) |
 | **Ballast (Tejo)** | | |
 | Scout Drone (Stealth Drone) | Usable at 0.8 s; runs on the floor, 12 m of sight; 6 s; 42 HP; pulse suppresses and reveals 8 s | Grounded (issue #78) |
 | Sticky Charge (Special Delivery) | Usable at 0.5 s; 41 m/s; goes off 0.8 s after it sticks: 35 close, 28 at 3 m; concuss 2.5 s | Same |

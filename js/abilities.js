@@ -1457,18 +1457,18 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Duel', desc: 'Send a column of energy ahead of you (14 m wide, through walls, 40 m over 4 s, starting 0.8 s after the cast). You and the first enemy it reaches are pulled into a sealed arena: 1.5 s to face off, then up to 13 s to fight. Whoever survives is sent back.', points: 7, equip: 1.1, unequip: 0.8,
+        name: 'Duel', desc: 'Send a tall column of energy ahead of you (14 m wide, through walls, 40 m over 4 s, starting 0.8 s after the cast); casting it also gives you Focus’s shield if it isn’t up. You and the first enemy it reaches are pulled into an arena of your own, 21 m apart and both healed to 150. You get two cover walls in front of you, they get one; the walls come down 2.5 s into the fight. 1.5 s to face off, then up to 13 s to fight, guns only. The winner goes back 2 s after the kill, to where they were; if time runs out, you both die.', points: 7, equip: 1.1, unequip: 0.8,
         use(kit) {
-          const o = kit.owner, g = o.game, f = fwd2(o.yaw), from = [o.pos[0], o.pos[1] + 1, o.pos[2]];
+          const o = kit.owner, g = o.game, f = fwd2(o.yaw), from = [o.pos[0], o.pos[1], o.pos[2]];
           if (g.contract) return false;
+          if (!(kit.now < kit.focusUntil)) { kit.focusUntil = kit.now + 12; kit.shield = true; } // patch 10.04: a won duel always drops an orb
           later(kit, 0.8, () => {
-            g.emit('throw', { who: o, from, to: [from[0] + f[0] * 40, from[1], from[2] + f[1] * 40], time: 4, color: 0x9b5cff, wave: true });
+            g.emit('contractColumn', { who: o, from, dir: [f[0], 0, f[1]], dist: 40, time: 4, width: 14 });
             g.sweep(o, from, [f[0], 0, f[1]], 10, 40, {
               hit: (c, d) => hyp(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 7,
               apply: (c) => {
                 if (!o.alive || g.contract) return 'stop';
-                g.startContract(o, c, 13 + 1.5);
-                o.st.channelUntil = c.st.channelUntil = g.time + 1.5; // the face-off: no shooting yet
+                g.startContract(o, c);
                 return 'stop';
               },
             });
@@ -2157,6 +2157,19 @@ export class Kit {
     g.emit('ability', { who: o, type: 'ult' });
     g.emit('shadowChannel', { who: o, dest });
     return true;
+  }
+
+  // Pulled into the duel arena: anything held, piloted or being aimed ends, like on death, and the gun comes back out.
+  dropHeld(now) {
+    const o = this.owner;
+    if (this.pilot) this.pilot.removed = true;
+    if (this.shadow) { if (this.shadow.shade) this.shadow.shade.removed = true; this.endShadow(false); }
+    if (this.mapPick) this.mapCancel();
+    if (this.drift) o.st.hiddenUntil = o.st.intangibleUntil = 0;
+    this.pilot = this.view = this.drift = null;
+    this.armed = this.blades = this.beams = this.launcher = this.highGear = this.overdrive = this.steerHand = null;
+    this.bladesAway = 0;
+    if (o.alive) o.equip(o.inv[o.slot] && (o.slot === 'primary' || o.slot === 'secondary' || o.slot === 'melee') ? o.slot : o.inv.primary ? 'primary' : 'secondary', now, true);
   }
 
   endShadow(arrived) {

@@ -116,6 +116,49 @@ function gridTexture(renderer, [base, major, minor], crate = false, pattern = 'g
   return t;
 }
 
+// Kill Contract's energy: a honeycomb of white lines on a see-through background (tinted by the material's
+// colour), with a glow along the bottom edge that fades upward when `fade` is set. `glow`: strength of that glow.
+function hexTexture(cells = 14, fade = true, glow = 0.45) {
+  const S = 512, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  if (fade) {
+    const gr = g.createLinearGradient(0, S, 0, 0);
+    gr.addColorStop(0, `rgba(255,255,255,${glow})`); gr.addColorStop(0.35, `rgba(255,255,255,${glow * 0.25})`); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, S, S);
+  }
+  const r = S / cells / Math.sqrt(3), w = Math.sqrt(3) * r;
+  g.lineWidth = 2;
+  for (let row = -1; row * 1.5 * r < S + 2 * r; row++) {
+    const y = row * 1.5 * r;
+    for (let col = -1; col * w < S + w; col++) {
+      const x = col * w + (row % 2 ? w / 2 : 0);
+      g.strokeStyle = `rgba(255,255,255,${fade ? Math.max(0.08, Math.min(1, y / S)) * 0.9 : 0.55})`;
+      g.beginPath();
+      for (let i = 0; i <= 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; g[i ? 'lineTo' : 'moveTo'](x + Math.cos(a) * r * 0.92, y + Math.sin(a) * r * 0.92); }
+      g.stroke();
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// The duel arena's floor: a holodeck grid, a fine line every metre and a brighter one every 4 m.
+function arenaFloorTexture() {
+  const S = 256, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.fillStyle = '#1a1030'; g.fillRect(0, 0, S, S);
+  g.fillStyle = '#4a2c86';
+  for (let i = 0; i < 4; i++) { g.fillRect(i * S / 4, 0, 2, S); g.fillRect(0, i * S / 4, S, 2); }
+  g.fillStyle = '#a77bff'; g.fillRect(0, 0, 4, S); g.fillRect(0, 0, S, 4);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 // One merged geometry per material. UVs come from world position so the 1 m grid lines up everywhere.
 function boxesGeometry(boxes, texMeters) {
   const pos = [], nor = [], uv = [], idx = [];
@@ -687,6 +730,8 @@ export class Renderer {
     g.on('trap', ({ zone }) => this.fxRing(zone.pos, 4, 0x4fd1a5, 0.5));
     g.on('throw', (t) => this.fxThrow(t));
     g.on('wall', (w) => this.fxWall(w));
+    g.on('contractColumn', (e) => this.fxContractColumn(e));
+    g.on('contract', ({ k }) => this.fxArena(k));
     g.on('drop', (d) => this.fxDrop(d));
     g.on('device', (d) => this.fxDevice(d));
     g.on('quakeLine', (q) => this.fxQuake(q));
@@ -1832,7 +1877,7 @@ export class Renderer {
     const g = new THREE.Group();
     const STY = {
       bulwark: [0x2a8f74, 0x1d6b56, 0x7fffd4, 0.85], ice: [0xbfefff, 0x4fb8d8, 0xe8fbff, 0.8], iso: [0x5a2fa8, 0x9b5cff, 0xd6b8ff, 0.7],
-      cosmic: [0x2a1450, 0xb06bff, 0xffd27a, 0.92], arena: [0x24183d, 0x5a2fa8, 0xb48cff, 0.95],
+      cosmic: [0x2a1450, 0xb06bff, 0xffd27a, 0.92],
     }[w.style] || [0x2a8f74, 0x1d6b56, 0x7fffd4, 0.85];
     const op = STY[3];
     const slab = new THREE.Mesh(new THREE.BoxGeometry(...size), new THREE.MeshStandardMaterial({ color: STY[0], emissive: STY[1], emissiveIntensity: 0.6, roughness: 0.4, metalness: 0.2, transparent: op < 1, opacity: op, side: THREE.DoubleSide }));
@@ -1863,8 +1908,8 @@ export class Renderer {
     }
     g.position.set((b.min[0] + b.max[0]) / 2, b.min[1] + size[1] / 2, (b.min[2] + b.max[2]) / 2);
     const t0 = this.game.time;
-    this.fxAdd(g, () => (w.removed ? 0 : Infinity), (now) => {
-      const k = w.style === 'arena' ? 1 : Math.min(1, (now - t0) / 0.3);
+    this.fxAdd(g, () => (w.removed ? (w.goneAt != null ? w.goneAt + 0.4 : 0) : Infinity), (now) => {
+      const k = w.removed && w.goneAt != null ? Math.max(0.01, 1 - (now - w.goneAt) / 0.4) : Math.min(1, (now - t0) / 0.3); // rises in 0.3 s; arena covers sink in 0.4 s
       g.scale.y = Math.max(0.01, k);
       g.position.set((b.min[0] + b.max[0]) / 2, b.min[1] + size[1] * k / 2, (b.min[2] + b.max[2]) / 2); // follows a pushed wall
       const left = w.until - now;
@@ -1877,6 +1922,71 @@ export class Renderer {
         if (frac < 0.34) slab.material.opacity *= 0.75 + 0.1 * Math.sin(now * 12);
       }
     });
+  }
+
+  // Kill Contract's column: a tall sheet of violet honeycomb energy, as wide as the column, sweeping forward
+  // along the ground through walls, brightest at its base.
+  fxContractColumn({ from, dir, dist, time, width }) {
+    const H = 16, tex = this.contractTex ||= hexTexture(14, true, 0.5);
+    const add = (o) => new THREE.MeshBasicMaterial({ color: 0x9b5cff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, ...o });
+    const g = new THREE.Group();
+    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(width, H), add({ map: tex }));
+    sheet.position.y = H / 2;
+    const base = new THREE.Mesh(new THREE.PlaneGeometry(width, 1.4), add({ color: 0xb98aff }));
+    base.rotation.x = -Math.PI / 2; base.position.y = 0.04;
+    const core = new THREE.Mesh(new THREE.PlaneGeometry(width, 0.35), add({ color: 0xd9c2ff }));
+    core.position.y = 0.2;
+    g.add(sheet, base, core);
+    g.rotation.y = Math.atan2(dir[0], dir[2]); // the sheet spans across the direction it travels
+    const t0 = this.game.time;
+    this.fxAdd(g, t0 + time, (now) => {
+      const k = (now - t0) / time, a = Math.min(1, k * 10, (1 - k) * 8);
+      g.position.set(from[0] + dir[0] * dist * k, from[1], from[2] + dir[2] * dist * k);
+      sheet.material.opacity = a * (0.9 + 0.1 * Math.sin(now * 23));
+      base.material.opacity = 0.55 * a; core.material.opacity = 0.9 * a;
+    });
+  }
+
+  // The duel arena: a flat holodeck floor walled in by tall violet honeycomb barriers (the sky goes dark violet
+  // for the two inside: see updateNearsight). On the map, a glowing purple hexagon marks each spot the two
+  // duelists were pulled from and will come back to.
+  fxArena(k) {
+    const g0 = this.game, A = g0.arena, [cx, , cz] = A.center, [W, L] = A.half, H = A.height;
+    const live = () => (g0.contract === k ? Infinity : 0);
+    const room = new THREE.Group();
+    const ftex = this.arenaFloorTex ||= arenaFloorTexture();
+    const floorTex = ftex.clone(); floorTex.needsUpdate = true; floorTex.repeat.set(W * 2 / 4, L * 2 / 4);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, L * 2), new THREE.MeshBasicMaterial({ map: floorTex }));
+    floor.rotation.x = -Math.PI / 2; floor.position.set(cx, 0.005, cz);
+    room.add(floor);
+    const wtex = this.arenaWallTex ||= hexTexture(10, true, 0.6), glows = [];
+    const back = new THREE.MeshBasicMaterial({ color: 0x120a22, side: THREE.DoubleSide });
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0xd9c2ff });
+    for (const [x, z, len, rot] of [[cx, cz - L, W * 2, 0], [cx, cz + L, W * 2, Math.PI], [cx - W, cz, L * 2, Math.PI / 2], [cx + W, cz, L * 2, -Math.PI / 2]]) {
+      const wall = new THREE.Group();
+      const solid = new THREE.Mesh(new THREE.PlaneGeometry(len, H), back); solid.position.y = H / 2;
+      const tex = wtex.clone(); tex.wrapS = THREE.RepeatWrapping; tex.repeat.set(len / H, 1); tex.needsUpdate = true; // square hexes on long walls
+      const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x9a5cff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+      glows.push(mat);
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(len, H), mat); glow.position.set(0, H / 2, 0.02);
+      const foot = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.08), lineMat); foot.position.set(0, 0.05, 0.03);
+      wall.add(solid, glow, foot);
+      wall.position.set(x, 0, z); wall.rotation.y = rot;
+      room.add(wall);
+    }
+    this.fxAdd(room, live, (now) => { for (const m of glows) m.opacity = 0.8 + 0.1 * Math.sin(now * 2); });
+    for (const p of [k.backA, k.backB]) {
+      const m = new THREE.Group();
+      const fill = new THREE.Mesh(new THREE.CircleGeometry(1.1, 6), new THREE.MeshBasicMaterial({ color: 0x8a4dff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+      const rim = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.18, 6), new THREE.MeshBasicMaterial({ color: 0xb88cff, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false }));
+      for (const f of [fill, rim]) { f.rotation.x = -Math.PI / 2; f.rotation.z = Math.PI / 6; }
+      fill.position.y = 0.03; rim.position.y = 0.035;
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.1, 1.6, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0x9b5cff, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }));
+      beam.position.y = 0.8; beam.rotation.y = Math.PI / 6;
+      m.add(fill, rim, beam);
+      m.position.set(p[0], p[1], p[2]);
+      this.fxAdd(m, live, (now) => { const s = 0.5 + 0.5 * Math.sin(now * 4); fill.material.opacity = 0.25 + 0.15 * s; beam.material.opacity = 0.12 + 0.1 * s; });
+    }
   }
 
   clearSmokes() {
@@ -2275,12 +2385,13 @@ export class Renderer {
   // Nearsighted (Dread, Hound, Glare, Nest...): the world fades into murk a few metres out, like bots see it.
   updateNearsight(p) {
     if (this.shadowSight) return;
-    const range = p?.alive ? this.game.sightRange(p) : Infinity;
-    const want = range < Infinity ? range : 0, tint = p?.st?.refractUntil > this.game.time ? 0x7fe0b0 : 0x120d18; // Refract: a bright green haze
+    const range = p?.alive ? this.game.sightRange(p) : Infinity, k = this.game.contract;
+    let want = range < Infinity ? range : 0, tint = p?.st?.refractUntil > this.game.time ? 0x7fe0b0 : 0x120d18; // Refract: a bright green haze
+    if (!want && k && p && (k.a === p || k.b === p)) { want = -1; tint = 0x1c1036; } // in the duel arena: a dark violet void past its walls
     if (want === (this.nearFog?.range || 0) && tint === this.nearFog?.tint) return;
     if (!this.nearFog) this.nearFog = { fog: this.scene.fog, bg: this.scene.background };
     if (want) {
-      this.scene.fog = new THREE.Fog(tint, want * 0.3, want + 1);
+      this.scene.fog = want > 0 ? new THREE.Fog(tint, want * 0.3, want + 1) : new THREE.Fog(tint, 40, 80);
       this.scene.background = new THREE.Color(tint);
       this.nearFog.range = want; this.nearFog.tint = tint;
     } else {
