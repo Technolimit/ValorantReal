@@ -180,6 +180,27 @@ const checks = [
     m.detonate();
     return { pass: !p.alive, alive: p.alive };
   }],
+  ['Crouching: spread x0.85 (Classic x0.9) and, standing still, 15% less sideways recoil', async () => {
+    const g = await __start({ agent: 'cinder', map: 'arena', botCount: 1, botMode: 'static' });
+    const p = g.player;
+    if (!__place(g, p, 8)) return { error: 'no open ground' };
+    const { WEAPONS } = await import('/js/weapons.js');
+    const vandal = new (p.inv.secondary.constructor)(WEAPONS.vandal), classic = p.inv.secondary;
+    const measure = (crouch) => {
+      p.input.crouch = crouch; __tick(g, 0.4);
+      vandal.heat = 0;
+      const sp = { vandal: vandal.spread(p), classic: classic.spread(p) };
+      const rnd = Math.random; Math.random = () => 0.3;
+      vandal.heat = 8; vandal.mag = 25; vandal.offY = 0; vandal.shoot(p, g.time);
+      Math.random = rnd;
+      return { ...sp, side: vandal.lastKick.side, crouched: p.crouched };
+    };
+    const up = measure(false), down = measure(true);
+    p.input.crouch = false;
+    const r = (a, b) => +(b / a).toFixed(3);
+    const out = { crouched: down.crouched && !up.crouched, vandal: r(up.vandal, down.vandal), classic: r(up.classic, down.classic), side: r(up.side, down.side) };
+    return { pass: out.crouched && out.vandal === 0.85 && out.classic === 0.9 && out.side === 0.85, ...out };
+  }],
   ['Duel: 21 m apart, healed to 150, Push Wall covers (two for Vanta, one for the enemy), no abilities, no shots in the face-off', async () => {
     const g = await __start({ agent: 'vanta', map: 'arena', botCount: 1, botMode: 'static' });
     const p = g.player, b = g.bots[0];

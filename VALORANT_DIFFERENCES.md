@@ -274,6 +274,8 @@ These now follow the spec:
   - From the attackers' barriers it takes about 5 s to fight for mid and 10 to 15 s to come into view of a site.
   - No spot a defender would hold can see into the attackers' spawn.
   - Foundry's halls are 4 to 6 m wide. Divide has cover in its open areas.
+- **Crouching** makes you more accurate, as in Valorant: spread x0.85 (the Classic x0.9, patch 1.04; shotguns x0.85
+  since 12.09), and crouched while standing still, 15% less sideways recoil.
 - **Bots** play by the same rules as you: the same guns, spread and movement, and no aim help. They place their
   crosshair on corners at head height, hold angles still, counter-strafe before shooting, trade teammates and back
   off when hurt. They share what they see with their team instead of talking. Over 39 measured rounds:

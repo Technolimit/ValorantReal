@@ -5,6 +5,8 @@
 //   run / walk  extra error at full run speed and at walk speed (linear in between, zero below the deadzone)
 //   air         extra error while airborne
 //   deadzone    share of the gun's run speed you can still move at and keep first-shot accuracy
+//   crouch      spread multiplier while crouched (default CROUCH_SPREAD, x0.85; the Classic gets x0.9). Crouched and
+//               standing still, sideways recoil is also cut by 15% (CROUCH_RECOIL).
 // fe: firing error (bloom) that ramps in from `start` to `end` consecutive shots, up to `max` degrees.
 // recoil: a fixed, learnable spray pattern per weapon (same every spray, plus a little jitter):
 //   v / tail   vertical (pitch) kick in degrees for each shot of the spray; `tail` once the table runs out.
@@ -47,7 +49,7 @@ export const WEAPONS = {
     name: 'Classic', cat: 'Sidearm', slot: 'secondary', cost: 0, model: 'pistol', auto: false,
     rate: 6.75, mag: 12, reserve: 36, reload: 1.75, equip: 0.75, pen: 'low', move: LIGHT_MOVE,
     dmg: [[30, 78, 26, 22], [50, 66, 22, 18]],
-    spread: { hip: 0.4, ads: 0.4, run: 1.1, walk: 0.75, air: 3.0, deadzone: 0.3 },
+    spread: { hip: 0.4, ads: 0.4, run: 1.1, walk: 0.75, air: 3.0, deadzone: 0.3, crouch: 0.9 }, // patch 1.04: 10% more accurate crouched
     fe: { max: 1.6, start: 1, end: 5 }, recovery: 0.22,
     recoil: { v: [0.6, 0.6, 0.55, 0.5, 0.45, 0.4], tail: 0.3, h: [[0,0],[3,0.2],[6,-0.6],[9,0.5],[12,-0.4]], hJit: 0.06, vJit: 0.06 },
     alt: { type: 'burst', count: 3, interval: 0.05, cooldown: 0.35, spread: 1.9 },

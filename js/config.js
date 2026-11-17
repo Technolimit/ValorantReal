@@ -36,7 +36,8 @@ export const PLAYER = {
 // Getting hit slows movement. Values from the 3.0 patch (72.5%); shotgun pellets past 10 m only slow 30%.
 export const TAG = { slow: 0.725, hold: 0.25, fade: 0.25, shotgunFarSlow: 0.3, shotgunFarRange: 10 };
 
-export const CROUCH_SPREAD = 0.85; // spread multiplier while crouched on the ground
+export const CROUCH_SPREAD = 0.85; // spread multiplier while crouched on the ground (Valorant: x0.85 for rifles and, since 12.09, shotguns)
+export const CROUCH_RECOIL = 0.85; // sideways recoil multiplier while crouched and standing still (Valorant: 15% less yaw recoil)
 export const VIEW_RECOIL = 0.5; // share of bullet recoil that moves the camera; bullets land above the crosshair
 export const PEN_DEPTH = { low: 1.0, medium: 2.2, high: 4.4 }; // meters of penetrable material a bullet can cross
 export const MAX_RANGE = 250;
