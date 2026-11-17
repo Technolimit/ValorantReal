@@ -1,6 +1,6 @@
 // Per-weapon state machine shared by the player and bots: fire cadence, spread, recoil, recovery,
 // ADS/scopes, bursts, spin-up, reload and equip.
-import { DT, CROUCH_SPREAD, PLAYER } from './config.js';
+import { DT, CROUCH_SPREAD, CROUCH_RECOIL, PLAYER } from './config.js';
 import { dirFromAngles, concussT } from './entity.js';
 import { hyp } from './vmath.js';
 
@@ -137,7 +137,7 @@ export class Gun {
     const air = owner.grounded ? 0 : s.air;
     const fe = d.fe.max * smoothstep(d.fe.start, d.fe.end, this.heat);
     let total = base + move + air + fe;
-    if (owner.crouched && owner.grounded) total *= CROUCH_SPREAD;
+    if (owner.crouched && owner.grounded) total *= s.crouch ?? CROUCH_SPREAD; // crouching: tighter spread
     if (owner.st?.stunUntil > owner.game?.time) total = total * 1.6 + 0.03;
     return total;
   }
@@ -285,7 +285,9 @@ export class Gun {
     // time. Pitch climbs along `v`; yaw follows the `h` waypoint path; a little jitter keeps it organic.
     const idx = Math.floor(this.heat);
     const up = (idx < r.v.length ? r.v[idx] : r.tail) * (1 + (Math.random() * 2 - 1) * (r.vJit ?? 0.05));
-    const side = patternStep(r, idx) + gauss() * (r.hJit ?? 0.05);
+    let side = patternStep(r, idx) + gauss() * (r.hJit ?? 0.05);
+    // Crouched and standing still: the spray drifts less sideways.
+    if (owner.crouched && owner.grounded && owner.horizSpeed() / d.move <= d.spread.deadzone) side *= CROUCH_RECOIL;
     // Aimed in, recoil shrinks (snipers excepted: one shot, then you re-aim anyway).
     const am = (this.adsT > 0.5 && a.type !== 'scope' && a.type !== 'none' ? ADS_RECOIL : 1) * (this.buffRecoil || 1);
     this.lastKick = { up: up * am, side: side * am };

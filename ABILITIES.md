@@ -214,7 +214,7 @@ Passive: **Stars**: You have up to 5 stars (in 5v5 one is free each round and mo
 | C | **Push Wall** (Contingency) | 1 × 200 | bought only | 30 s | Hold the barrier: left click pushes a wall (5.2 m × 3 m) forward at 3.6 m/s for 3.5 s, right click at half that speed. It blocks bullets and sight and can’t be broken, but players can walk through it; it stops at walls. |
 | Q | **Sever** (Undercut) | 1 × 300 | bought only | 20 s | Hold the bolt, left click to fire it straight ahead (22.5 m/s, 29.5 m), through walls. Every enemy within 3 m of it as it passes is Vulnerable (double damage) for 4 s. |
 | E | **Focus** (Double Tap) | 1 free | 30 s | 30 s | After a 1 s wind-up you get a shield that blocks one hit, for 12 s. Every enemy you kill in that time drops an orb above their body for 3 s: shoot it to refresh the shield and the 12 s timer. |
-| X | **Duel** (Kill Contract) | 7 points | | | Send a column of energy ahead of you (14 m wide, through walls, 40 m over 4 s, starting 0.8 s after the cast). You and the first enemy it reaches are pulled into a sealed arena: 1.5 s to face off, then up to 13 s to fight. Whoever survives is sent back. |
+| X | **Duel** (Kill Contract) | 7 points | | | Send a tall column of energy ahead of you (14 m wide, through walls, 40 m over 4 s, starting 0.8 s after the cast); casting it also gives you Focus’s shield if it isn’t up. You and the first enemy it reaches are pulled into an arena of your own, 21 m apart and both healed to 150. You get two cover walls in front of you, they get one; the walls come down 2.5 s into the fight. 1.5 s to face off, then up to 13 s to fight, guns only. The winner goes back 2 s after the kill, to where they were; if time runs out, you both die. |
 
 ## Ballast (Tejo) · Initiator
 

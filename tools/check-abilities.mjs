@@ -180,6 +180,89 @@ const checks = [
     m.detonate();
     return { pass: !p.alive, alive: p.alive };
   }],
+  ['Crouching: spread x0.85 (Classic x0.9) and, standing still, 15% less sideways recoil', async () => {
+    const g = await __start({ agent: 'cinder', map: 'arena', botCount: 1, botMode: 'static' });
+    const p = g.player;
+    if (!__place(g, p, 8)) return { error: 'no open ground' };
+    const { WEAPONS } = await import('/js/weapons.js');
+    const vandal = new (p.inv.secondary.constructor)(WEAPONS.vandal), classic = p.inv.secondary;
+    const measure = (crouch) => {
+      p.input.crouch = crouch; __tick(g, 0.4);
+      vandal.heat = 0;
+      const sp = { vandal: vandal.spread(p), classic: classic.spread(p) };
+      const rnd = Math.random; Math.random = () => 0.3;
+      vandal.heat = 8; vandal.mag = 25; vandal.offY = 0; vandal.shoot(p, g.time);
+      Math.random = rnd;
+      return { ...sp, side: vandal.lastKick.side, crouched: p.crouched };
+    };
+    const up = measure(false), down = measure(true);
+    p.input.crouch = false;
+    const r = (a, b) => +(b / a).toFixed(3);
+    const out = { crouched: down.crouched && !up.crouched, vandal: r(up.vandal, down.vandal), classic: r(up.classic, down.classic), side: r(up.side, down.side) };
+    return { pass: out.crouched && out.vandal === 0.85 && out.classic === 0.9 && out.side === 0.85, ...out };
+  }],
+  ['Duel: 21 m apart, healed to 150, Push Wall covers (two for Vanta, one for the enemy), no abilities, no shots in the face-off', async () => {
+    const g = await __start({ agent: 'vanta', map: 'arena', botCount: 1, botMode: 'static' });
+    const p = g.player, b = g.bots[0];
+    if (!__place(g, p, 12)) return { error: 'no open ground' };
+    b.pos = [p.pos[0], p.pos[1], p.pos[2] - 8]; b.prevPos = [...b.pos];
+    p.hp = 30; p.armor = 0; b.hp = 10; b.st.slowUntil = g.time + 30;
+    p.kit.focusUntil = 0; p.kit.shield = false;
+    p.kit.ultPoints = 99; p.kit.agent.abilities.x.use(p.kit);
+    const focus = p.kit.shield && p.kit.focusUntil > g.time;
+    for (let i = 0; i < 128 * 3 && !g.contract; i++) g.tick();
+    const k = g.contract;
+    if (!k) return { error: 'nobody was pulled in' };
+    const gap = Math.hypot(p.pos[0] - b.pos[0], p.pos[2] - b.pos[2]);
+    const size = k.covers.map(w => [w.box.max[0] - w.box.min[0], w.box.max[1] - w.box.min[1], w.box.max[2] - w.box.min[2]].map(v => +v.toFixed(2)).join('x'));
+    const mine = k.covers.filter(w => Math.abs((w.box.min[2] + w.box.max[2]) / 2 - p.pos[2]) < 4).length;
+    const healed = p.hp === 100 && p.armor === 50 && b.hp === 100 && b.armor === 50 && !(b.st.slowUntil > g.time);
+    const ammo = p.gun.mag; p.input.fire = p.input.firePressed = true; __tick(g, 0.5); p.input.fire = p.input.firePressed = false;
+    const shotInFaceoff = p.gun.mag !== ammo;
+    p.kit.charges.q = 1; p.input.abQ = true; g.tick(); p.input.abQ = false;
+    const ability = !!p.kit.armed;
+    const pass = focus && Math.abs(gap - 21) < 0.2 && healed && size.every(x => x === '5.24x3x0.4') && mine === 2 && k.covers.length === 3 && !shotInFaceoff && !ability;
+    return { pass, focus, gap: +gap.toFixed(2), healed, size, mine, shotInFaceoff, ability };
+  }],
+  ['Duel: the covers come down 2.5 s into the fight; if time runs out both die', async () => {
+    const g = await __start({ agent: 'vanta', map: 'arena', botCount: 1, botMode: 'static' });
+    const p = g.player, b = g.bots[0];
+    g.startContract(p, b);
+    const k = g.contract, boxes = k.covers.map(w => w.box);
+    p.st.channelUntil = b.st.channelUntil = g.time + 30; // nobody shoots
+    __tick(g, 1.5 + 2.4); const upBefore = boxes.every(q => g.world.boxes.includes(q));
+    __tick(g, 0.2); const downAfter = boxes.every(q => !g.world.boxes.includes(q));
+    __tick(g, 13 - 2.6 - 0.1); const aliveBefore = p.alive && b.alive;
+    __tick(g, 0.3);
+    const arenaGone = !g.contract && !g.world.boxes.some(q => q.arena);
+    return { pass: upBefore && downAfter && aliveBefore && !p.alive && !b.alive && arenaGone, upBefore, downAfter, aliveBefore, pAlive: p.alive, bAlive: b.alive, arenaGone };
+  }],
+  ['Duel: the winner goes back 2 s after the kill; the loser\'s body, gun and the spike land where they were pulled from', async () => {
+    const g = await __start({ mode: 'rounds', map: 'divide', agent: 'vanta', side: 'def', botMode: 'static' });
+    __live(g);
+    const p = g.player, m = g.mode, foe = g.combatants.find(c => g.isEnemy(p, c) && c.alive);
+    if (!__place(g, p, 12)) return { error: 'no open ground' };
+    foe.pos = [p.pos[0], p.pos[1], p.pos[2] - 8]; foe.prevPos = [...foe.pos];
+    m.spike = { state: 'carried', carrier: foe, pos: null, plantProg: 0, defuseProg: 0, defuser: null, plantedAt: 0, site: null };
+    const backA = [...p.pos], backB = [...foe.pos];
+    g.startContract(p, foe);
+    __tick(g, 1.6);
+    g.damage(foe, p, 500, { part: 'head', def: { id: 'vandal', name: 'Vandal' }, dist: 20, point: foe.eye() });
+    __tick(g, 1.9);
+    const stillIn = !!g.contract && g.inArena(p.pos);
+    __tick(g, 0.2);
+    const d = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
+    const out = { stillIn, back: +d(p.pos, backA).toFixed(2), body: +d(foe.deathPos, backB).toFixed(2), gun: foe.deathDrop ? +d(foe.deathDrop.pos, backB).toFixed(2) : null, spike: m.spike.pos ? +d(m.spike.pos, backB).toFixed(2) : null, spikeState: m.spike.state };
+    return { pass: stillIn && out.back < 1.5 && out.body < 0.1 && out.gun != null && out.gun < 1 && out.spike != null && out.spike < 1, ...out };
+  }],
+  ['Duel: a new round takes the arena down', async () => {
+    const g = await __start({ mode: 'rounds', map: 'divide', agent: 'vanta', botMode: 'static' });
+    __live(g);
+    const p = g.player, foe = g.combatants.find(c => g.isEnemy(p, c));
+    g.startContract(p, foe);
+    g.mode.startRound();
+    return { pass: !g.contract && !g.world.boxes.some(q => q.arena), contract: !!g.contract, boxesLeft: g.world.boxes.filter(q => q.arena).length };
+  }],
   ['Rekindle and Overload give back the shields you had, not free heavy shields', async () => {
     const out = {};
     for (const agent of ['cinder', 'override']) {
