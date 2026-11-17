@@ -663,6 +663,9 @@ export class Sound {
     } else if (type === 'rebirth' || type === 'rekindled') {
       this.tone({ dest: d, freq: 300, end: 900, decay: 0.5, gain: 0.15, type: 'triangle' });
       this.noiseHit({ dest: d, lp: 1600, decay: 0.5, gain: 0.3, attack: 0.05 });
+    } else if (type === 'spotted') { // an enemy drone has eyes on you: a short two-note warning
+      this.tone({ dest: d, freq: 1240, end: 1240, decay: 0.08, gain: 0.06, type: 'square' });
+      this.tone({ dest: d, freq: 930, end: 930, decay: 0.08, gain: 0.05, type: 'square', at: 0.12 });
     } else if (type === 'step' || type === 'swarm') {
       this.noiseHit({ dest: d, lp: 1000, hp: 120, decay: 0.6, gain: 0.3, attack: 0.1 });
     } else if (type === 'fire') {

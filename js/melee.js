@@ -298,6 +298,40 @@ function unseal(view, dur = 3.6) {
   };
 }
 
+// Every gun's own pullout, as in Valorant where each weapon draws its own way (a skin's EQUIP_ANIMS replace it).
+// Built from the weapon's class with a few per-gun differences. Keyframes are [t, x, y, z, pitch, yaw, roll],
+// offsets from where the gun rests; `dur` is stretched to the weapon's equip time.
+const draw = (dur, track) => ({ dur, track });
+const raise = (x, y, z, rx, ry, rz) => [0, x, y, z, rx, ry, rz];
+export const GUN_DRAWS = {
+  // Sidearms
+  classic: draw(1, [raise(-0.06, -0.18, 0.02, -0.5, 0.2, 1.1), S(0.55, 0.004, 0.01, 0, 0.06, 0, -0.08), [0.75, 0, 0, 0.025, 0.02, 0, 0], [1, ...Z]]), // rolled up from the left, slide racked
+  shorty: draw(1, [raise(0.02, -0.22, -0.06, 0.9, 0, 0), S(0.55, 0, 0.01, 0, -0.08, 0, 0), [0.75, 0, -0.01, 0, 0.05, 0, 0], [1, ...Z]]), // tipped up barrel first, snapped level
+  frenzy: draw(1, [raise(0.12, -0.12, 0.02, -0.3, -0.5, -0.8), S(0.6, -0.006, 0.006, 0, 0.04, 0.03, 0.06), [1, ...Z]]), // snapped in from the right
+  ghost: draw(1, [raise(0.0, -0.2, 0.03, -0.55, 0, 0.3), S(0.55, 0, 0.008, 0, 0.05, 0, 0), [0.72, 0, 0, 0, 0, 0, -0.18], [0.88, 0, 0, 0, 0, 0, 0.04], [1, ...Z]]), // raised, then a press-check twist
+  sheriff: draw(1, [raise(0.05, -0.2, 0.0, -0.7, 0.1, -0.35), S(0.5, 0, 0.012, 0, 0.09, 0, 0), [0.7, 0, 0, 0, 0, 0, 0.12], [1, ...Z]]), // flicked up, cylinder tipped and back
+  bandit: draw(1, [raise(-0.08, -0.16, 0.0, -0.4, 0.35, 0.7), S(0.6, 0, 0.008, 0, 0.05, 0, -0.06), [1, ...Z]]),
+  // SMGs: swung in from the right, charging handle tugged
+  stinger: draw(1, [raise(0.14, -0.14, 0.03, -0.3, -0.6, -0.6), S(0.5, 0, 0.006, 0, 0.03, 0, 0.04), [0.68, 0, 0, 0.03, 0, 0, 0], [0.82, ...Z], [1, ...Z]]),
+  spectre: draw(1, [raise(0.12, -0.16, 0.05, -0.35, -0.45, -0.9), S(0.5, 0, 0.006, 0, 0.03, 0, 0.05), [0.66, 0, 0, 0.035, 0, 0, -0.05], [0.84, ...Z], [1, ...Z]]),
+  // Shotguns: brought up and pumped
+  bucky: draw(1, [raise(0.03, -0.2, 0.04, -0.6, 0, 0.3), S(0.45, 0, 0.008, 0, 0.05, 0, 0), [0.62, 0, -0.01, 0.06, 0, 0, 0], [0.8, 0, 0, -0.01, 0, 0, 0], [1, ...Z]]),
+  judge: draw(1, [raise(0.05, -0.2, 0.03, -0.5, -0.1, 0.5), S(0.5, 0, 0.008, 0, 0.05, 0, 0), [0.68, 0, 0, 0.04, -0.06, 0, 0], [1, ...Z]]),
+  // Rifles: raised with a cant, then the charging handle pulled
+  bulldog: draw(1, [raise(0.03, -0.2, 0.03, -0.55, 0, 0.45), S(0.5, 0, 0.008, 0, 0.05, 0, -0.05), [0.66, 0, 0, 0.03, 0, 0, 0.06], [1, ...Z]]),
+  guardian: draw(1, [raise(0.02, -0.24, 0.05, -0.7, 0.05, 0.25), S(0.55, 0, 0.01, 0, 0.06, 0, 0), [0.72, 0, 0, 0.035, 0.02, 0, 0], [1, ...Z]]),
+  phantom: draw(1, [raise(0.05, -0.18, 0.02, -0.45, -0.15, -0.7), S(0.5, -0.004, 0.008, 0, 0.05, 0, 0.06), [0.66, 0, 0, 0.03, 0, 0, -0.08], [1, ...Z]]), // canted right
+  vandal: draw(1, [raise(-0.04, -0.2, 0.02, -0.5, 0.15, 0.8), S(0.5, 0.004, 0.01, 0, 0.06, 0, -0.07), [0.68, 0, 0, 0.035, 0, 0, 0.1], [1, ...Z]]), // canted left, handle pulled
+  warden: draw(1, [raise(0.02, -0.22, 0.04, -0.6, 0, 0.35), S(0.55, 0, 0.01, 0, 0.05, 0, 0), [0.74, 0, 0, 0.03, 0, 0, 0], [1, ...Z]]),
+  // Snipers: a slower raise and a bolt cycle
+  marshal: draw(1, [raise(0.03, -0.24, 0.05, -0.65, 0, 0.3), S(0.5, 0, 0.01, 0, 0.05, 0, 0), [0.62, 0, 0, 0.05, 0, 0, -0.25], [0.8, 0, 0, 0, 0, 0, 0.04], [1, ...Z]]),
+  outlaw: draw(1, [raise(0.04, -0.24, 0.05, -0.6, -0.1, 0.4), S(0.5, 0, 0.01, 0, 0.05, 0, 0), [0.66, 0, -0.02, 0.04, -0.1, 0, 0], [1, ...Z]]), // broken open and snapped shut
+  operator: draw(1, [raise(0.04, -0.28, 0.08, -0.75, 0, 0.25), S(0.52, 0, 0.012, 0, 0.06, 0, 0), [0.66, 0, 0, 0.06, 0, 0, -0.3], [0.84, 0, 0, 0, 0, 0, 0.05], [1, ...Z]]),
+  // Machine guns: a heavy swing up from low that overshoots and settles
+  ares: draw(1, [raise(0.06, -0.3, 0.06, -0.8, -0.1, 0.4), S(0.55, 0, 0.02, 0, 0.1, 0, -0.04), [0.75, 0, -0.006, 0, -0.02, 0, 0], [1, ...Z]]),
+  odin: draw(1, [raise(0.07, -0.32, 0.08, -0.85, -0.15, 0.5), S(0.58, 0, 0.022, 0, 0.11, 0, -0.05), [0.78, 0, -0.008, 0, -0.025, 0, 0], [1, ...Z]]),
+};
+
 // Pullout (equip) animations that come with a gun model, by design id: keyframes as in an inspect, played
 // across the weapon's equip time (`dur` is stretched to fit it). They replace the plain raise-from-below.
 export const EQUIP_ANIMS = {

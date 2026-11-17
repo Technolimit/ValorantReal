@@ -192,6 +192,7 @@ export class Hud {
     if (abWho.kit && this.abFor !== abWho.kit.id) this.buildAbilities(abWho.kit.id);
     this.updateAbilities(abWho, g.time);
     this.updateTimers(p, g.time);
+    this.updateBow(p);
     this.updateScreenFx(p, g.time);
     let mode = '';
     const kit = p.kit;
@@ -403,6 +404,22 @@ export class Hud {
     return rows.slice(0, 8);
   }
 
+  // Drawing a bow (Arc Dart, Sonar Bolt): the three charge levels it has reached and the bounces chosen, under the
+  // crosshair, as Valorant shows them.
+  updateBow(p) {
+    const kit = p.kit, a = p.alive && kit?.armed && kit.agent.abilities[kit.armed.k], show = !!(a && a.item === 'bow');
+    const el = $('bowhud');
+    if (el.hidden === show) el.hidden = !show;
+    if (!show) return;
+    const lv = kit.chargeT > 0 ? Math.floor((kit.chargeT / a.charge) * 3 + 1e-6) : 0, nb = kit.bounces || 0;
+    const key = lv + ':' + nb;
+    if (key === this.bowKey) return;
+    this.bowKey = key;
+    el.querySelectorAll('.bars i').forEach((i, n) => i.classList.toggle('on', n < lv));
+    el.querySelectorAll('.bnc b').forEach((b, n) => b.classList.toggle('on', n < nb));
+    el.querySelector('.bnc span').textContent = nb === 1 ? '1 BOUNCE' : nb + ' BOUNCES';
+  }
+
   updateTimers(p, now) {
     const rows = this.timerRows(p, now), el = $('timers');
     const key = rows.map(r => r.name + r.text).join('|');
@@ -417,7 +434,7 @@ export class Hud {
     const eye = p.eye();
     let inside = 0;
     for (const s of this.game.smokes) {
-      if (now < s.born || s.kind === 'fire' || (s.nest && s.owner === p)) continue; // your own Nest doesn't blind you
+      if (now < s.born || s.kind === 'fire') continue;
       const grow = smokeScale(s, now), fade = Math.min(1, (s.until - now) / 0.4);
       if (s.slab) { if (insideSlab(s, eye, 0.1)) inside = Math.max(inside, 0.85 * fade); continue; }
       const d = s.cyl ? hyp(eye[0] - s.pos[0], eye[2] - s.pos[2]) : hyp(eye[0] - s.pos[0], eye[1] - s.pos[1], eye[2] - s.pos[2]);
@@ -432,9 +449,10 @@ export class Hud {
       if (!p.grounded && p.input.jumpHeld && p.vel[1] <= -2.2) wind = Math.max(wind, 0.25);
     }
     $('speedlines').style.opacity = wind.toFixed(3);
-    // Flashed: white-out that fades over the last part of the blind.
-    const bl = p.st.blindUntil - now;
-    $('blind').style.opacity = p.alive && bl > 0 ? Math.min(1, bl / Math.max(0.3, p.st.blindLen * 0.5)).toFixed(3) : 0;
+    // Flashed: fully white for the flash's length, then fading out over up to 1 s after it, as Valorant's flashes do
+    // (spec: "Flash fade-out ~1 s"; Dizzy: "1 s full + 1 s fade").
+    const bl = p.st.blindUntil - now, fadeLen = Math.min(1, p.st.blindLen || 1);
+    $('blind').style.opacity = !p.alive ? 0 : bl > 0 ? 1 : bl > -fadeLen ? (1 + bl / fadeLen).toFixed(3) : 0;
     // Concussed: the world goes grey, blurry and shaky with static over it.
     const su = p.alive ? p.st.stunUntil - now : 0, sk = su > 0 ? Math.min(1, su / 0.5) : 0;
     if (sk !== this.lastStun) {
@@ -445,8 +463,9 @@ export class Hud {
     if (sk > 0) $('stunfx').style.transform = `translate(${(Math.random() * 20 - 10) | 0}px, ${(Math.random() * 20 - 10) | 0}px)`;
     // Channelling Nightwalk: the world darkens around you.
     const sh = p.kit?.shadow;
-    $('dusk').style.opacity = sh ? 0.85 : p.kit?.mapPick ? 0.35 : p.kit?.drift ? 0.7 : p.kit?.view ? 0.3 : p.kit?.rebirth ? 0.25 : p.st.intangibleUntil > now ? 0.5 : 0;
+    $('dusk').style.opacity = sh ? 0.85 : p.kit?.mapPick ? 0.35 : p.kit?.drift ? 0.7 : p.kit?.view ? 0.3 : p.kit?.rebirth ? 0.25 : p.st.refractUntil > now ? 0.3 : p.st.intangibleUntil > now ? 0.5 : 0;
     $('dusk').classList.toggle('ember', !!p.kit?.rebirth && !sh);
+    $('dusk').classList.toggle('refract', p.st.refractUntil > now); // Refract: green, and lighter
   }
 
   // ---- Nightwalk map: top-down view of the map, click to choose where to teleport ----
@@ -743,10 +762,10 @@ export class Hud {
       const st = c.stats, hits = st.head + st.body + st.legs;
       const hs = hits ? Math.round(st.head / hits * 100) : 0;
       const ally = c.team === g.player.team;
-      return `<tr class="${c === g.player ? 'me' : ''}${c.alive ? '' : ' deadrow'}"><td><span class="tdot" style="background:${ally ? '#4fd1c5' : '#ff5a5a'}"></span>${esc(c.name)}${c.kit ? ` <small>${esc(c.kit.agent.name)}</small>` : ''}${ally && c.alive ? ` <small class="wpn">${esc((c.inv.primary || c.inv.secondary)?.def.name || '')}${c.armor ? ' · ' + (c.armor > 25 ? 'Heavy' : c.armorKind === 'regen' ? 'Regen' : 'Light') : ''}</small>` : ''}</td><td>${st.kills}</td><td>${st.deaths}</td><td>${hs}%</td><td>${ally ? '¤' + c.credits.toLocaleString() : '—'}</td><td>${st.damage}</td></tr>`;
+      return `<tr class="${c === g.player ? 'me' : ''}${c.alive ? '' : ' deadrow'}"><td><span class="tdot" style="background:${ally ? '#4fd1c5' : '#ff5a5a'}"></span>${esc(c.name)}${c.kit ? ` <small>${esc(c.kit.agent.name)}</small>` : ''}${ally && c.alive ? ` <small class="wpn">${esc((c.inv.primary || c.inv.secondary)?.def.name || '')}${c.armor ? ' · ' + (c.armor > 25 ? 'Heavy' : c.armorKind === 'regen' ? 'Regen' : 'Light') : ''}</small>` : ''}</td><td>${st.kills}</td><td>${st.deaths}</td><td>${st.assists || 0}</td><td>${hs}%</td><td>${ally ? '¤' + c.credits.toLocaleString() : '—'}</td><td>${st.damage}</td></tr>`;
     };
     if (g.mode) {
-      const head = (t, cls) => `<tr class="sbteam ${cls}"><td colspan="6">${t}</td></tr>`;
+      const head = (t, cls) => `<tr class="sbteam ${cls}"><td colspan="7">${t}</td></tr>`;
       const mine = g.combatants.filter(c => c.team === g.player.team).sort(sortK), theirs = g.combatants.filter(c => c.team !== g.player.team).sort(sortK);
       const sd = (t) => g.mode.sideOf(t) === 'atk' ? 'ATTACK' : 'DEFENSE';
       tbody.innerHTML = head(`YOUR TEAM · ${sd(g.player.team)} · ${g.mode.score[g.player.team]}`, 'a') + mine.map(row).join('') + head(`ENEMY TEAM · ${sd(1 - g.player.team)} · ${g.mode.score[1 - g.player.team]}`, 'e') + theirs.map(row).join('');
@@ -759,7 +778,7 @@ export class Hud {
       const st = c.stats, hits = st.head + st.body + st.legs;
       const hs = hits ? Math.round(st.head / hits * 100) : 0;
       const acc = st.shots ? Math.round(st.hits / st.shots * 100) : 0;
-      return `<tr class="${c === this.game.player ? 'me' : ''}"><td>${esc(c.name)}</td><td>${st.kills}</td><td>${st.deaths}</td><td>${hs}%</td><td>${acc}%</td><td>${st.damage}</td></tr>`;
+      return `<tr class="${c === this.game.player ? 'me' : ''}"><td>${esc(c.name)}</td><td>${st.kills}</td><td>${st.deaths}</td><td>${st.assists || 0}</td><td>${hs}%</td><td>${acc}%</td><td>${st.damage}</td></tr>`;
     }).join('');
   }
 }

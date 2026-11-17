@@ -2,7 +2,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { HFOV, VIEW_RECOIL, HITBOX, GUN_HEIGHT } from './config.js';
 import { gunModel, handsModel, studioEnv, ownGlow, poseMeleeParts, rocketModel, paintShellModel, bombletModel } from './models.js';
-import { MELEE, GUN_INSPECT, MODEL_INSPECTS, EQUIP_ANIMS, SWINGS, meleeId, inspectPose } from './melee.js';
+import { MELEE, GUN_INSPECT, MODEL_INSPECTS, EQUIP_ANIMS, GUN_DRAWS, SWINGS, meleeId, inspectPose } from './melee.js';
 import { SwingTrails } from './swingfx.js';
 import { skinFor, skinFits, meleeSkin, SKINS, onSkinsChanged } from './skins.js';
 import { reloadPose, CYCLE_STYLE } from './reloadanim.js';
@@ -682,7 +682,7 @@ export class Renderer {
     g.on('smoke', (s) => this.addSmoke(s));
     g.on('zone', (z) => this.fxZone(z));
     g.on('flash', ({ pos }) => this.fxBurst(pos, 0xffffff, 3.5, 0.35, true));
-    g.on('pulse', ({ pos, r, color }) => this.fxRing(pos, r, color, 0.7));
+    g.on('pulse', ({ pos, r, color, cyl }) => (cyl ? this.fxColumn(pos, r, cyl, color, 0.7) : this.fxRing(pos, r, color, 0.7)));
     g.on('lockdown', ({ zone }) => this.fxRing(zone.pos, zone.r, 0x4fd1a5, 0.9));
     g.on('trap', ({ zone }) => this.fxRing(zone.pos, 4, 0x4fd1a5, 0.5));
     g.on('throw', (t) => this.fxThrow(t));
@@ -699,6 +699,9 @@ export class Renderer {
       if (type === 'rebirth') this.fxMarker(pos, 0xff7a3d, () => (kit.rebirth ? Infinity : 0));
       if (type === 'rekindled') this.fxBurst(who.eye(), 0xff7a3d, 2.5, 0.5);
     });
+    g.on('riftMark', ({ pos, life }) => this.fxFloorMark(pos, 0.6, 0xa67bff, life));
+    g.on('beamWarn', (w) => this.fxBeamWarn(w));
+    g.on('kick', ({ who, size }) => { if (who === g.player) this.shake = Math.min(1.5, (this.shake || 0) + size); }); // a launcher's recoil
     g.on('teleport', ({ from, to }) => { this.fxBurst([from[0], from[1] + 1, from[2]], 0xa67bff, 1.2, 0.4); this.fxBurst([to[0], to[1] + 1, to[2]], 0xa67bff, 1.2, 0.4); });
     g.on('blade', ({ who }) => { if (who === g.player) { this.vm.swingStart = performance.now(); this.vm.swingHeavy = false; this.vm.swingAnim = null; } });
     g.on('ability', ({ who, type }) => {
@@ -766,7 +769,8 @@ export class Renderer {
     mat.color.set(s.color || 0xd8e3ec);
     if (fire) { mat.color.set(0xff6a1a); mat.emissive.set(0xc23a08); mat.emissiveIntensity = 0.8; }
     if (s.kind === 'gas') { mat.color.set(s.color); mat.emissive.set(0x1d4a24); }
-    if (s.kind === 'water' || s.kind === 'cove') { mat.color.set(0x5fd6c8); mat.emissive.set(0x0f5c63); mat.emissiveIntensity = 0.6; }
+    if (s.kind === 'water') { mat.color.set(0x5fd6c8); mat.emissive.set(0x0f5c63); mat.emissiveIntensity = 0.6; }
+    if (s.kind === 'cove') { mat.color.set(0x1f6f8c); mat.emissive.set(0x0a3446); mat.emissiveIntensity = 0.7; } // deep sea blue, as solid as Omen's
     if (s.kind === 'lane') { mat.color.set(0x8fd8ff); mat.emissive.set(0x1a6db0); mat.emissiveIntensity = 0.9; }
     else if (s.color && s.color !== 0xcfdbe6) mat.emissive.set(new THREE.Color(s.color).multiplyScalar(0.35));
     if (s.slab) {
@@ -797,6 +801,12 @@ export class Renderer {
     else ball.scale.set(R, R * (fire ? 1.3 : 1), R);
     ball.userData.spin = 0;
     group.add(ball);
+    if (s.kind === 'cove') {
+      // Lagoon: the same solid dome, with rippling water running over it.
+      const ripples = new THREE.Mesh(this.smokeGeo, new THREE.MeshBasicMaterial({ color: 0x8fe8ff, wireframe: true, transparent: true, opacity: 0.22, depthWrite: false }));
+      ripples.scale.setScalar(R * 1.01); ripples.userData.spin = 0.35;
+      group.add(ripples);
+    }
     group.position.set(...s.pos);
     this.scene.add(group);
     this.smokes.push({ s, group, mat, fire });
@@ -852,45 +862,107 @@ export class Renderer {
     z.r0 = z.r; // the size it is drawn at; zones that spread or shrink are scaled from it
     const col = z.color || (z.kind === 'fire' ? 0xff6a1a : 0x4fd1a5);
     const flames = z.kind === 'fire' && !z.gas && !z.acid && !z.color;
+    // A patch on the floor (molly, acid, swarm, slow field) stops at walls in play (game.tickZones), so it is drawn
+    // only as far as it reaches in each direction.
+    const patch = !z.wall && !z.gas && !z.orbital && (z.kind === 'fire' || z.kind === 'slowfield');
     const g = new THREE.Group();
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(z.r, 40), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: z.gas ? 0.15 : z.kind === 'fire' ? 0.5 : 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-    disc.rotation.x = -Math.PI / 2;
-    const rim = new THREE.Mesh(new THREE.RingGeometry(z.r * 0.94, z.r, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
-    rim.rotation.x = -Math.PI / 2;
+    const discMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: z.gas ? 0.15 : z.kind === 'fire' ? 0.5 : 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const rimMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
+    let disc, rim, fan = null;
+    if (patch) {
+      fan = this.patchFan(z);
+      disc = new THREE.Mesh(fan.disc, discMat);
+      rim = new THREE.Mesh(fan.rim, rimMat);
+    } else {
+      disc = new THREE.Mesh(new THREE.CircleGeometry(z.r, 40), discMat);
+      disc.rotation.x = -Math.PI / 2;
+      rim = new THREE.Mesh(new THREE.RingGeometry(z.r * 0.94, z.r, 48), rimMat);
+      rim.rotation.x = -Math.PI / 2;
+    }
     g.add(disc, rim);
+    if (z.kind === 'lockdown') {
+      // Clampdown covers a sphere: everyone sees its edge while it charges.
+      const shell = new THREE.Mesh(new THREE.SphereGeometry(z.r, 40, 20), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false }));
+      const lines = new THREE.Mesh(new THREE.SphereGeometry(z.r, 24, 12), new THREE.MeshBasicMaterial({ color: col, wireframe: true, transparent: true, opacity: 0.22, depthWrite: false }));
+      g.add(shell, lines);
+    }
     if (z.orbital) {
       // Orbital strike: a column of light from the sky, thin while charging, full once it lands.
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(z.r, z.r, 40, 32, 1, true), new THREE.MeshBasicMaterial({ color: 0xff3344, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(z.r, z.r, 40, 32, 1, true), new THREE.MeshBasicMaterial({ color: 0xff3344, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }));
       beam.position.y = 20;
       beam.userData.orbital = true;
       g.add(beam);
     }
     if (flames || z.orbital) {
-      // a few flickering flame tongues
+      // a few flickering flame tongues, only where the fire reaches
       const fm = new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending });
       const n = Math.max(3, Math.round(z.r * 3));
       for (let i = 0; i < n; i++) {
         const f = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.9, 6), fm);
         const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * z.r * 0.85;
         f.position.set(Math.cos(a) * d, 0.45, Math.sin(a) * d);
-        f.userData.ph = Math.random() * 6;
+        f.userData.ph = Math.random() * 6; f.userData.a = a; f.userData.d = d;
         g.add(f);
       }
     }
     g.position.set(z.pos[0], z.pos[1] + 0.03, z.pos[2]);
     this.fxAdd(g, () => z.until, (now) => {
-      const age = now - z.born;
-      g.scale.setScalar(z.spread || z.fade || z.grows ? Math.max(0.05, zoneRadius(z, now) / z.r0) : Math.min(1, age / 0.25)); // fire spreads, Sky Hammer shrinks away
+      const age = now - z.born, grown = z.spread || z.fade || z.grows ? Math.max(0.05, zoneRadius(z, now) / z.r0) : Math.min(1, age / 0.25); // fire spreads, Sky Hammer shrinks away
+      if (fan) {
+        if (now >= fan.next) { fan.next = now + 0.5; fan.walls = this.patchReach(z, fan.n); } // a wall put up later cuts it off too
+        fan.set(grown * z.r0, fan.walls);
+        for (const c of g.children) if (c.userData.a != null) c.visible = c.userData.d < Math.min(grown * z.r0, fan.walls[Math.round(((c.userData.a / (Math.PI * 2)) % 1) * fan.n) % fan.n]) - 0.2;
+      } else g.scale.setScalar(grown);
       if (z.kind === 'lockdown') { rim.material.opacity = 0.4 + 0.4 * Math.abs(Math.sin(now * 6)); disc.material.opacity = 0.08 + 0.1 * Math.min(1, age / 2.5); }
       if (z.kind === 'trap') rim.material.opacity = 0.35 + 0.25 * Math.sin(now * 3);
       if (z.kind === 'stim') { rim.material.opacity = 0.5 + 0.3 * Math.sin(now * 4); disc.material.opacity = 0.1; }
       if (z.orbital) {
         const armed = !z.armAt || now >= z.armAt;
-        for (const c of g.children) { if (c.userData.orbital) { c.scale.x = c.scale.z = armed ? 1 : 0.15 + 0.1 * Math.sin(now * 20); c.material.opacity = armed ? 0.45 : 0.3; } else if (c.userData.ph != null) c.visible = armed; }
+        for (const c of g.children) { if (c.userData.orbital) { c.scale.x = c.scale.z = armed ? 1 : 0.15 + 0.1 * Math.sin(now * 20); c.material.opacity = armed ? 0.88 : 0.3; } else if (c.userData.ph != null) c.visible = armed; } // the strike itself can't be seen through
         disc.material.opacity = armed ? 0.5 : 0.15;
       }
       for (const c of g.children) if (c.userData.ph != null) c.scale.y = 0.6 + 0.5 * Math.abs(Math.sin(now * 9 + c.userData.ph));
     });
+  }
+
+  // How far a floor patch reaches in each of n directions: out to its radius, or to the first wall in the way at
+  // the height the game tests (0.4 m up), so what you see is where it hurts.
+  patchReach(z, n) {
+    const o = [z.pos[0], z.pos[1] + 0.4, z.pos[2]], out = new Float32Array(n), d = [0, 0, 0];
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2;
+      d[0] = Math.cos(a); d[2] = Math.sin(a);
+      const hit = this.game.world.raycast(o, d, z.r0);
+      out[i] = hit ? Math.max(0.05, hit.t) : z.r0;
+    }
+    return out;
+  }
+
+  // A fan-shaped disc and rim for a floor patch, rebuilt in place as the patch grows or a wall cuts it off.
+  patchFan(z, n = 64) {
+    const disc = new THREE.BufferGeometry(), rim = new THREE.BufferGeometry();
+    const dp = new Float32Array((n + 1) * 3), rp = new Float32Array(n * 2 * 3), di = [], ri = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      di.push(0, 1 + j, 1 + i);
+      ri.push(2 * i, 2 * j, 2 * i + 1, 2 * j, 2 * j + 1, 2 * i + 1);
+    }
+    disc.setAttribute('position', new THREE.BufferAttribute(dp, 3)); disc.setIndex(di);
+    rim.setAttribute('position', new THREE.BufferAttribute(rp, 3)); rim.setIndex(ri);
+    const fan = { n, disc, rim, next: 0, walls: null };
+    fan.set = (R, walls) => {
+      if (R === fan.R && walls === fan.W) return; // nothing changed since the last frame
+      fan.R = R; fan.W = walls;
+      for (let i = 0; i < n; i++) {
+        const a = i / n * Math.PI * 2, c = Math.cos(a), s = Math.sin(a), r = Math.min(R, walls[i]);
+        dp[3 + i * 3] = c * r; dp[3 + i * 3 + 2] = s * r;
+        rp[i * 6] = c * r * 0.94; rp[i * 6 + 2] = s * r * 0.94;
+        rp[i * 6 + 3] = c * r; rp[i * 6 + 5] = s * r;
+      }
+      disc.attributes.position.needsUpdate = true; rim.attributes.position.needsUpdate = true;
+      disc.computeBoundingSphere(); rim.computeBoundingSphere();
+    };
+    return fan;
   }
 
   // Snapshot reveal: a frozen red silhouette where the enemy stood, seen through walls, fading out.
@@ -919,6 +991,15 @@ export class Renderer {
     });
   }
 
+  // An upright cylinder that flashes and fades: a pulse whose area is a column (Ricochet), drawn at its real size.
+  fxColumn(pos, r, cyl, color, life) {
+    const h = cyl.up + cyl.down;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 32, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    m.position.set(pos[0], pos[1] + (cyl.up - cyl.down) / 2, pos[2]);
+    const t0 = this.game.time;
+    this.fxAdd(m, t0 + life, (now) => { m.material.opacity = 0.3 * (1 - (now - t0) / life); });
+  }
+
   // An expanding ring (pulses, sonar, stun, lockdown).
   fxRing(pos, r, color, life) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, wireframe: r > 15 }));
@@ -929,6 +1010,26 @@ export class Renderer {
       m.scale.setScalar(Math.max(0.01, r * (0.2 + 0.8 * Math.sqrt(k))));
       m.material.opacity = 0.35 * (1 - k);
     });
+  }
+
+  // Talon Strike's warning: a thin glowing column along the line the beam will hit, seen by everyone, pulsing until
+  // the beam fires.
+  fxBeamWarn({ from, dir, len, width, time }) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(width, width, len, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0x3f9dff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false }));
+    const d = new THREE.Vector3(...dir).normalize();
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d);
+    m.position.set(from[0] + dir[0] * len / 2, from[1] + dir[1] * len / 2, from[2] + dir[2] * len / 2);
+    const t0 = this.game.time;
+    this.fxAdd(m, t0 + time, (now) => { m.material.opacity = 0.3 + 0.25 * Math.abs(Math.sin((now - t0) * 20)); });
+  }
+
+  // A faint flat mark on the floor (where Riftwalk's fake teleport went off); fades over its last 3 s.
+  fxFloorMark(pos, r, color, life) {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(r, 24), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(pos[0], pos[1] + 0.03, pos[2]);
+    const t0 = this.game.time;
+    this.fxAdd(m, t0 + life, (now) => { m.material.opacity = 0.45 * Math.min(1, (t0 + life - now) / 3); });
   }
 
   // ---------- finishers ----------
@@ -1478,6 +1579,27 @@ export class Renderer {
       this.scene.add(marker, wall, sphere);
     }
     const pv = this.preview, kit = p.kit, a = p.alive && kit?.armed && kit.agent.abilities[kit.armed.k];
+    // A strip on the ground (Fissure): from `start` m ahead to where it reaches, `width` wide.
+    if (!pv.strip) { pv.strip = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })); pv.strip.rotation.order = 'YXZ'; this.scene.add(pv.strip); }
+    const sp = a && a.stripPreview && kit.previewPos;
+    pv.strip.visible = !!sp;
+    if (sp) {
+      const st = a.stripPreview, f = [-Math.sin(p.yaw), -Math.cos(p.yaw)], end = hyp(sp[0] - p.pos[0], sp[2] - p.pos[2]), len = Math.max(0.5, end - st.start), mid = st.start + len / 2;
+      pv.strip.scale.set(st.width, len, 1);
+      pv.strip.rotation.set(-Math.PI / 2, p.yaw, 0);
+      pv.strip.position.set(p.pos[0] + f[0] * mid, p.pos[1] + 0.05, p.pos[2] + f[1] * mid);
+      pv.strip.material.color.setHex(parseInt(kit.agent.color.slice(1), 16));
+    }
+    // A line of spots (Toxic Wall's emitters, Tripline's wire): a small ring at each.
+    const pts = a && a.pointsPreview ? kit.previewPoints : null;
+    pv.dots ||= [];
+    for (let i = 0; i < Math.max(pv.dots.length, pts?.length || 0); i++) {
+      let d = pv.dots[i];
+      if (!d && pts?.[i]) { d = new THREE.Mesh(this.dotGeo ||= new THREE.RingGeometry(0.12, 0.2, 16), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })); d.rotation.x = -Math.PI / 2; this.scene.add(d); pv.dots[i] = d; }
+      if (!d) continue;
+      d.visible = !!pts?.[i];
+      if (d.visible) { d.position.set(pts[i][0], pts[i][1] + 0.04, pts[i][2]); d.material.color.setHex(kit ? parseInt(kit.agent.color.slice(1), 16) : 0xffffff); }
+    }
     const pos = a && a.preview ? kit.previewPos : null; // the spot the kit will use, worked out this tick
     const col = kit ? parseInt(kit.agent.color.slice(1), 16) : 0xffffff;
     pv.marker.visible = !!pos && !a.wallPreview && !a.smokePreview;
@@ -1554,6 +1676,15 @@ export class Renderer {
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 12), mat(0x2a1038, 0x8a2bd6));
       light = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 8), mat(0xffffff, 0xd65cff)); light.position.z = 0;
       g.add(eye, light);
+    } else if (d.kind === 'emitline') {
+      // Toxic Wall's emitters: a short green-lit canister on the floor at each spot, seen by everyone.
+      const geo = this.emitGeo ||= new THREE.CylinderGeometry(0.1, 0.13, 0.22, 10), lit = this.emitLit ||= new THREE.SphereGeometry(0.045, 8, 6);
+      const cm = mat(0x2b3a2e), lm = mat(0x58c76a, 0x58c76a);
+      for (const q of d.points) {
+        const can = new THREE.Mesh(geo, cm); can.position.set(q[0] - d.pos[0], q[1] - d.pos[1] + 0.11, q[2] - d.pos[2]);
+        const l = new THREE.Mesh(lit, lm); l.position.set(can.position.x, can.position.y + 0.14, can.position.z);
+        g.add(can, l);
+      }
     } else if (d.kind === 'emitter') {
       const can = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.35, 12), mat(0x2b3a2e)); can.position.y = 0.18;
       light = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), mat(0x58c76a, 0x58c76a)); light.position.y = 0.38;
@@ -1636,6 +1767,8 @@ export class Renderer {
       const tip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), mat(0xffffff, 0x6ab7ff));
       const halo = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 9), new THREE.MeshBasicMaterial({ color: 0x6ab7ff, transparent: true, opacity: 0.25, depthWrite: false }));
       g.add(tip, halo); light = halo;
+    } else if (d.kind === 'missile') {
+      const r = rocketModel(); g.add(r); g.userData.flame = r.userData.flame; g.userData.aim = true; // Missile Call
     } else if (d.kind === 'proj') {
       // A thrown ability in flight (and where it comes to rest): its own model if it has one, else a glowing
       // ball in its colour. Rockets and arrows point the way they fly.
@@ -1660,6 +1793,11 @@ export class Renderer {
       if (hideR && this.game.player && this.game.isEnemy(this.game.player, d.owner)) {
         const cp = this.camera.position, r = d.kind === 'cam' && d.owner.kit?.view === d ? 12 : hideR;
         g.visible &&= hyp(cp.x - d.pos[0], cp.y - d.pos[1], cp.z - d.pos[2]) <= r;
+        // Even close up, Hives and Watchdogs are only faintly there: translucent, as Valorant draws them for enemies.
+        if (g.visible && (d.kind === 'swarm' || d.kind === 'alarm') && !g.userData.faint) {
+          g.userData.faint = true;
+          g.traverse(m => { if (m.material) { m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = 0.4; m.material.depthWrite = false; } });
+        }
       }
       if (d.kind === 'drone') g.rotation.y = Math.atan2(-d.dir[0], -d.dir[2]);
       if (g.userData.aim && !d.rest && (d.vel[0] || d.vel[1] || d.vel[2])) g.lookAt(d.pos[0] + d.vel[0], d.pos[1] + d.vel[1], d.pos[2] + d.vel[2]);
@@ -1700,6 +1838,29 @@ export class Renderer {
     const slab = new THREE.Mesh(new THREE.BoxGeometry(...size), new THREE.MeshStandardMaterial({ color: STY[0], emissive: STY[1], emissiveIntensity: 0.6, roughness: 0.4, metalness: 0.2, transparent: op < 1, opacity: op, side: THREE.DoubleSide }));
     const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(...size)), new THREE.LineBasicMaterial({ color: STY[2] }));
     g.add(slab, edge);
+    // Breakable ice (Frost Wall): cracks spread over both faces as it takes damage, in two clear stages.
+    let cracks = null;
+    if (w.kind === 'icewall') {
+      const along = size[0] >= size[2] ? 0 : 2, L = size[along], H = size[1], T = size[along === 0 ? 2 : 0];
+      const stage = (n, seed) => {
+        const pts = [];
+        let r = seed;
+        const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+        for (let i = 0; i < n; i++) {
+          let x = (rnd() - 0.5) * L * 0.9, y = (rnd() - 0.5) * H * 0.9;
+          for (let k = 0; k < 4; k++) {
+            const nx = x + (rnd() - 0.5) * 0.9, ny = y + (rnd() - 0.5) * 0.9;
+            for (const side of [-1, 1]) { const f = side * (T / 2 + 0.01); pts.push(...(along === 0 ? [x, y, f, nx, ny, f] : [f, y, x, f, ny, nx])); }
+            x = nx; y = ny;
+          }
+        }
+        const m = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 }));
+        m.visible = false;
+        g.add(m);
+        return m;
+      };
+      cracks = [stage(5, 17), stage(9, 91)];
+    }
     g.position.set((b.min[0] + b.max[0]) / 2, b.min[1] + size[1] / 2, (b.min[2] + b.max[2]) / 2);
     const t0 = this.game.time;
     this.fxAdd(g, () => (w.removed ? 0 : Infinity), (now) => {
@@ -1708,6 +1869,13 @@ export class Renderer {
       g.position.set((b.min[0] + b.max[0]) / 2, b.min[1] + size[1] * k / 2, (b.min[2] + b.max[2]) / 2); // follows a pushed wall
       const left = w.until - now;
       slab.material.opacity = left < 1.5 ? op * Math.max(0.2, left / 1.5) : op;
+      if (cracks) { // a third of its health gone: first cracks; two thirds: badly cracked, cloudier and darker
+        w.peak = Math.max(w.peak || 0, w.hp);
+        const frac = w.hp / w.peak;
+        cracks[0].visible = frac < 0.67; cracks[1].visible = frac < 0.34;
+        slab.material.emissiveIntensity = frac < 0.34 ? 0.15 : frac < 0.67 ? 0.35 : 0.6;
+        if (frac < 0.34) slab.material.opacity *= 0.75 + 0.1 * Math.sin(now * 12);
+      }
     });
   }
 
@@ -1738,7 +1906,6 @@ export class Renderer {
       sm.group.scale.setScalar(Math.max(0.001, grow) * (sm.s.radius / (sm.r0 ||= sm.s.radius))); // grows in and shrinks away; Nest spreads out
       sm.group.position.set(sm.s.pos[0], sm.s.pos[1], sm.s.pos[2]); // rolling water moves
       let op = sm.fire ? 0.38 + 0.08 * Math.sin(now * 23 + sm.s.pos[0]) : 1; // smokes can't be seen through
-      if (sm.s.nest && sm.s.owner === this.game.player && this.camera.position.distanceTo(new THREE.Vector3(...sm.s.pos)) < sm.s.radius) op = 0.12; // Venom sees through her own Nest
       sm.mat.opacity = op * fade;
       const shell = sm.group.userData.shell;
       if (shell && !sm.fire) {
@@ -1819,6 +1986,43 @@ export class Renderer {
     for (const m of keep) this.scene.remove(m); // not disposed: disposing a material throws its shader away too
   }
 
+  // Each agent looks like itself: its colour on the visor and a chest stripe, and a shape of its own on the head,
+  // shoulders or back (Lattice's hat, Vex's horns, Umbra's hood...). Built around the head's centre.
+  agentLook(id, color) {
+    const g = new THREE.Group(), col = new THREE.Color(color), m = (c = col) => new THREE.MeshLambertMaterial({ color: c, emissive: c.clone().multiplyScalar(0.25) });
+    const box = (w, h, d, x, y, z, mat = m()) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); b.position.set(x, y, z); g.add(b); return b; };
+    const cone = (r, h, x, y, z, rx = 0, rz = 0) => { const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 10), m()); c.position.set(x, y, z); c.rotation.set(rx, 0, rz); g.add(c); return c; };
+    const ring = (R, t, y, rx = Math.PI / 2) => { const r = new THREE.Mesh(new THREE.TorusGeometry(R, t, 8, 24), m()); r.position.y = y; r.rotation.x = rx; g.add(r); return r; };
+    const dark = col.clone().multiplyScalar(0.45);
+    switch (id) {
+      case 'zephyr': box(0.03, 0.1, 0.24, 0, 0.17, 0.02); break; // a swept fin of hair
+      case 'cinder': cone(0.06, 0.18, 0, 0.21, 0.02); cone(0.04, 0.12, 0.07, 0.17, 0.04, 0, -0.4); cone(0.04, 0.12, -0.07, 0.17, 0.04, 0, 0.4); break; // flame crest
+      case 'umbra': box(0.3, 0.3, 0.3, 0, 0.02, 0.03, m(dark)); break; // a hood
+      case 'hawke': { const a = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.28, 6), m()); a.position.set(0.1, 0.24, 0.05); g.add(a); box(0.05, 0.03, 0.05, 0.1, 0.38, 0.05); break; } // antenna
+      case 'bastion': box(0.27, 0.06, 0.06, 0, 0.06, -0.12); break; // goggles across the face
+      case 'blitz': box(0.3, 0.38, 0.14, 0, -0.42, 0.2); box(0.08, 0.08, 0.08, 0.12, -0.2, 0.26); break; // backpack
+      case 'granite': box(0.27, 0.07, 0.27, 0, 0.16, 0); box(0.2, 0.02, 0.1, 0, 0.13, -0.17); break; // a cap with a brim
+      case 'venom': box(0.22, 0.09, 0.05, 0, -0.06, -0.12); break; // a mask over the mouth
+      case 'vex': cone(0.035, 0.16, 0.08, 0.2, 0, 0, -0.5); cone(0.035, 0.16, -0.08, 0.2, 0, 0, 0.5); break; // horns
+      case 'quake': box(0.14, 0.08, 0.2, 0.24, -0.27, 0); box(0.14, 0.08, 0.2, -0.24, -0.27, 0); break; // heavy shoulder pads
+      case 'volt': box(0.04, 0.14, 0.26, 0, 0.19, 0.02); ring(0.15, 0.012, -0.16); break; // a spiked crest and a collar
+      case 'mirage': ring(0.13, 0.015, 0.22); break; // a ring above the head
+      case 'fawn': cone(0.04, 0.12, 0.06, 0.18, 0, 0, -0.3); cone(0.04, 0.14, -0.05, 0.19, 0.03, 0.3, 0.2); cone(0.04, 0.1, 0, 0.17, -0.05, -0.3, 0); break; // leaves
+      case 'lattice': { const top = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.16, 16), m(dark)); top.position.y = 0.21; g.add(top); const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.02, 20), m(dark)); brim.position.y = 0.13; g.add(brim); break; } // the hat
+      case 'nyx': box(0.29, 0.29, 0.3, 0, 0.02, 0.04, m(dark)); cone(0.03, 0.1, 0, 0.2, 0.08, -0.4); break; // hood with a point
+      case 'solace': ring(0.12, 0.012, 0.21); box(0.04, 0.3, 0.12, 0, -0.25, 0.16); break; // halo and a long braid
+      case 'stella': for (let i = 0; i < 3; i++) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), m()); s.position.set(Math.cos(i * 2.1) * 0.18, 0.18, Math.sin(i * 2.1) * 0.18); g.add(s); } break; // little stars
+      case 'regent': box(0.28, 0.04, 0.28, 0, 0.14, 0); box(0.04, 0.08, 0.04, 0, 0.19, 0); break; // a neat flat top
+      case 'marina': ring(0.15, 0.03, -0.17); break; // a scarf
+      case 'vanta': box(0.16, 0.12, 0.22, 0.25, -0.26, 0); break; // one big shoulder plate
+      case 'ballast': box(0.34, 0.3, 0.16, 0, -0.38, 0.21, m(dark)); { const a = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.3, 6), m()); a.position.set(-0.12, -0.12, 0.25); g.add(a); } break; // radio pack and aerial
+      case 'override': box(0.05, 0.05, 0.05, 0.13, 0.03, 0); box(0.05, 0.05, 0.05, -0.13, 0.03, 0); box(0.23, 0.05, 0.04, 0, 0.02, -0.13, m()); break; // a robot's lit faceplate
+      case 'thistle': { const b = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), m()); b.position.set(0, 0.12, 0.12); g.add(b); break; } // a bun
+      case 'lumen': { const p = new THREE.Mesh(new THREE.OctahedronGeometry(0.07), m()); p.position.y = 0.25; g.add(p); break; } // a floating prism
+    }
+    return g;
+  }
+
   makeCharacter(c) {
     const group = new THREE.Group();
     const col = new THREE.Color(c.color);
@@ -1842,7 +2046,8 @@ export class Renderer {
     bulb.scale.setScalar(0.42);
     bulb.visible = false;
     group.add(bulb);
-    return { c, group, legs, body, head, gun, visor, held, bulb, heldKey: '', flash: 0, deathT: 0 };
+    const stripe = mk(0xffffff); // a band across the chest in the agent's colour
+    return { c, group, legs, body, head, gun, visor, stripe, held, bulb, heldKey: '', flash: 0, deathT: 0, look: null, lookKey: '' };
   }
 
   // Overload's beam: a glowing rod from the caster's fingertip (yours on screen, theirs at the hand) to where it
@@ -2071,13 +2276,13 @@ export class Renderer {
   updateNearsight(p) {
     if (this.shadowSight) return;
     const range = p?.alive ? this.game.sightRange(p) : Infinity;
-    const want = range < Infinity ? range : 0;
-    if (want === (this.nearFog?.range || 0)) return;
+    const want = range < Infinity ? range : 0, tint = p?.st?.refractUntil > this.game.time ? 0x7fe0b0 : 0x120d18; // Refract: a bright green haze
+    if (want === (this.nearFog?.range || 0) && tint === this.nearFog?.tint) return;
     if (!this.nearFog) this.nearFog = { fog: this.scene.fog, bg: this.scene.background };
     if (want) {
-      this.scene.fog = new THREE.Fog(0x120d18, want * 0.3, want + 1);
-      this.scene.background = new THREE.Color(0x120d18);
-      this.nearFog.range = want;
+      this.scene.fog = new THREE.Fog(tint, want * 0.3, want + 1);
+      this.scene.background = new THREE.Color(tint);
+      this.nearFog.range = want; this.nearFog.tint = tint;
     } else {
       this.scene.fog = this.nearFog.fog;
       this.scene.background = this.nearFog.bg;
@@ -2270,10 +2475,10 @@ export class Renderer {
     const shade = p.alive && p.kit?.shadow?.phase === 'channel' ? { pos: p.kit.shadow.dest, kind: 'shade' } : null;
     const ride = p.alive && (p.kit?.pilot || p.kit?.view || shade);
     this.riding = !!ride;
-    if (ride) cam.position.set(ride.pos[0], ride.pos[1] + (ride.kind === 'cam' || ride.kind === 'sdrone' || ride.kind === 'owl' ? 0 : ride.kind === 'shade' ? 1.7 : 0.7), ride.pos[2]);
+    if (ride) cam.position.set(ride.pos[0], ride.pos[1] + (ride.kind === 'cam' || ride.kind === 'owl' ? 0 : ride.kind === 'sdrone' ? 0.35 : ride.kind === 'shade' ? 1.7 : 0.7), ride.pos[2]); // the Stealth Drone runs on the floor
     // Shade: the view flies out with the smoke marker, through walls, and the world turns to shadow so you
     // can see where it will land (characters are hidden: it shows the map, not enemies).
-    const held = !ride && !spec && p.alive && p.kit?.armed && p.kit.agent.abilities[p.kit.armed.k];
+    const held = !ride && !spec && p.alive && ((p.kit?.armed && p.kit.agent.abilities[p.kit.armed.k]) || (p.kit?.steerHand && p.kit.agent.abilities.c)); // Hound: hand out while steering
     const sight = held?.shadowSight && p.kit.previewPos;
     this.setShadowSight(!!sight);
     if (sight) {
@@ -2430,7 +2635,7 @@ export class Renderer {
     // Equip / reload / knife swing
     const et = Math.min(1, (performance.now() - vm.equipStart) / Math.max(1, vm.equipDur));
     // A gun model with its own pullout (EQUIP_ANIMS: the Starspur twirls) plays it across the equip time.
-    const draw = et < 1 && !def.hands ? EQUIP_ANIMS[vm.model.userData.design] : null;
+    const draw = et < 1 && !def.hands ? (EQUIP_ANIMS[vm.model.userData.design] || GUN_DRAWS[def.id]) : null; // a skin's own pullout, else the gun's
     let drawPose = null, reloadGlow = null;
     if (draw) {
       drawPose = inspectPose(draw, et * draw.dur);
@@ -2488,8 +2693,8 @@ export class Renderer {
       else poseMeleeParts(vm.model, drawPose && draw, drawPose?.t, vm.glow); // the pullout (Oathblade Tanto), or at rest
     } else if (insPose && this.inspecting.ins.parts) {
       poseMeleeParts(vm.model, this.inspecting.ins, insPose.t, vm.glow); // a gun model's inspect (the Orbital orb)
-    } else if (drawPose) {
-      poseMeleeParts(vm.model, draw, drawPose.t, vm.glow); // the pullout's twirl
+    } else if (drawPose && vm.model.userData.parts) {
+      poseMeleeParts(vm.model, draw, drawPose.t, vm.glow); // the pullout's twirl (a stock gun has no moving parts)
     } else if (vm.glow) vm.glow.mat.emissiveIntensity = vm.glow.base * (reloadGlow ?? 1); // its parts are left to the reload pose (and its flash, Oathblade's)
     vm.group.position.set(px, py, pz);
     vm.group.rotation.set(rx, ry, rz);
@@ -2552,6 +2757,19 @@ export class Renderer {
       const hy = ch.head.position.y;
       ch.visor.position.set(0, hy + 0.02, -0.12);
       ch.visor.scale.set(0.2, 0.07, 0.04);
+      // The agent's own look: visor and chest stripe in its colour, and its shape (rebuilt if they change agent).
+      const ag = c.kit?.agent, key = ag ? c.kit.id : '';
+      if (key !== ch.lookKey) {
+        ch.lookKey = key;
+        if (ch.look) { ch.group.remove(ch.look); ch.look = null; }
+        const ac = new THREE.Color(ag?.color || '#888888');
+        ch.visor.material.color.copy(ac.clone().multiplyScalar(0.6)); ch.visorGlow = ac.clone().multiplyScalar(0.5).getHex();
+        ch.stripe.material.color.copy(ac);
+        if (ag) { ch.look = this.agentLook(key, ag.color); ch.group.add(ch.look); }
+      }
+      if (ch.look) ch.look.position.set(0, hy, 0);
+      const by = ch.body.position.y, bs = ch.body.scale;
+      ch.stripe.position.set(0, by + bs.y * 0.18, 0); ch.stripe.scale.set(bs.x * 1.02, 0.06, bs.z * 1.04);
       ch.gun.position.set(0.17, lerp(GUN_HEIGHT[0], GUN_HEIGHT[1], cr), -0.35);
       ch.gun.scale.set(0.07, 0.1, 0.75);
       // Show the weapon they're actually holding, in their skin; an ability in hand shows nothing.
@@ -2580,8 +2798,10 @@ export class Renderer {
       const hot = now - ch.flash < 80;
       // Revealed (sonar, traps, lockdown): glowing red silhouette drawn through walls.
       const shown = c.st && c.st.revealUntil > this.game.time && !(c.st.hiddenUntil > this.game.time) && this.game.isEnemy(this.game.player, c);
+      // Outlined (inside an enemy Venom's Nest, for her team): bright red, but only where you can see them.
+      const outlined = !shown && c.st && c.st.outlineUntil > this.game.time && c.st.outlineTeam === this.game.player.team && !(c.st.hiddenUntil > this.game.time);
       for (const m of [ch.body, ch.head, ch.legs, ch.gun, ch.visor]) {
-        m.material.emissive.setHex(shown ? 0xff2244 : hot ? 0x553333 : this.bloomSet?.has(c) ? (pk.regrow?.on ? 0x3f9a1f : 0x1f5a12) : 0x000000);
+        m.material.emissive.setHex(shown ? 0xff2244 : outlined ? 0xd0102a : hot ? 0x553333 : this.bloomSet?.has(c) ? (pk.regrow?.on ? 0x3f9a1f : 0x1f5a12) : m === ch.visor ? (ch.visorGlow || 0) : 0x000000);
         if (m.material.depthTest === shown) { m.material.depthTest = !shown; m.material.transparent = shown; m.material.opacity = shown ? 0.9 : 1; m.renderOrder = shown ? 10 : 0; }
       }
     }

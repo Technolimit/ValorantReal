@@ -7,6 +7,9 @@ import { emblem } from './agentselect.js';
 import { gunIcons, warmGunIcons } from './gunicons.js';
 import { hyp } from './vmath.js';
 
+// The planted spike's icon for the round timer: a squat device with a glowing core.
+const SPIKE_ICON = '<svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 2 L20 8 L20 16 L12 22 L4 16 L4 8 Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>';
+
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const clock = (s) => { s = Math.max(0, Math.ceil(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -93,10 +96,12 @@ export class RoundHud {
     this.set('rside0', SIDE[mySide]); this.set('rside1', SIDE[m.sideOf(1)]);
     let t, label = '';
     if (m.phase === 'buy') { t = m.phaseEnd - now; label = 'BUY PHASE'; }
-    else if (m.phase === 'planted') { t = m.spike.plantedAt + ROUND.spike - now; label = 'SPIKE'; }
+    else if (m.phase === 'planted') { t = m.spike.plantedAt + ROUND.spike - now; label = 'SPIKE PLANTED'; }
     else if (m.phase === 'end') { t = m.phaseEnd - now; label = 'NEXT ROUND'; }
     else { t = m.phaseEnd - now; }
-    this.set('rtimer', m.phase === 'planted' ? `<span class="warn">${clock(t)}</span>` : clock(t));
+    // Planted: as in Valorant, no countdown, just the spike's icon, pulsing 1, 2, 4 and then 8 times a second as
+    // its light does (the same steps as the beeps).
+    this.set('rtimer', m.phase === 'planted' ? `<span class="spikeicon" style="animation-duration:${t > 20 ? 1 : t > 10 ? 0.5 : t > 5 ? 0.25 : 0.125}s">${SPIKE_ICON}</span>` : clock(t));
     this.set('rround', label ? `${label} · ROUND ${m.round}` : `ROUND ${m.round}`);
     for (const team of [0, 1]) {
       const list = g.combatants.filter(c => c.team === team);

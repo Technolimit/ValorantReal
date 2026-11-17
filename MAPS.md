@@ -221,8 +221,9 @@ so you don't need to list the modes.
 ```
 
 - A site is a rectangle on the floor: two corners `[x, z]`. That's where the spike can be planted.
-- Barriers hold a team in their spawn during the buy phase. Make them cover the whole doorway and go a little below
-  the floor.
+- Barriers hold a team back during the buy phase. Make them cover the whole doorway and go a little below the floor.
+  As in Valorant, the attackers' barriers keep them in their spawn, while the defenders' only stop them crossing
+  into the attackers' half: defenders can walk to both sites and set up there before the round starts.
 - Where the barriers stand sets the pace. In Valorant, attackers leaving their barriers can first fight for mid after
   about 5 s and first come into view of a site's defenders after about 10–15 s. Divide and Foundry are set up that way.
   Make sure no spot a defender would hold can see the attackers' barriers or spawn.
