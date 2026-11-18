@@ -186,7 +186,7 @@ export const WEAPONS = {
     spread: { hip: 1.0, ads: 0, run: 5.0, walk: 2.5, air: 8.0, deadzone: 0.27 },
     fe: { max: 1.0, start: 0, end: 1 }, recovery: 0.5,
     recoil: { v: [3.5], tail: 3.5, h: [[0,0],[1,0.1],[2,-0.1]], hJit: 0.3, vJit: 0.06 },
-    alt: { type: 'scope', levels: [3.5], time: 0.3, moveMult: 0.76, rateMult: 0.8 }, // 1.5 -> 1.2 rounds/s scoped
+    alt: { type: 'scope', levels: [3.5], time: 0.3, moveMult: 0.76, rateMult: 0.8, unscope: 'shot' }, // 1.5 -> 1.2 rounds/s scoped; drops out of the scope after each shot
   },
   outlaw: {
     name: 'Outlaw', cat: 'Sniper', slot: 'primary', cost: 2400, model: 'sniper', auto: false,
@@ -195,7 +195,7 @@ export const WEAPONS = {
     spread: { hip: 1.5, ads: 0, run: 6.0, walk: 3.0, air: 10.0, deadzone: 0.27 },
     fe: { max: 1.0, start: 0, end: 1 }, recovery: 0.4,
     recoil: { v: [3.0, 3.0], tail: 3.0, h: [[0,0],[1,-0.15],[2,0.15]], hJit: 0.3, vJit: 0.06 },
-    alt: { type: 'scope', levels: [3.5], time: 0.3, moveMult: 0.76 },
+    alt: { type: 'scope', levels: [3.5], time: 0.3, moveMult: 0.76, unscope: 'empty' }, // drops out of the scope once both barrels are fired
   },
   operator: {
     name: 'Operator', cat: 'Sniper', slot: 'primary', cost: 4700, model: 'sniper', auto: false,
@@ -204,7 +204,7 @@ export const WEAPONS = {
     spread: { hip: 5.0, ads: 0, run: 8.0, walk: 4.0, air: 15.0, deadzone: 0.27 },
     fe: { max: 2.0, start: 0, end: 1 }, recovery: 0.6,
     recoil: { v: [5.0], tail: 5.0, h: [[0,0],[1,0.1],[2,-0.1]], hJit: 0.4, vJit: 0.06 },
-    alt: { type: 'scope', levels: [2.5, 5], time: 0.35, moveMult: 0.72 }, // 72% speed scoped (~3.69 m/s)
+    alt: { type: 'scope', levels: [2.5, 5], time: 0.35, moveMult: 0.72, unscope: 'shot' }, // 72% speed scoped (~3.69 m/s); drops out of the scope after each shot
   },
 
   // Heavies. The Odin's fire rate spins up while you hold the trigger (aimed in it starts at full speed); the
@@ -240,7 +240,7 @@ export const WEAPONS = {
   },
   tourdeforce: {
     name: 'Coup de Grace', cat: 'Ability', slot: 'ability', cost: 0, model: 'sniper', auto: false, ability: true,
-    rate: 0.9, mag: 5, reserve: 0, reload: 1, equip: 2.3, pen: 'high', move: HEAVY_MOVE,
+    rate: 1.6, mag: 5, reserve: 0, reload: 1, equip: 1.0, pen: 'high', move: HEAVY_MOVE, // issue #81: much faster than the Operator (0.6/s), ready 1 s after the cast
     dmg: [[50, 255, 150, 127]],
     spread: { hip: 3.0, ads: 0, run: 6.0, walk: 3.0, air: 10.0, deadzone: 0.27 },
     fe: { max: 1.0, start: 0, end: 1 }, recovery: 0.5,

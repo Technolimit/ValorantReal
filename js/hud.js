@@ -171,7 +171,7 @@ export class Hud {
     this.set('armor', Math.max(0, Math.ceil(sv.armor)));
     $('hpbar').style.width = `${Math.min(100, Math.max(0, sv.hp) / PLAYER.hp * 100)}%`;
     $('armorbar').style.width = `${Math.max(0, sv.armor) / PLAYER.armor * 100}%`;
-    const blades = p.kit?.blades, beams = p.kit?.beams;
+    const blades = p.kit?.blades, beams = p.kit?.beams && !p.kit.beams.away ? p.kit.beams : null;
     if (blades) { this.set('mag', blades.left); this.set('reserve', ` / ${BLADES.count}`); }
     else if (p.kit?.overdrive) { this.set('mag', p.kit.overdrive.mag); this.set('reserve', ' / 40'); }
     else if (beams) { this.set('mag', beams.left); this.set('reserve', ` / ${BEAMS.count}`); }
@@ -204,7 +204,8 @@ export class Hud {
     else if (kit?.tailwind) mode = g.time >= kit.tailwind.readyAt ? `SLIPSTREAM READY · PRESS E · ${(kit.tailwind.until - g.time).toFixed(1)}s` : 'GATHERING WIND…';
     else if (kit?.shadow?.phase === 'channel') mode = `NIGHTWALK · ${(kit.shadow.until - g.time).toFixed(1)}s`;
     else if (kit?.rebirth) mode = `REKINDLE · ${(kit.rebirth.until - g.time).toFixed(1)}s`;
-    else if (kit?.launcher) mode = 'FINALE · LEFT CLICK TO FIRE · X TO PUT AWAY';
+    else if (kit?.launcher) mode = kit.launcher.away ? `FINALE · X TO TAKE IT OUT · ${Math.max(0, kit.launcher.until - g.time).toFixed(1)}s` : `FINALE · LEFT CLICK TO FIRE · X TO PUT AWAY · ${Math.max(0, kit.launcher.until - g.time).toFixed(1)}s`;
+    else if (kit?.beams?.away) mode = `TALON STRIKE · X TO TAKE IT OUT · ${Math.max(0, kit.beams.until - g.time).toFixed(1)}s`;
     else if (kit?.overdrive) mode = `OVERLOAD · HOLD LEFT CLICK · ${Math.ceil(kit.overdrive.fuel / 10)}s${kit.highGear ? ' · RIGHT CLICK TO SLIDE' + slideWait(kit, g.time) : ''}`;
     else if (kit?.highGear) mode = `OVERCLOCK · ENERGY ${Math.round(kit.energy)}% · RIGHT CLICK TO SLIDE${slideWait(kit, g.time)}`;
     else if (kit?.drift) mode = `PHASED OUT · ${(kit.drift.until - g.time).toFixed(1)}s · X TO RETURN`;
@@ -327,7 +328,7 @@ export class Hud {
       const a = agent.abilities[k];
       const el = document.createElement('div');
       el.className = 'ab' + (k === 'x' ? ' ult' : '');
-      const n = k === 'x' ? a.points : this.game.mode ? Math.min(4, priceOf(agentId, a, k).max) : a.charges;
+      const n = k === 'x' ? a.points : a.pips || (this.game.mode ? Math.min(4, priceOf(agentId, a, k).max) : a.charges); // Sovereign: one pip per round
       el.innerHTML = `<i class="cd"></i><b>${k.toUpperCase()}</b><span>${a.name}</span><div class="pips">${'<i></i>'.repeat(n)}</div>`;
       root.appendChild(el);
       this.ab[k] = { el, cd: el.querySelector('.cd'), pips: [...el.querySelectorAll('.pips i')], key: '' };
@@ -345,6 +346,7 @@ export class Hud {
       if (k === 'x') { have = kit.ultPoints; ready = have >= AB.x.points && !kit.blades; }
       else {
         have = kit.charges[AB[k].shares || k]; // Dismiss shows Devour's pool
+        if (AB[k].pips) { const gun = [p.inv.ability, kit.gunStash?.[AB[k].gun]].find(x => x?.def.id === AB[k].gun && x.mag > 0); have = gun ? gun.mag : this.game.mode ? have : have * AB[k].pips; } // rounds left
         ready = have > 0 || (k === 'c' && !!kit.regrow);
         if (kit.ready[k] && AB[k].cooldown) frac = kit.cooldownLeft(k, now) / AB[k].cooldown;
       }
@@ -387,6 +389,7 @@ export class Hud {
     if (kit.pilot) add({ tiger: 'Stalker', sdrone: 'Scout Drone', owl: 'Kestrel' }[kit.pilot.kind] || 'Drone', kit.pilot.until, kit.pilot.life);
     if (kit.pilot?.kind === 'owl' && now < kit.pilot.dartReady) add('Dart reload', kit.pilot.dartReady, 5);
     if (kit.beams) add('Talon Strike', kit.beams.until, 6);
+    if (kit.launcher) add('Finale', kit.launcher.until, 10);
     if (g.contract && (g.contract.a === p || g.contract.b === p)) add('Duel', g.contract.until, 15);
     if (kit.nest) add('Nest', kit.nest.until, 15);
     for (const o of kit.orbs || []) add('Soul orb', o.until, 3);

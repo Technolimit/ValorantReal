@@ -1499,6 +1499,18 @@ export function handsModel(color, item = 'orb') {
     const arrow = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.006, 0.22), glow); arrow.position.set(-0.04, 0.04, -0.08);
     g.add(bow, arrow);
   }
+  if (item === 'ultbow') {
+    // Talon Strike: a bigger bow of light in the left hand, string drawn, a crackling bolt nocked.
+    const light = new THREE.MeshStandardMaterial({ color: 0xbfe3ff, emissive: 0x3f9dff, emissiveIntensity: 2.2, roughness: 0.2 });
+    const limb = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.011, 8, 32, Math.PI * 0.9), light);
+    limb.rotation.set(0, Math.PI / 2, Math.PI / 2 + Math.PI * 0.05); limb.position.set(-0.11, 0.05, -0.12);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.07, 0.03), shell); grip.position.set(-0.11, 0.05, -0.12);
+    const string = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.003, 0.36), light);
+    string.rotation.x = Math.PI / 2; string.position.set(-0.11, 0.05, -0.05);
+    const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.012, 0.42), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x6ab7ff, emissiveIntensity: 3 }));
+    bolt.position.set(-0.07, 0.05, -0.18);
+    g.add(limb, grip, string, bolt);
+  }
   if (item === 'knife') {
     thing = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.03, 0.16), glow);
     thing.position.set(0.01, 0.03, -0.09);

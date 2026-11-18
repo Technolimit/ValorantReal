@@ -1,5 +1,5 @@
 // Match simulation: combatants, hitscan with wall penetration, damage, kills and respawns (free-for-all).
-import { DT, MATCH, PEN_DEPTH, MAX_RANGE, TAG, PLAYER } from './config.js';
+import { DT, MATCH, PEN_DEPTH, MAT_DENSITY, MAX_RANGE, TAG, PLAYER } from './config.js';
 import { buildMap, supportsMode } from './map.js';
 import { RoundMode, NetRoundMode, ROUND, ECON } from './rounds.js';
 import { World } from './world.js';
@@ -1220,34 +1220,40 @@ export class Game {
     const perTarget = new Map();
     for (const d of dirs) {
       const res = this.trace(shooter, o, d, budget);
-      const block = this.utilOnRay(shooter, o, d, res.endT);
+      const block = this.utilOnRay(shooter, o, d, res.hits.length ? res.hits[0].t : res.stopT);
       if (block) {
         // Utility in the way takes the shot (and its damage) instead of whoever is behind it.
         const end = [o[0] + d[0] * block.t, o[1] + d[1] * block.t, o[2] + d[2] * block.t];
         this.emit('tracer', { who: shooter, gun, from: o, to: end });
         this.emit('impact', { who: shooter, point: end, normal: [-d[0], -d[1], -d[2]], util: block.it });
-        if (this.isEnemy(shooter, block.it.owner)) this.hitUtil(block.it, damageAt(def, block.t)[2] * res.mult, shooter);
+        if (this.isEnemy(shooter, block.it.owner)) this.hitUtil(block.it, damageAt(def, block.t)[2] * this.wallMult(res, block.t, budget), shooter);
         continue;
       }
-      const end = [o[0] + d[0] * res.endT, o[1] + d[1] * res.endT, o[2] + d[2] * res.endT];
+      // Bodies on the line, nearest first: a headshot, or a hit that kills, carries on to whoever is behind.
+      let endT = res.stopT;
+      for (const h of res.hits) {
+        const { c, part, t } = h;
+        const b = damageAt(def, t);
+        const dmg = (part === 'head' ? b[1] : part === 'body' ? b[2] : b[3]) * h.mult;
+        const point = [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t];
+        let acc = perTarget.get(c);
+        if (!acc) { acc = { dmg: 0, head: 0, body: 0, legs: 0, dist: t, point, wallbang: false }; perTarget.set(c, acc); }
+        acc.dmg += dmg;
+        acc[part]++;
+        acc.dist = Math.min(acc.dist, t);
+        acc.wallbang ||= h.mult < 1;
+        if (part === 'head') acc.point = point;
+        if (part !== 'head' && !this.wouldKill(c, acc.dmg)) { endT = t; break; }
+      }
+      const end = [o[0] + d[0] * endT, o[1] + d[1] * endT, o[2] + d[2] * endT];
       this.emit('tracer', { who: shooter, gun, from: o, to: end });
       // A shot stopped by a wall that has health (Frost Wall) wears that piece down.
-      const stopped = !res.hit && res.impacts.length ? res.impacts[res.impacts.length - 1].box.wall : null;
-      if (stopped?.hp > 0 && this.isEnemy(shooter, stopped.owner)) this.hitUtil(stopped, damageAt(def, res.endT)[2], shooter);
+      const stopped = endT === res.stopT && res.impacts.length ? res.impacts[res.impacts.length - 1].box.wall : null;
+      if (stopped?.hp > 0 && this.isEnemy(shooter, stopped.owner)) this.hitUtil(stopped, damageAt(def, endT)[2] * this.wallMult(res, endT, budget), shooter);
       for (const imp of res.impacts) {
+        if (imp.t > endT) break;
         this.emit('impact', { who: shooter, point: [o[0] + d[0] * imp.t, o[1] + d[1] * imp.t, o[2] + d[2] * imp.t], normal: imp.n, box: imp.box });
       }
-      if (!res.hit) continue;
-      const { c, part, t } = res.hit;
-      const b = damageAt(def, t);
-      const dmg = (part === 'head' ? b[1] : part === 'body' ? b[2] : b[3]) * res.mult;
-      let acc = perTarget.get(c);
-      if (!acc) { acc = { dmg: 0, head: 0, body: 0, legs: 0, dist: t, point: end, wallbang: false }; perTarget.set(c, acc); }
-      acc.dmg += dmg;
-      acc[part]++;
-      acc.dist = Math.min(acc.dist, t);
-      acc.wallbang ||= res.mult < 1;
-      if (part === 'head') acc.point = end;
     }
     for (const [target, acc] of perTarget) {
       const part = acc.head ? 'head' : acc.body ? 'body' : 'legs';
@@ -1302,34 +1308,54 @@ export class Game {
     return this.devices.find(x => !x.removed && near(x)) || this.zones.find(near) || this.smokes.find(near) || this.walls.find(x => x.pos && !x.removed && near(x)) || null;
   }
 
+  // A shot's path. Each wall it crosses costs thickness x material density (MAT_DENSITY) from the gun's budget;
+  // where boxes overlap, as at a corner, that stretch is paid once. It stops at a solid wall or one it can't
+  // afford. Returns every enemy on the line before that, nearest first, with the damage share left after the
+  // walls in front of them (80% through a sliver, down to 30% through the gun's whole budget).
   trace(shooter, o, d, budget) {
     const walls = this.world.raycastAll(o, d, MAX_RANGE);
-    let stopT = MAX_RANGE, used = 0;
-    const crossed = [];
+    let stopT = MAX_RANGE, used = 0, covered = -Infinity;
+    const crossed = []; // [from, to, density]
     const impacts = [];
     for (const h of walls) {
       if (h.tIn > stopT) break;
-      const thick = h.tOut - h.tIn;
-      if (!h.box.pen || used + thick > budget) {
-        stopT = h.tIn;
-        impacts.push({ t: h.tIn, n: h.n, box: h.box });
+      const from = Math.max(h.tIn, covered), thick = Math.max(0, h.tOut - from), dens = MAT_DENSITY[h.box.mat] ?? 1;
+      const face = h.tIn >= covered; // entering from open air, not from inside the box it overlaps
+      if (!h.box.pen || used + thick * dens > budget) {
+        stopT = Math.max(h.tIn, Math.min(covered, h.tOut));
+        if (face || !h.box.pen) impacts.push({ t: stopT, n: h.n, box: h.box });
         break;
       }
-      used += thick;
-      crossed.push(h);
-      impacts.push({ t: h.tIn, n: h.n, box: h.box });
+      used += thick * dens;
+      if (thick > 0) crossed.push([from, h.tOut, dens]);
+      if (face) impacts.push({ t: h.tIn, n: h.n, box: h.box });
+      covered = Math.max(covered, h.tOut);
     }
-    let hit = null;
+    const res = { stopT, impacts, crossed, hits: [] };
     for (const c of this.combatants) {
       if (!c.alive || !this.isEnemy(shooter, c)) continue;
       const r = c.rayHit(o, d, stopT);
-      if (r && (!hit || r.t < hit.t)) hit = { c, part: r.part, t: r.t };
+      if (r) res.hits.push({ c, part: r.part, t: r.t });
     }
-    if (!hit) return { endT: stopT, impacts, hit: null, mult: 1 };
+    res.hits.sort((a, b) => a.t - b.t);
+    for (const h of res.hits) h.mult = this.wallMult(res, h.t, budget);
+    res.hit = res.hits[0] || null; // single-hit users (blades, Overload, darts): the first body ends it
+    res.endT = res.hit ? res.hit.t : stopT;
+    return res;
+  }
+
+  // Share of a bullet's damage left at distance t along a traced shot, after the walls before it.
+  wallMult(res, t, budget) {
     let through = 0;
-    for (const h of crossed) if (h.tIn < hit.t) through += Math.min(h.tOut, hit.t) - h.tIn;
-    const mult = through > 0 ? Math.max(0.3, 0.8 - 0.4 * through / budget) : 1;
-    return { endT: hit.t, impacts: impacts.filter(i => i.t < hit.t), hit, mult };
+    for (const [a, b, k] of res.crossed) if (a < t) through += (Math.min(b, t) - a) * k;
+    return through > 0 ? Math.max(0.3, 0.8 - 0.4 * through / budget) : 1;
+  }
+
+  // Would `dmg` more damage kill c outright? (A Focus shield eats the hit; Vulnerable doubles it.)
+  wouldKill(c, dmg) {
+    const now = this.time;
+    if (c.kit?.shield || c.st.intangibleUntil > now || c.st.invulnUntil > now) return false;
+    return dmg * (c.st.vulnUntil > now ? 2 : 1) >= c.hp + c.armor;
   }
 
   damage(target, attacker, amount, info) {

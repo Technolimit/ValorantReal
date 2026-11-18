@@ -296,6 +296,8 @@ export class Gun {
     this.heat += 1;
     this.lastShot = now;
     this.recovering = false;
+    // Bolt-action snipers drop out of the scope after a shot (the Outlaw once both barrels are spent).
+    if (a.unscope === 'shot' || (a.unscope === 'empty' && this.mag <= 0)) { this.zoomLevel = 0; this.adsWant = false; }
     owner.game.emit('shot', { who: owner, gun: this });
   }
 

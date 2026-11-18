@@ -279,13 +279,23 @@ function healAlly(c, amount, time) {
 function drawAbilityGun(kit, id) {
   const o = kit.owner;
   kit.armed = null;
+  const old = o.inv.ability;
+  if (old && old.def.id !== id && old.mag > 0) kit.gunStash[old.def.id] = old; // Regent: the other ability gun waits
   const gun = o.give(id);
   gun.reserve = 0;
   o.equip('ability', kit.now, true);
   return true;
 }
 function toggleAbilityGun(kit, id) {
-  const o = kit.owner, gun = o.inv.ability;
+  const o = kit.owner;
+  let gun = o.inv.ability;
+  if (gun?.def.id !== id && kit.gunStash[id]?.mag > 0) { // swap the stashed one back in
+    if (gun?.mag > 0) kit.gunStash[gun.def.id] = gun;
+    gun = o.inv.ability = kit.gunStash[id];
+    delete kit.gunStash[id];
+    o.equip('ability', kit.now, true);
+    return true;
+  }
   if (!gun || gun.def.id !== id) return false;
   if (o.slot === 'ability') o.equip(o.prevSlot && o.prevSlot !== 'ability' ? o.prevSlot : 'primary', kit.now) || o.equip('secondary', kit.now);
   else o.equip('ability', kit.now);
@@ -505,9 +515,9 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Talon Strike', desc: 'Fire up to three energy beams (66 m long, 3.5 m across) within 6 s, at least 0.75 s apart. Each one fires 0.4 s after you click, and everyone, enemies included, sees the line it will hit first. They go through every wall, dealing 80 damage and revealing whoever they hit. You stand still while you do.', points: 8,
+        name: 'Talon Strike', desc: 'Fire up to three energy beams (66 m long, 3.5 m across) within 6 s, at least 0.75 s apart. Each one fires 0.4 s after you click, and everyone, enemies included, sees the line it will hit first; until it fires you can still nudge it up to 8°. They go through every wall, dealing 80 damage and revealing whoever they hit. You stand still while the bow is out. Press X (or switch weapons) to put it away and X to take it out again (0.5 s); the 6 s keep running.', points: 8,
         use(kit) {
-          kit.beams = { left: BEAMS.count, until: kit.now + BEAMS.time + 0.8, next: kit.now + 0.8 }; // 0.8 s to draw
+          kit.beams = { left: BEAMS.count, until: kit.now + BEAMS.time + 0.8, next: kit.now + 0.8, away: false, pending: null }; // 0.8 s to draw
           kit.owner.game.emit('ability', { who: kit.owner, type: 'ult' });
         },
       },
@@ -613,7 +623,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Finale', desc: 'Pull out a rocket launcher and left click to fire one rocket within 10 s. It kicks when it fires, flies straight (25 m/s) and explodes on whatever it hits: exactly 150 damage within 4.5 m, falling off evenly to 30 at 7 m. It hurts you too (a third as much), so don’t fire it at your feet.', points: 8,
+        name: 'Finale', desc: 'Pull out a rocket launcher and left click to fire one rocket within 10 s. It kicks when it fires, flies straight (25 m/s) and explodes on whatever it hits: exactly 150 damage within 4.5 m, falling off evenly to 30 at 7 m. It hurts you too (a third as much), so don’t fire it at your feet. Press X (or switch weapons) to put it away and X to take it out again (1.4 s); the 10 s keep running.', points: 8,
         use(kit) {
           kit.launcher = { ready: kit.now + 1.4, until: kit.now + 10 }; // 1.4 s to draw it, 10 s to fire
           kit.owner.game.emit('ability', { who: kit.owner, type: 'ult' });
@@ -1312,7 +1322,7 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Sovereign', desc: 'Draw a heavy pistol (8 rounds; 159 to the head, right click to aim). Press Q again to holster it and keep the rest of the rounds.', charges: 1, cooldown: 30, instant: true,
+        name: 'Sovereign', desc: 'Draw a heavy pistol (8 rounds; 159 to the head, right click to aim). Press Q again to holster it and keep the rest of the rounds. The ability bar shows one pip per round.', charges: 1, cooldown: 30, instant: true, pips: 8, gun: 'headhunter',
         use(kit) {
           drawAbilityGun(kit, 'headhunter');
           const gun = kit.owner.inv.ability;
@@ -1343,7 +1353,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Coup de Grace', desc: 'Summon a custom sniper rifle (2.3 s; 5 rounds): one hit to the body or head kills, and every kill leaves a 6 m field that slows by half for 4 s where the target fell. Right click to scope.', points: 8,
+        name: 'Coup de Grace', desc: 'Summon a custom sniper rifle (1 s; 5 rounds, 1.6 shots a second): one hit to the body or head kills, and every kill leaves a 6 m field that slows by half for 4 s where the target fell. Right click to scope. Press X to holster it and again to draw it.', points: 8,
         use(kit) {
           drawAbilityGun(kit, 'tourdeforce');
           kit.owner.game.emit('ability', { who: kit.owner, type: 'ult' });
@@ -1841,6 +1851,7 @@ export class Kit {
     this.blades = null;
     this.bladesAway = 0;
     this.beams = null;
+    this.gunStash = {};
     this.armed = null;
     this.tailwind = null;
     this.regrow = null;
@@ -1942,8 +1953,8 @@ export class Kit {
   }
 
   // While true the gun can't fire (blades/beams out, an ability armed, channelling).
-  blocking() { return !!(this.steerHand || this.now < (this.focusWind || 0) || this.owner.st.downedUntil > this.now || this.usedAt === this.now || this.grab || this.blades || this.beams || this.armed || this.shadow || this.mapPick || this.launcher || this.highGear || this.overdrive || this.drift || this.pilot || this.view || this.owner.st.intangibleUntil > this.now); }
-  busy() { return !!(this.blades || this.beams || this.shadow || this.mapPick || this.launcher || this.pilot || this.view || this.drift); }
+  blocking() { return !!(this.steerHand || this.now < (this.focusWind || 0) || this.owner.st.downedUntil > this.now || this.usedAt === this.now || this.grab || this.blades || (this.beams && !this.beams.away) || this.armed || this.shadow || this.mapPick || (this.launcher && !this.launcher.away) || this.highGear || this.overdrive || this.drift || this.pilot || this.view || this.owner.st.intangibleUntil > this.now); }
+  busy() { return !!(this.blades || (this.beams && !this.beams.away) || this.shadow || this.mapPick || (this.launcher && !this.launcher.away) || this.pilot || this.view || this.drift); }
 
   // ---- map picker (sky smokes, orbital strike, map teleport) ----
   mapClick(pos) {
@@ -2097,7 +2108,9 @@ export class Kit {
     else if (inp.abX) {
       if (this.mapPick && this.mapPick.key === 'x') this.mapCancel();
       else if (this.drift) { this.drift = null; o.st.hiddenUntil = o.st.intangibleUntil = 0; g.emit('ability', { who: o, type: 'rekindled' }); }
-      else if (this.launcher) this.launcher = null;
+      else if (this.launcher) this.toggleLauncher(now); // put the launcher away / take it back out
+      else if (this.beams && !this.beams.pending) this.toggleBeams(now); // the same for Talon Strike's bow
+      else if (this.id === 'regent' && toggleAbilityGun(this, 'tourdeforce')) { /* Coup de Grace: holster / draw */ }
       else if (this.bladesAway > 0 && !this.busy()) {
         // Edgestorm blades put away by switching weapons come back out (0.5 s) with what was left.
         this.armed = null;
@@ -2330,7 +2343,7 @@ export class Kit {
     o.stats.shots++;
     g.emit('tracer', { who: o, gun: { def: BLADES }, from: eye, to: end, blade: true });
     g.emit('blade', { who: o });
-    for (const imp of res.impacts) g.emit('impact', { who: o, point: [eye[0] + d[0] * imp.t, eye[1] + d[1] * imp.t, eye[2] + d[2] * imp.t], normal: imp.n, box: imp.box });
+    for (const imp of res.impacts) if (imp.t <= res.endT) g.emit('impact', { who: o, point: [eye[0] + d[0] * imp.t, eye[1] + d[1] * imp.t, eye[2] + d[2] * imp.t], normal: imp.n, box: imp.box });
     if (res.hit) {
       const { c, part, t } = res.hit;
       const b = BLADES.dmg[0];
@@ -2340,15 +2353,46 @@ export class Kit {
 
   tickBeams(now) {
     const b = this.beams, o = this.owner;
-    if (b.left <= 0 || now >= b.until) { if (now >= b.next) this.beams = null; return; }
+    if (b.pending) this.aimBeam(now);
+    if (b.left <= 0 || now >= b.until) { if (!b.pending && now >= b.next) { this.beams = null; if (!b.away && o.alive) o.equip(o.slot, now, true); } return; }
+    if (b.away) return; // put away: the 6 s still run
     o.st.rootUntil = now + 0.05; o.input.jump = false; // no moving or jumping while the beams are out
-    if (now < b.next || !o.input.firePressed) return;
+    if (now < b.next || !o.input.firePressed || b.pending) return;
     b.left--;
     b.next = now + (b.left > 0 ? 0.75 : 0.6) + BEAMS.windup;
     // A short windup: the line it will hit shows for everyone, then the beam fires along it.
-    const from = o.eye(), dir = dirFromAngles(o.yaw, o.pitch);
-    o.game.emit('beamWarn', { who: o, from, dir, len: BEAMS.range, width: BEAMS.width, time: BEAMS.windup });
-    later(this, BEAMS.windup, () => { if (o.alive) o.game.beam(o, from, dir, BEAMS); });
+    const w = { who: o, from: o.eye(), dir: dirFromAngles(o.yaw, o.pitch), len: BEAMS.range, width: BEAMS.width, time: BEAMS.windup };
+    b.pending = { at: now + BEAMS.windup, dir0: [...w.dir], w };
+    o.game.emit('beamWarn', w);
+  }
+
+  // Talon Strike's wind-up: the shot still follows your aim a little (up to 8 degrees from where you clicked), and
+  // the warning line everyone sees moves with it. Then it fires.
+  aimBeam(now) {
+    const b = this.beams, p = b.pending, o = this.owner, MAX = 8 * DEG;
+    const want = dirFromAngles(o.yaw, o.pitch), d0 = p.dir0;
+    const ang = Math.acos(Math.max(-1, Math.min(1, want[0] * d0[0] + want[1] * d0[1] + want[2] * d0[2])));
+    let d = want;
+    if (ang > MAX) { // turn from where you clicked toward the crosshair, but only MAX of the way
+      const s = Math.sin(ang), a = Math.sin(ang - MAX) / s, c = Math.sin(MAX) / s;
+      d = [d0[0] * a + want[0] * c, d0[1] * a + want[1] * c, d0[2] * a + want[2] * c];
+    }
+    p.w.dir = d; p.w.from = o.eye();
+    if (now < p.at) return;
+    b.pending = null;
+    if (o.alive) o.game.beam(o, p.w.from, d, BEAMS);
+  }
+
+  toggleBeams(now) {
+    const b = this.beams, o = this.owner;
+    if (b.away) { b.away = false; b.next = Math.max(b.next, now + 0.5); o.gun.onHolster(); } // 0.5 s to draw the bow again
+    else { b.away = true; o.equip(o.slot, now, true); }
+  }
+
+  toggleLauncher(now) {
+    const L = this.launcher, o = this.owner;
+    if (L.away) { L.away = false; L.ready = Math.max(L.ready, now + 1.4); o.gun.onHolster(); } // the same 1.4 s draw
+    else { L.away = true; o.equip(o.slot, now, true); }
   }
 
   onKill(def, victim) {
@@ -2529,7 +2573,7 @@ export class Kit {
       if (this.nest) this.nest.radius = nz.r;
       if (o.alive && hyp(o.pos[0] - nz.pos[0], o.pos[2] - nz.pos[2]) < Math.max(nz.r, 2.5)) { nz.until = now + 8; if (this.nest) this.nest.until = now + 8; }
     }
-    if (this.launcher && now >= this.launcher.until) this.launcher = null; // Finale: 10 s to fire it
+    if (this.launcher && now >= this.launcher.until) { const away = this.launcher.away; this.launcher = null; if (!away && o.alive) o.equip(o.slot, now, true); } // Finale: 10 s to fire it
     if (this.orbs.length) this.orbs = this.orbs.filter(b => b.until > now);
     // Viper fuel: drains while any gas is on, refills when it's all off
     const groups = this.gas.groups;
@@ -2541,7 +2585,7 @@ export class Kit {
       if (this.gas.fuel <= 0) for (const gr of Object.values(groups)) if (gr.active) gasOff(this, gr);
     } else if (this.gas.fuel < 100) this.gas.fuel = Math.min(100, this.gas.fuel + 100 / 30 * DT); // empty to full in 30 s
     // Rocket launcher
-    if (this.launcher && o.input.firePressed && now >= this.launcher.ready) {
+    if (this.launcher && !this.launcher.away && o.input.firePressed && now >= this.launcher.ready) {
       this.launcher = null;
       o.input.firePressed = o.input.fire = false; // the click fires the rocket only, not your gun as well
       o.equip(o.slot, now, true); // and the gun takes its draw time to come back

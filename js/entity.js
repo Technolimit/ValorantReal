@@ -120,6 +120,8 @@ export class Combatant {
 
   equip(slot, now, force = false, dur) { // dur: draw time other than the gun's own (see Gun.onEquip)
     if (this.kit?.blades) { this.kit.bladesAway = this.kit.blades.left; this.kit.blades = null; } // switching weapons puts the blades away (X takes them back out)
+    if (!force && this.kit?.launcher) this.kit.launcher.away = true; // ...and Finale's launcher, and Talon Strike's bow
+    if (!force && this.kit?.beams && !this.kit.beams.pending) this.kit.beams.away = true;
     if (this.kit?.armed && !force) this.kit.armed = null; // ...and any ability you were holding
     if (this.kit?.highGear && !force) this.kit.highGear = null;
     if (!this.inv[slot] || (slot === this.slot && !force)) return false;

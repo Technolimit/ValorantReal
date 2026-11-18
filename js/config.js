@@ -40,6 +40,15 @@ export const CROUCH_SPREAD = 0.85; // spread multiplier while crouched on the gr
 export const CROUCH_RECOIL = 0.85; // sideways recoil multiplier while crouched and standing still (Valorant: 15% less yaw recoil)
 export const VIEW_RECOIL = 0.5; // share of bullet recoil that moves the camera; bullets land above the crosshair
 export const PEN_DEPTH = { low: 1.0, medium: 2.2, high: 4.4 }; // meters of penetrable material a bullet can cross
+// How hard each material is to shoot through, per metre crossed (1 = an ordinary wall): wood and crates give
+// way easily, stone and concrete less, metal least; a grate is mostly holes. A shot costs thickness x density.
+const MATS = [
+  [0.3, ['grate']],
+  [0.6, ['wood', 'crate', 'woodpanel', 'woodfacade', 'woodfloor']],
+  [1.25, ['concrete', 'darkconcrete', 'lightconcrete', 'stone', 'stonewall', 'darkstone', 'brick', 'slate', 'paving', 'asphalt']],
+  [1.6, ['bluemetal', 'greenmetal', 'greymetal', 'rust', 'sewerblue']],
+];
+export const MAT_DENSITY = Object.fromEntries(MATS.flatMap(([k, list]) => list.map(m => [m, k])));
 export const MAX_RANGE = 250;
 
 // Hitboxes relative to feet, for standing and fully crouched. [yMin, yMax, halfWidth]

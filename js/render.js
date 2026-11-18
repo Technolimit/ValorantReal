@@ -1059,13 +1059,21 @@ export class Renderer {
 
   // Talon Strike's warning: a thin glowing column along the line the beam will hit, seen by everyone, pulsing until
   // the beam fires.
-  fxBeamWarn({ from, dir, len, width, time }) {
+  // The line a Talon Strike beam will hit. It follows `w.dir` / `w.from` live: the shot can still be nudged during
+  // its wind-up.
+  fxBeamWarn(w) {
+    const { len, width, time } = w;
     const m = new THREE.Mesh(new THREE.CylinderGeometry(width, width, len, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0x3f9dff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false }));
-    const d = new THREE.Vector3(...dir).normalize();
-    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d);
-    m.position.set(from[0] + dir[0] * len / 2, from[1] + dir[1] * len / 2, from[2] + dir[2] * len / 2);
+    const up = new THREE.Vector3(0, 1, 0), d = new THREE.Vector3();
+    const place = () => {
+      const { from, dir } = w;
+      d.set(dir[0], dir[1], dir[2]).normalize();
+      m.quaternion.setFromUnitVectors(up, d);
+      m.position.set(from[0] + dir[0] * len / 2, from[1] + dir[1] * len / 2, from[2] + dir[2] * len / 2);
+    };
+    place();
     const t0 = this.game.time;
-    this.fxAdd(m, t0 + time, (now) => { m.material.opacity = 0.3 + 0.25 * Math.abs(Math.sin((now - t0) * 20)); });
+    this.fxAdd(m, t0 + time, (now) => { place(); m.material.opacity = 0.3 + 0.25 * Math.abs(Math.sin((now - t0) * 20)); });
   }
 
   // A faint flat mark on the floor (where Riftwalk's fake teleport went off); fades over its last 3 s.
@@ -2658,9 +2666,9 @@ export class Renderer {
     const blades = vp.kit?.blades;
     // Holding an ability (or sprinting / grabbing an orb): hands only, no gun.
     const kitc = vp.kit, armedAb = kitc?.armed && kitc.agent.abilities[kitc.armed.k];
-    const handItem = vp.st.channelUntil > this.game.time ? 'device' : armedAb ? (armedAb.item || 'orb') : kitc?.grab ? 'grab' : kitc?.overdrive ? 'beam' : kitc?.highGear ? 'none' : null;
+    const handItem = vp.st.channelUntil > this.game.time ? 'device' : armedAb ? (armedAb.item || 'orb') : kitc?.grab ? 'grab' : kitc?.overdrive ? 'beam' : kitc?.beams && !kitc.beams.away ? 'ultbow' : kitc?.highGear ? 'none' : null;
     const handsDef = handItem && { id: `hand:${kitc.id}:${handItem}`, hands: true, model: 'hands', color: vp.st.channelUntil > this.game.time ? 0xff4655 : parseInt(kitc.agent.color.slice(1), 16), item: handItem, melee: true };
-    const def = blades ? BLADES : kitc?.launcher ? FINALE : handsDef || gun.def;
+    const def = blades ? BLADES : kitc?.launcher && !kitc.launcher.away ? FINALE : handsDef || gun.def;
     const kind = def.model;
     this.setViewmodel(def, vp);
     const vm = this.vm;
@@ -2884,7 +2892,7 @@ export class Renderer {
       ch.gun.position.set(0.17, lerp(GUN_HEIGHT[0], GUN_HEIGHT[1], cr), -0.35);
       ch.gun.scale.set(0.07, 0.1, 0.75);
       // Show the weapon they're actually holding, in their skin; an ability in hand shows nothing.
-      const heldDef = c.kit?.armed || c.kit?.blades || c.kit?.overdrive ? null : c.kit?.launcher ? FINALE : c.gun?.def;
+      const heldDef = c.kit?.armed || c.kit?.blades || c.kit?.overdrive || (c.kit?.beams && !c.kit.beams.away) ? null : c.kit?.launcher && !c.kit.launcher.away ? FINALE : c.gun?.def;
       const heldId = heldDef ? this.modelOf(c, heldDef.id) : '';
       const heldSkin = heldDef ? this.skinOf(c, heldId) : '';
       const hk = heldDef ? heldId + ':' + heldSkin : '';

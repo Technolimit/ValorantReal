@@ -180,6 +180,73 @@ const checks = [
     m.detonate();
     return { pass: !p.alive, alive: p.alive };
   }],
+  ['Collaterals: a headshot or a killing shot carries on to the enemy behind; a body shot that does not kill stops', async () => {
+    const g = await __start({ agent: 'cinder', map: 'arena', botCount: 2, botMode: 'static' });
+    const p = g.player, [b1, b2] = g.bots;
+    if (!__place(g, p, 20)) return { error: 'no open ground' };
+    const { WEAPONS } = await import('/js/weapons.js');
+    const Gun = p.inv.secondary.constructor, vandal = new Gun(WEAPONS.vandal);
+    const shot = (aimY, hp1) => {
+      for (const [b, z] of [[b1, 6], [b2, 12]]) { b.pos = [p.pos[0], p.pos[1], p.pos[2] - z]; b.prevPos = [...b.pos]; b.hp = 100; b.armor = 0; b.alive = true; b.yaw = 0; }
+      b1.hp = hp1;
+      const e = p.eye(), t = [b1.pos[0], b1.pos[1] + aimY, b1.pos[2]];
+      const d = [t[0] - e[0], t[1] - e[1], t[2] - e[2]], l = Math.hypot(...d);
+      g.fireBullets(p, vandal, [d.map(v => v / l)]);
+      return { b1: b1.alive ? b1.hp : 'dead', b2: b2.hp };
+    };
+    const head = shot(b1.eye()[1] - b1.pos[1], 100), body = shot(1.0, 100), killBody = shot(1.0, 10);
+    return { pass: head.b2 < 100 && body.b2 === 100 && killBody.b1 === 'dead' && killBody.b2 < 100, head, body, killBody };
+  }],
+  ['Wallbangs: wood costs less than metal of the same thickness, and an overlapping corner is paid once', async () => {
+    const g = await __start({ agent: 'cinder', map: 'arena', botCount: 1, botMode: 'static' });
+    const p = g.player, b = g.bots[0];
+    if (!__place(g, p, 12)) return { error: 'no open ground' };
+    b.pos = [p.pos[0], p.pos[1], p.pos[2] - 8]; b.prevPos = [...b.pos];
+    const e = p.eye(), d = [0, 0, -1], z = p.pos[2] - 4;
+    const wall = (mat, z0, z1) => { const q = { min: [p.pos[0] - 1, p.pos[1], z1], max: [p.pos[0] + 1, p.pos[1] + 3, z0], pen: true, mat, temp: true }; g.world.boxes.push(q); return q; };
+    const clear = () => { g.world.boxes = g.world.boxes.filter(q => !q.temp); };
+    const mult = () => { const r = g.trace(p, e, d, 2.2); return r.hits[0] ? +r.hits[0].mult.toFixed(3) : null; };
+    clear(); wall('crate', z, z - 0.5); const wood = mult();
+    clear(); wall('greymetal', z, z - 0.5); const metal = mult();
+    clear(); wall('plaster', z, z - 0.5); const one = mult();
+    clear(); wall('plaster', z, z - 0.5); wall('plaster', z - 0.2, z - 0.5); const overlap = mult(); // the second box sits inside the first
+    clear();
+    return { pass: wood > one && one > metal && overlap === one, wood, plaster: one, metal, overlap };
+  }],
+  ['Snipers: the Marshal and Operator drop out of the scope after a shot; the Outlaw once both barrels are fired', async () => {
+    const g = await __start({ agent: 'cinder', map: 'arena', botCount: 1, botMode: 'static' });
+    const p = g.player, out = {};
+    const { WEAPONS } = await import('/js/weapons.js');
+    for (const id of ['marshal', 'operator', 'outlaw']) {
+      const gun = p.give(id); gun.mag = gun.def.mag; p.equip('primary', g.time, true); __tick(g, 2);
+      const scoped = () => gun.zoomLevel > 0 || gun.adsWant;
+      p.input.altPressed = true; g.tick(); p.input.altPressed = false; __tick(g, 0.5);
+      const before = scoped();
+      p.input.fire = p.input.firePressed = true; g.tick(); p.input.fire = p.input.firePressed = false;
+      const afterOne = scoped();
+      __tick(g, 1);
+      p.input.fire = p.input.firePressed = true; g.tick(); p.input.fire = p.input.firePressed = false;
+      out[id] = { before, afterOne, afterTwo: scoped() };
+    }
+    const pass = out.marshal.before && !out.marshal.afterOne && out.operator.before && !out.operator.afterOne && out.outlaw.before && out.outlaw.afterOne && !out.outlaw.afterTwo;
+    return { pass, ...out };
+  }],
+  ['Ultimates can be put away and taken out again: Finale, Talon Strike, Coup de Grace', async () => {
+    const out = {};
+    for (const [agent, field] of [['blitz', 'launcher'], ['hawke', 'beams'], ['regent', 'gun']]) {
+      const g = await __start({ agent, map: 'arena', botCount: 1, botMode: 'static' });
+      const p = g.player, k = p.kit;
+      k.ultPoints = 99; k.agent.abilities.x.use(k); __tick(g, 1.5);
+      const x = () => { p.input.abX = true; g.tick(); p.input.abX = false; __tick(g, 0.2); };
+      const out1 = field === 'gun' ? p.slot === 'ability' : !k[field].away;
+      x(); const away = field === 'gun' ? p.slot !== 'ability' && !!(p.inv.ability || k.gunStash.tourdeforce) : k[field].away && !k.busy();
+      p.input.fire = p.input.firePressed = true; g.tick(); p.input.fire = p.input.firePressed = false; // shoots the gun, not the ult
+      const kept = field === 'gun' ? (p.inv.ability?.mag ?? k.gunStash.tourdeforce?.mag) === 5 : !!k[field] && (field !== 'beams' || k.beams.left === 3);
+      x(); const back = field === 'gun' ? p.slot === 'ability' : !k[field].away;
+      out[agent] = { out1, away, kept, back };
+    }
+    return { pass: Object.values(out).every(o => o.out1 && o.away && o.kept && o.back), ...out };
+  }],
   ['Crouching: spread x0.85 (Classic x0.9) and, standing still, 15% less sideways recoil', async () => {
     const g = await __start({ agent: 'cinder', map: 'arena', botCount: 1, botMode: 'static' });
     const p = g.player;
