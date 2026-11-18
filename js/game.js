@@ -110,6 +110,7 @@ export class Game {
     const player = new Combatant(this, { name: 'You' });
     player.loadout = { ...opts.loadout };
     player.kit = opts.noAbilities ? null : new Kit(player, opts.agent);
+    player.cheats = opts.custom?.cheats || null; // a custom game's cheats are yours alone
     this.smokes = [];
     this.zones = [];
     for (const w of this.walls || []) this.removeWall(w);
@@ -162,6 +163,7 @@ export class Game {
     }
     if (this.mode && this.state === 'playing') this.mode.tick(now);
     for (const b of this.bots) if (b.alive) b.brain.think(now, DT);
+    for (const c of this.combatants) if (c.cheats && c.alive) this.applyCheats(c);
     this.onInputs?.(); // online: record this tick's ability inputs (net.js)
     for (const c of this.combatants) {
       if (c.remote) {
@@ -344,6 +346,27 @@ export class Game {
       c.st.blindLen = dur * k;
     }
     this.emit('flash', { pos, owner });
+  }
+
+  // Custom game cheats (issue #84), every tick for whoever has them: money, abilities with no cooldowns, the
+  // ultimate always ready, and magazines that never run dry.
+  applyCheats(c) {
+    const ch = c.cheats, k = c.kit;
+    if (ch.money && this.mode) c.credits = 9000;
+    if (ch.abilities && k) {
+      for (const key of ['c', 'q', 'e']) {
+        const a = k.agent.abilities[key], max = a.pips && this.mode ? a.pips : Math.max(1, a.charges);
+        if (k.charges[key] < max) k.charges[key] = max;
+        k.ready[key] = 0;
+      }
+      k.gas.fuel = 100; k.energy = 100; k.slideAt = 0; k.nebulas = 2; k.tpReady = 0;
+      if (k.starsLeft !== undefined && k.starsLeft < 1) k.starsLeft = 1;
+    }
+    if (ch.ult && k && !k.blades && !k.beams && !k.launcher) k.ultPoints = k.ultCost;
+    if (ch.ammo) for (const slot of ['primary', 'secondary']) {
+      const g = c.inv[slot];
+      if (g && g.def.mag && !g.reloading) { g.mag = g.def.mag; g.reserve = g.def.reserve ?? g.reserve; }
+    }
   }
 
   // Ballast's Scout Drone (issue #81), driven like a player: WASD the way its owner looks, standing still when
@@ -1496,6 +1519,7 @@ export class Game {
 
   damage(target, attacker, amount, info) {
     if (!target.alive || amount <= 0) return;
+    if (target.cheats?.invincible) return; // custom game: can't die
     if (attacker !== target && !this.isEnemy(attacker, target)) return; // no friendly fire
     const now = this.time;
     if (target.st.intangibleUntil > now && !info.spike) return; // Vanish: can't be hurt

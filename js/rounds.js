@@ -67,18 +67,23 @@ export class RoundMode {
     p.agentId = p.kit.id;
     g.combatants = [p];
     g.bots = [];
-    for (let i = 0; i < 9; i++) {
-      const team = i < 4 ? 0 : 1;
+    // A custom game (issue #84) sets the lobby: your team is half of it (rounded up), the enemy the rest, and its
+    // bots fill the enemy side first, then yours. Otherwise it is 5 against 5.
+    const cu = this.opts.custom;
+    const foes = cu ? Math.max(1, Math.min(Math.floor(cu.players / 2), cu.bots)) : 5;
+    const mates = cu ? Math.max(0, Math.min(Math.ceil(cu.players / 2) - 1, cu.bots - foes)) : 4;
+    for (let i = 0; i < mates + foes; i++) {
+      const team = i < mates ? 0 : 1;
       const c = new Combatant(g, { name: names[i], isBot: true, color: TEAM_COLORS[team] });
       c.team = team;
       c.credits = ECON.start;
       // Agents are unique within a team (your team's four never repeat your pick).
       const slot = slots?.[team].shift();
-      c.agentId = slot?.a || (team === 0 ? agents[i] : agentsB[i - 4]);
+      c.agentId = slot?.a || (team === 0 ? agents[i] : agentsB[i - mates]);
       if (slot && !slot.bot) c.slotFor = slot.n;
       c.kit = new Kit(c, c.agentId);
       c.loadout = { primary: null, secondary: 'classic' };
-      c.brain = new Bot(c, g, this.opts.difficulty, 'fight');
+      c.brain = new Bot(c, g, this.opts.difficulty, cu ? this.opts.botMode || 'fight' : 'fight');
       g.combatants.push(c);
       g.bots.push(c);
     }

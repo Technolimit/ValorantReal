@@ -276,6 +276,21 @@ const checks = [
       out.lightspeedPause = paused && turned; }
     return { pass: Object.values(out).every(Boolean), ...out };
   }],
+  ['Custom game: lobby size and bots set the teams; cheats give money, abilities, ultimate, ammo and no damage', async () => {
+    const cheats = { money: true, abilities: true, ult: true, ammo: true, invincible: true };
+    const g = await __start({ mode: 'custom', custom: { base: 'rounds', players: 6, bots: 4, botMode: 'static', cheats }, map: 'divide' });
+    __live(g);
+    const p = g.player, k = p.kit, m = g.mode;
+    const mates = g.combatants.filter(c => c !== p && !g.isEnemy(p, c)).length, foes = g.combatants.filter(c => g.isEnemy(p, c)).length;
+    p.credits = 0; k.charges.c = 0; k.ultPoints = 0; p.inv.secondary.mag = 1;
+    g.tick();
+    const cheatsOn = p.credits === 9000 && k.charges.c >= 1 && k.ultPoints === k.ultCost && p.inv.secondary.mag === p.inv.secondary.def.mag;
+    const foe = g.combatants.find(c => g.isEnemy(p, c));
+    g.damage(p, foe, 500, { part: 'head', def: { id: 'vandal', name: 'Vandal' }, dist: 5, point: p.eye() });
+    const g2 = await __start({ mode: 'custom', custom: { base: 'dm', players: 5, bots: 4, botMode: 'fight', cheats: { money: false, abilities: false, ult: false, ammo: false, invincible: false } }, map: 'arena' });
+    const dmBots = g2.bots.length;
+    return { pass: !!m && mates === 1 && foes === 3 && cheatsOn && p.alive && p.hp === 100 && dmBots === 4, mates, foes, cheatsOn, alive: p.alive, dmBots };
+  }],
   ['Collaterals: a headshot or a killing shot carries on to the enemy behind; a body shot that does not kill stops', async () => {
     const g = await __start({ agent: 'cinder', map: 'arena', botCount: 2, botMode: 'static' });
     const p = g.player, [b1, b2] = g.bots;

@@ -703,6 +703,10 @@ button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
 .home-slot.filled small { color: var(--muted); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; }
 .home-slot.filled small.lead { color: var(--gold); }
 .party-pop { position: absolute; z-index: 3; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(320px, 92vw); padding: 14px 16px 16px; background: #0d141c; border: 1px solid var(--line); border-top: 2px solid var(--accent); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6); display: flex; flex-direction: column; gap: 8px; }
+.custom-pop label { display: flex; flex-direction: column; gap: 3px; }
+.custom-pop label.custom-cheat { flex-direction: row; align-items: center; gap: 8px; font-size: 13px; }
+.custom-pop select { background: #0a1016; color: inherit; border: 1px solid var(--line); padding: 4px 6px; }
+.custom-pop p { margin: 0; color: var(--muted); font-size: 11px; }
 .party-pop header { display: flex; justify-content: space-between; align-items: center; }
 .party-pop header b { font-size: 13px; letter-spacing: 3px; text-transform: uppercase; }
 .party-pop header button { background: none; border: 0; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; }
@@ -843,6 +847,7 @@ button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
       <h3>Queue</h3>
       <button class="mode" data-mode="dm"><b>Deathmatch</b><small>Free-for-all · instant respawns · free loadout</small></button>
       <button class="mode" data-mode="rounds"><b>5v5 Rounds</b><small>Plant / defuse · buy phase · first to 13</small></button>
+      <button class="mode" data-mode="custom"><b>Custom</b><small id="custom-sum">Your lobby · bots · cheats</small></button>
       <button id="menu-maps" class="home-row"><span>Map</span><b id="menu-map"></b></button>
       <button id="menu-online" class="home-row"><span>Servers</span><b>Online</b></button>
       <button id="menu-skins" class="home-row"><span>Skins</span><b>Collection</b></button>
@@ -865,6 +870,21 @@ button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
         </div>
         <button class="home-slot" type="button" data-slot="1" title="Invite a friend">+</button>
         <button class="home-slot far" type="button" data-slot="3" title="Invite a friend">+</button>
+        <div id="custom-pop" class="party-pop custom-pop" hidden>
+          <header><b>Custom game</b><button id="custom-close" type="button" aria-label="Close">&times;</button></header>
+          <label><small>Rules</small><select id="custom-base"><option value="dm">Deathmatch</option><option value="rounds">5v5 Rounds (plant / defuse)</option></select></label>
+          <label><small>Players in the lobby (you included): <b id="custom-players-v"></b></small><input id="custom-players" type="range" min="2" max="12" step="1"></label>
+          <label><small>Bots: <b id="custom-bots-v"></b></small><input id="custom-bots" type="range" min="0" max="11" step="1"></label>
+          <label><small>Bots</small><select id="custom-botmode"><option value="fight">Fight</option><option value="static">Stand still</option></select></label>
+          <small>Cheats (for you)</small>
+          <label class="custom-cheat"><input type="checkbox" data-cheat="money"> Infinite money</label>
+          <label class="custom-cheat"><input type="checkbox" data-cheat="abilities"> Infinite abilities (no cooldowns)</label>
+          <label class="custom-cheat"><input type="checkbox" data-cheat="ult"> Ultimate always ready</label>
+          <label class="custom-cheat"><input type="checkbox" data-cheat="ammo"> Infinite ammo</label>
+          <label class="custom-cheat"><input type="checkbox" data-cheat="invincible"> Can't die</label>
+          <p id="custom-note"></p>
+          <button id="custom-done" class="primary" type="button">Done</button>
+        </div>
         <div id="party-pop" class="party-pop" hidden>
           <header><b>Party</b><button id="party-close" type="button" aria-label="Close">&times;</button></header>
           <div id="party-lead">
