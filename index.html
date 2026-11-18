@@ -142,6 +142,8 @@ button { font: inherit; }
 #inspecthint { position: absolute; left: 50%; top: calc(50% + 78px); transform: translateX(-50%); font-size: 12px; letter-spacing: 1px; text-shadow: 0 1px 3px #000; color: var(--muted); white-space: nowrap; }
 #inspecthint b { color: var(--text); letter-spacing: 2px; margin-right: 10px; text-transform: uppercase; }
 #inspecthint kbd { font: 700 11px system-ui, sans-serif; border: 1px solid var(--line); padding: 0 4px; margin: 0 3px 0 8px; color: var(--text); }
+#teamnote { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); font-size: 13px; letter-spacing: 1px; text-shadow: 0 1px 3px #000; background: rgba(30,50,110,0.55); border: 1px solid rgba(111,168,255,0.6); padding: 5px 12px; border-radius: 3px; white-space: nowrap; }
+#teamnote b { color: #9cc4ff; }
 #pickhint kbd { font: 700 12px system-ui, sans-serif; border: 1px solid var(--line); padding: 0 5px; margin-right: 6px; }
 #minimap { position: absolute; left: 16px; top: 14px; width: 210px; height: 210px; background: rgba(10, 16, 24, 0.55); border: 1px solid var(--line); border-radius: 4px; }
 #minimap.big { left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(8, 12, 18, 0.88); box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35); z-index: 5; }
@@ -795,6 +797,7 @@ button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
   <canvas id="spray" hidden></canvas>
   <canvas id="minimap" hidden></canvas>
   <div id="pickhint" hidden></div>
+  <div id="teamnote" hidden></div>
   <div id="inspecthint" hidden></div>
   <pre id="debug" hidden></pre>
   <div id="death" hidden>

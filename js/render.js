@@ -144,6 +144,13 @@ function hexTexture(cells = 14, fade = true, glow = 0.45) {
   return t;
 }
 
+// A gadget's owner-only marker: a small diamond above it, drawn over everything (through walls).
+function ownerIcon(color) {
+  const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.09), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false }));
+  m.position.y = 0.45; m.renderOrder = 999;
+  return m;
+}
+
 // A soft round blot: solid in the middle, fading out to the rim (Dread's shadow).
 function softDiscTexture() {
   const S = 128, c = document.createElement('canvas');
@@ -740,9 +747,9 @@ export class Renderer {
     g.on('pulse', ({ pos, r, color, cyl }) => (cyl ? this.fxColumn(pos, r, cyl, color, 0.7) : this.fxRing(pos, r, color, 0.7)));
     g.on('lockdown', ({ zone }) => this.fxRing(zone.pos, zone.r, 0x4fd1a5, 0.9));
     g.on('trap', ({ zone }) => this.fxRing(zone.pos, 4, 0x4fd1a5, 0.5));
+    g.on('tether', (t) => this.fxTether(t));
     g.on('throw', (t) => this.fxThrow(t));
     g.on('wall', (w) => this.fxWall(w));
-    g.on('contractColumn', (e) => this.fxContractColumn(e));
     g.on('contract', ({ k }) => this.fxArena(k));
     g.on('drop', (d) => this.fxDrop(d));
     g.on('device', (d) => this.fxDevice(d));
@@ -1698,9 +1705,10 @@ export class Renderer {
       return;
     }
     if (a.wallPreview) {
-      const yaw = p.yaw + (kit.rot ? Math.PI / 2 : 0), alongX = Math.abs(Math.cos(yaw)) > Math.abs(Math.sin(yaw));
-      const w = a.wallPreview;
-      pv.wall.scale.set(alongX ? w.half * 2 : (w.th || 0.3), w.h, alongX ? (w.th || 0.3) : w.half * 2);
+      // Turned exactly as it will stand (hold right click to turn it).
+      const yaw = p.yaw + (kit.wallTurn || 0), w = a.wallPreview;
+      pv.wall.scale.set(w.half * 2, w.h, w.th || 0.3);
+      pv.wall.rotation.set(0, yaw, 0);
       pv.wall.position.set(pos[0], pos[1] + w.h / 2, pos[2]);
       pv.wall.material.color.setHex(col);
     } else {
@@ -1807,6 +1815,7 @@ export class Renderer {
     } else if (d.kind === 'cage') {
       const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.06, 6), mat(0x3c4652, 0xd8dde6)); ring.position.y = 0.03; g.add(ring);
       light = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mat(0xffffff, 0xd8dde6)); light.position.y = 0.08; g.add(light);
+      g.userData.icon = ownerIcon(0xd8dde6); g.add(g.userData.icon);
     } else if (d.kind === 'cam') {
       const body = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 8), mat(0x2b2f36)); g.add(body);
       light = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), mat(0xffffff, 0xd8dde6)); light.position.z = -0.12; g.add(light);
@@ -1845,6 +1854,7 @@ export class Renderer {
       const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.06, 12), mat(0x2b3440)); disc.position.y = 0.03;
       light = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mat(0x9be15d, 0x9be15d)); light.position.y = 0.08;
       g.add(disc, light);
+      g.userData.icon = ownerIcon(0x9be15d); g.add(g.userData.icon);
     } else if (d.kind === 'recon') {
       // Sonar Bolt stuck where it landed, pulsing.
       const tip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), mat(0xffffff, 0x6ab7ff));
@@ -1858,7 +1868,9 @@ export class Renderer {
       if (d.model === 'paintshell') g.add(paintShellModel());
       else if (d.model === 'bomblet') g.add(bombletModel());
       else if (d.model === 'rocket') { const r = rocketModel(); g.add(r); g.userData.flame = r.userData.flame; g.userData.aim = true; }
-      else if (d.model === 'arrow') {
+      else if (d.model === 'knife') { // Zero Point in flight: a slim glowing blade, point first
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.3), mat(0x6fa8ff, 0x3f6fff)); g.add(blade); g.userData.aim = true;
+      } else if (d.model === 'arrow') {
         const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.7, 6), mat(0x2b3440)); shaft.rotation.x = Math.PI / 2;
         const tip = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.12, 8), mat(0xffffff, d.color)); tip.rotation.x = Math.PI / 2; tip.position.z = 0.4;
         g.add(shaft, tip); g.userData.aim = true;
@@ -1882,6 +1894,12 @@ export class Renderer {
           g.traverse(m => { if (m.material) { m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = 0.4; m.material.depthWrite = false; } });
         }
       }
+      const icon = g.userData.icon;
+      if (icon) { // its owner sees it through walls, the same size on screen near or far
+        const cp = this.camera.position;
+        icon.visible = d.owner === this.game.player;
+        icon.scale.setScalar(Math.max(1, hyp(cp.x - d.pos[0], cp.y - d.pos[1], cp.z - d.pos[2]) * 0.06));
+      }
       if (d.kind === 'drone') g.rotation.y = Math.atan2(-d.dir[0], -d.dir[2]);
       if (g.userData.aim && !d.rest && (d.vel[0] || d.vel[1] || d.vel[2])) g.lookAt(d.pos[0] + d.vel[0], d.pos[1] + d.vel[1], d.pos[2] + d.vel[2]);
       if (g.userData.flame) g.userData.flame.scale.set(1, 0.7 + Math.random() * 0.6, 1);
@@ -1895,6 +1913,7 @@ export class Renderer {
         trail.visible = g.visible;
       }
       if (d.kind === 'boombot' || d.kind === 'decoy' || d.kind === 'tiger' || d.kind === 'prowler' || d.kind === 'gate') g.rotation.y = Math.atan2(-d.dir[0], -d.dir[2]);
+      if (d.kind === 'prowler') g.position.y += 0.45 + 0.08 * Math.sin(now * 6); // it floats, bobbing, instead of running on the floor
       if (d.kind === 'hawk') g.rotation.set(0, Math.atan2(-d.dir[0], -d.dir[2]), 0);
       if (d.kind === 'cam') { const ow = d.owner; g.rotation.set(0, ow.yaw, 0); g.visible &&= !(ow.kit?.view === d); }
       if (d.kind === 'tiger' || d.kind === 'sdrone' || d.kind === 'owl') g.visible &&= !(d.owner.kit?.pilot === d);
@@ -1911,15 +1930,18 @@ export class Renderer {
   // Deployable wall: a translucent energy slab that rises out of the floor.
   fxWall(w) {
     const b = w.box;
-    const size = [b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]];
+    // A turned wall (w.rot) is one slab at its angle; its collision is a chain of blocks (game.addTurnedWall).
+    const size = w.rot ? [w.rot.len, w.rot.h, w.rot.th] : [b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]];
+    const cx = () => (w.rot ? w.pos[0] : (b.min[0] + b.max[0]) / 2), cz = () => (w.rot ? w.pos[2] : (b.min[2] + b.max[2]) / 2), y0 = w.rot ? w.pos[1] : b.min[1];
     const g = new THREE.Group();
     const STY = {
-      bulwark: [0x2a8f74, 0x1d6b56, 0x7fffd4, 0.85], ice: [0xbfefff, 0x4fb8d8, 0xe8fbff, 0.8], iso: [0x5a2fa8, 0x9b5cff, 0xd6b8ff, 0.7],
+      bulwark: [0x2a8f74, 0x1d6b56, 0x7fffd4, 0.85], ice: [0xbfefff, 0x4fb8d8, 0xe8fbff, 1], iso: [0x5a2fa8, 0x9b5cff, 0xd6b8ff, 1], // issue #81: Frost Wall and Push Wall can't be seen through
       cosmic: [0x2a1450, 0xb06bff, 0xffd27a, 0.92],
     }[w.style] || [0x2a8f74, 0x1d6b56, 0x7fffd4, 0.85];
     const op = STY[3];
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(...size), new THREE.MeshStandardMaterial({ color: STY[0], emissive: STY[1], emissiveIntensity: 0.6, roughness: 0.4, metalness: 0.2, transparent: op < 1, opacity: op, side: THREE.DoubleSide }));
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(...size), new THREE.MeshStandardMaterial({ color: STY[0], emissive: STY[1], emissiveIntensity: 0.6, roughness: 0.4, metalness: 0.2, transparent: true, opacity: op, side: THREE.DoubleSide })); // transparent only so it can fade out at the end
     const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(...size)), new THREE.LineBasicMaterial({ color: STY[2] }));
+    if (w.rot) g.rotation.y = w.rot.yaw;
     g.add(slab, edge);
     // Breakable ice (Frost Wall): cracks spread over both faces as it takes damage, in two clear stages.
     let cracks = null;
@@ -1944,12 +1966,12 @@ export class Renderer {
       };
       cracks = [stage(5, 17), stage(9, 91)];
     }
-    g.position.set((b.min[0] + b.max[0]) / 2, b.min[1] + size[1] / 2, (b.min[2] + b.max[2]) / 2);
+    g.position.set(cx(), y0 + size[1] / 2, cz());
     const t0 = this.game.time;
     this.fxAdd(g, () => (w.removed ? (w.goneAt != null ? w.goneAt + 0.4 : 0) : Infinity), (now) => {
       const k = w.removed && w.goneAt != null ? Math.max(0.01, 1 - (now - w.goneAt) / 0.4) : Math.min(1, (now - t0) / 0.3); // rises in 0.3 s; arena covers sink in 0.4 s
       g.scale.y = Math.max(0.01, k);
-      g.position.set((b.min[0] + b.max[0]) / 2, b.min[1] + size[1] * k / 2, (b.min[2] + b.max[2]) / 2); // follows a pushed wall
+      g.position.set(cx(), y0 + size[1] * k / 2, cz()); // follows a pushed wall
       const left = w.until - now;
       slab.material.opacity = left < 1.5 ? op * Math.max(0.2, left / 1.5) : op;
       if (cracks) { // a third of its health gone: first cracks; two thirds: badly cracked, cloudier and darker
@@ -1959,29 +1981,6 @@ export class Renderer {
         slab.material.emissiveIntensity = frac < 0.34 ? 0.15 : frac < 0.67 ? 0.35 : 0.6;
         if (frac < 0.34) slab.material.opacity *= 0.75 + 0.1 * Math.sin(now * 12);
       }
-    });
-  }
-
-  // Kill Contract's column: a tall sheet of violet honeycomb energy, as wide as the column, sweeping forward
-  // along the ground through walls, brightest at its base.
-  fxContractColumn({ from, dir, dist, time, width }) {
-    const H = 16, tex = this.contractTex ||= hexTexture(14, true, 0.5);
-    const add = (o) => new THREE.MeshBasicMaterial({ color: 0x9b5cff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, ...o });
-    const g = new THREE.Group();
-    const sheet = new THREE.Mesh(new THREE.PlaneGeometry(width, H), add({ map: tex }));
-    sheet.position.y = H / 2;
-    const base = new THREE.Mesh(new THREE.PlaneGeometry(width, 1.4), add({ color: 0xb98aff }));
-    base.rotation.x = -Math.PI / 2; base.position.y = 0.04;
-    const core = new THREE.Mesh(new THREE.PlaneGeometry(width, 0.35), add({ color: 0xd9c2ff }));
-    core.position.y = 0.2;
-    g.add(sheet, base, core);
-    g.rotation.y = Math.atan2(dir[0], dir[2]); // the sheet spans across the direction it travels
-    const t0 = this.game.time;
-    this.fxAdd(g, t0 + time, (now) => {
-      const k = (now - t0) / time, a = Math.min(1, k * 10, (1 - k) * 8);
-      g.position.set(from[0] + dir[0] * dist * k, from[1], from[2] + dir[2] * dist * k);
-      sheet.material.opacity = a * (0.9 + 0.1 * Math.sin(now * 23));
-      base.material.opacity = 0.55 * a; core.material.opacity = 0.9 * a;
     });
   }
 
@@ -2031,6 +2030,42 @@ export class Renderer {
     for (const sm of this.smokes || []) this.scene.remove(sm.group);
     if (this.smokes) this.smokes.length = 0;
     this.clearFx2(); this.finShake = null;
+  }
+
+  // Grasp (Seize): a line from the centre of the orb's burst to each player it holds, while it holds them.
+  fxTether({ from, who, until, color = 0xb07a9a }) {
+    const geo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([...from, ...from], 3));
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 }));
+    line.frustumCulled = false;
+    this.fxAdd(line, () => (who.alive ? until : 0), (now) => {
+      const a = geo.attributes.position;
+      a.setXYZ(1, who.pos[0], who.pos[1] + 1.1, who.pos[2]);
+      a.needsUpdate = true;
+      line.material.opacity = 0.6 + 0.3 * Math.sin(now * 10);
+    });
+  }
+
+  // Terror trails (Nyx): for her team, a line from her back along the way each marked enemy has gone since being
+  // marked, up to where they are now, drawn over everything.
+  updateTrails() {
+    const g = this.game, me = g.player, pool = (this.trailLines ||= new Map());
+    const live = new Set();
+    for (const c of g.combatants) {
+      if (!c.trailPts || !c.trailBy || !me || g.isEnemy(me, c.trailBy) || !c.alive) continue;
+      live.add(c);
+      let L = pool.get(c);
+      if (!L) {
+        const geo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(84 * 3), 3));
+        L = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xc58ab0, transparent: true, opacity: 0.85, depthTest: false }));
+        L.frustumCulled = false; L.renderOrder = 998;
+        this.scene.add(L); pool.set(c, L);
+      }
+      const pts = [c.trailBy.pos, ...c.trailPts, c.pos], a = L.geometry.attributes.position;
+      for (let i = 0; i < pts.length; i++) a.setXYZ(i, pts[i][0], pts[i][1] + (i === 0 ? 1 : 0.25), pts[i][2]);
+      L.geometry.setDrawRange(0, pts.length);
+      a.needsUpdate = true;
+    }
+    for (const [c, L] of pool) if (!live.has(c)) { this.scene.remove(L); pool.delete(c); }
   }
 
   updateSmokes() {
@@ -2338,6 +2373,7 @@ export class Renderer {
     this.updateFx(dt, now);
     this.updateLasers();
     this.updateSmokes();
+    this.updateTrails();
     this.updateFx2();
     this.updateSpike();
     this.updateOrbs();

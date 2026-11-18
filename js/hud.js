@@ -82,6 +82,14 @@ export class Hud {
     g.on('start', () => { if (g.player.kit) this.buildAbilities(g.player.kit.id); });
     g.on('abilityLocked', ({ who, key }) => { if (who === g.player && performance.now() - (this.lockMsgAt || 0) > 600) { this.lockMsgAt = performance.now(); this.center(key === 'suppressed' ? '<small>SUPPRESSED · NO ABILITIES</small>' : '<small>CAN\'T USE THAT UNTIL THE ROUND STARTS</small>'); } });
     g.on('abilityFail', ({ who }) => { if (who === g.player) this.center('<small>CAN\'T PLACE THAT THERE</small>'); });
+    // Zero Point: the whole team is told who it caught, at the bottom of the screen, for 4 s.
+    g.on('zeroPoint', ({ owner, hit }) => {
+      if (!g.player || g.isEnemy(g.player, owner)) return;
+      const el = $('teamnote');
+      el.innerHTML = hit.length ? `ZERO POINT · SUPPRESSED <b>${hit.map(c => esc(c.name)).join(' · ')}</b>` : 'ZERO POINT · NOBODY CAUGHT';
+      el.hidden = false;
+      clearTimeout(this.noteT); this.noteT = setTimeout(() => { el.hidden = true; }, 4000);
+    });
   }
 
   center(html) {
@@ -389,7 +397,9 @@ export class Hud {
     if (kit.pilot) add({ tiger: 'Stalker', sdrone: 'Scout Drone', owl: 'Kestrel' }[kit.pilot.kind] || 'Drone', kit.pilot.until, kit.pilot.life);
     if (kit.pilot?.kind === 'owl' && now < kit.pilot.dartReady) add('Dart reload', kit.pilot.dartReady, 5);
     if (kit.beams) add('Talon Strike', kit.beams.until, 6);
+    if (kit.downed && !kit.downed.upAt) add('Down', kit.downed.until, 15);
     if (kit.launcher) add('Finale', kit.launcher.until, 10);
+    if (now < p.st.hasteUntil) add('Haste', p.st.hasteUntil, 3);
     if (g.contract && (g.contract.a === p || g.contract.b === p)) add('Duel', g.contract.until, 15);
     if (kit.nest) add('Nest', kit.nest.until, 15);
     for (const o of kit.orbs || []) add('Soul orb', o.until, 3);

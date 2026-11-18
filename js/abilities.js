@@ -124,6 +124,14 @@ function blowSatchel(o, d) {
   g.knockback(o, d.pos, 5, 14, 8.5); // out to 5 m; less up than sideways (the spec's ~8.5 m/s up)
   if (g.time >= d.armAt) g.explode(o, d.pos, 5, 50, 10, src('kicker', 'Kicker'), 0xffb547, false, false, 1.5);
 }
+// Lattice's cage goes off: a 7.25 s smoke, a short cylinder over it.
+function setOffCage(kit, d) {
+  if (!d || d.removed) return false;
+  d.removed = true;
+  kit.owner.game.addSmoke(kit.owner, [d.pos[0], d.pos[1], d.pos[2]], kit.now, { radius: 3.45, life: 7.25, color: 0xb9c3d1, kind: 'cage', cyl: { up: 3.63, down: 0.5 }, grow: 0.35, contract: 0.5 });
+  return true;
+}
+
 // Nyx's thrown orbs (Grasp, Omen Eye): pressing the key again while one is in the air drops it straight down.
 function dropOrbNow(kit) {
   const d = kit.orb;
@@ -570,7 +578,7 @@ export const AGENTS = {
     blurb: 'An inventor who holds ground with machines: hidden swarm grenades, a hunting alarm bot, an automatic turret and a lockdown nobody walks out of.',
     abilities: {
       c: {
-        item: 'grenade', name: 'Hive', desc: 'Throw a swarm grenade (left click) or lob it short (right click); it hides where it lands, and enemies only see it from within 5.25 m. Look at one and press F to set off just that one, or press C again once both are out (or you have none left) to set them all off: 0.5 s later, 45/s for 5 s in a 4.5 m radius.', charges: 2, cooldown: 40, equip: 0.74, unequip: 0.7,
+        item: 'grenade', name: 'Hive', desc: 'Throw a swarm grenade (left click) or lob it short (right click); it hides where it lands, and enemies only see it from within 5.25 m. Look at one, even through a wall (you see an icon on yours), and press F to set off just that one, or press C again once both are out (or you have none left) to set them all off: 0.5 s later, 45/s for 5 s in a 4.5 m radius.', charges: 2, cooldown: 40, equip: 0.74, unequip: 0.7,
         armHint: 'LEFT CLICK: THROW · RIGHT CLICK: LOB', throw: 'c2',
         use(kit, mode) {
           const o = kit.owner, g = o.game;
@@ -586,7 +594,7 @@ export const AGENTS = {
         },
         // F while looking at one of them sets off just that one.
         activate(kit, d) { setOffHive(kit, d); return true; },
-        activates: 'swarm',
+        activates: 'swarm', activateThrough: true,
       },
       q: {
         item: 'device', name: 'Watchdog', desc: 'Deploy an alarm bot (10 m); it takes 1.5 s to dig in. When an enemy comes within 6 m it chases them and bursts 2.5 m from them: Vulnerable (double damage taken) for 4 s. It switches off while you are more than 40 m away. Hold Q for 0.6 s to call it back from anywhere (back 20 s later).', charges: 1, cooldown: 40, equip: 0.85,
@@ -1033,7 +1041,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Phase Out', desc: 'Slip into another dimension for 10 s: enemies can’t see or hurt you, but you can’t shoot. Press X to come back early.', points: 8, equip: 0.8,
+        name: 'Phase Out', desc: 'Slip into another dimension for 10 s: enemies can’t see or hurt you, but you can’t shoot. You can still send out a Double and set up and use Riftwalk. Press X to come back early.', points: 8, equip: 0.8,
         use(kit) {
           const o = kit.owner;
           o.st.channelUntil = kit.now + 0.2;
@@ -1102,7 +1110,7 @@ export const AGENTS = {
     blurb: 'An information broker. Wires, cages and a camera tell him everything — and his ultimate reads the minds of the fallen.',
     abilities: {
       c: {
-        item: 'device', name: 'Tripline', desc: 'Hold the wire, aim at a wall (up to 20 m) and left click to stretch it across the gap at that height (up to 15 m); it arms 1.5 s later. An enemy who crosses it is tethered and slowed by half. 0.7 s later it zaps them: slowed for another second and revealed for as long as it holds them. Tearing free (6.2 m) costs a zap too; shooting the wire (20 HP) frees them. It resets and can catch again. Look at it from anywhere with no wall in between and press F to pick it up.', charges: 2, cooldown: 30, equip: 0.8, unequip: 0.7,
+        item: 'device', name: 'Tripline', desc: 'Hold the wire, aim at a wall (up to 20 m) and left click to stretch it across the gap at that height (up to 15 m); it arms 1.5 s later. An enemy who crosses it is tethered and slowed by half on the spot. 0.7 s later it zaps them: slowed for another second and revealed for as long as it holds them. Tearing free (6.2 m) costs a zap too; shooting the wire (20 HP) frees them. It resets and can catch again. Look at it from anywhere with no wall in between and press F to pick it up.', charges: 2, cooldown: 30, equip: 0.8, unequip: 0.7,
         // While held: a dotted line shows exactly where the wire will stretch.
         pointsPreview(kit) {
           const e = tripEnds(kit.owner);
@@ -1117,13 +1125,17 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'device', name: 'Gridlock', desc: 'Hold a cage, left click to throw it (20 m/s); it sets up 0.35 s after it lands. To trigger one, look at it and press Q: it becomes a 7.25 s smoke. Each cage is triggered separately.', charges: 2, cooldown: 30,
+        item: 'device', name: 'Gridlock', desc: 'Press Q to throw a cage at once (20 m/s); it sets up 0.35 s after it lands, and you see an icon on it through walls. To trigger one, look at it, even through a wall, and press F (or Q once you have none left): it becomes a 7.25 s smoke. Each cage is triggered separately. Enemies who pass through the smoke are revealed to your team.', charges: 2, cooldown: 30, instant: true,
         use(kit) {
           const o = kit.owner, g = o.game;
           o.game.throwProj(o, 20, 0.7, { color: 0xd8dde6, onStop: (d) => { d.removed = true; const pos = floorUnder(g, d.pos); later(kit, 0.35, () => { if (o.alive) g.addDevice({ kind: 'cage', owner: o, pos, life: 300 }); }); } });
         },
+        // F while looking at one (through walls too) sets it off.
+        activate(kit, d) { return setOffCage(kit, d); },
+        activates: 'cage', activateThrough: true,
         reuse(kit) {
-          // Look at one of your cages and press Q to set off that one.
+          // Out of cages: look at one of yours and press Q to set off that one.
+          if (kit.charges.q > 0) return false;
           const o = kit.owner, g = o.game, e = o.eye(), f = dirFromAngles(o.yaw, o.pitch);
           let best = null, bestCos = Math.cos(9 * DEG);
           for (const d of g.devices) {
@@ -1132,14 +1144,11 @@ export const AGENTS = {
             const cos = (f[0] * dx + f[1] * dy + f[2] * dz) / dist;
             if (cos > bestCos && dist < 80) { bestCos = cos; best = d; }
           }
-          if (!best) return false;
-          best.removed = true;
-          g.addSmoke(o, [best.pos[0], best.pos[1], best.pos[2]], kit.now, { radius: 3.45, life: 7.25, color: 0xb9c3d1, kind: 'cage', cyl: { up: 3.63, down: 0.5 }, grow: 0.35, contract: 0.5 });
-          return true;
+          return !!best && setOffCage(kit, best);
         },
       },
       e: {
-        item: 'device', name: 'Watcher', desc: 'Hold the camera, left click to stick it on the surface you aim at (20 m). Press E again to look through it; enemies it sees are revealed, and left click fires a tracking dart (pings every 2 s for 8 s). E again to leave. One shot destroys it (back 45 s later). Look at it from anywhere with no wall in between and press F to pick it up (back 25 s later); no cooldown runs while it is up.', charges: 1, cooldown: 45, equip: 0.8, deployed: true,
+        item: 'device', name: 'Watcher', desc: 'Hold the camera, left click to stick it on the surface you aim at (20 m). Press E again to look through it, and left click to fire a tracking dart: an enemy it hits is revealed every 2 s for 8 s. Just seeing someone through it doesn’t reveal them. E again to leave. One shot destroys it (back 45 s later). Look at it from anywhere with no wall in between and press F to pick it up (back 25 s later); no cooldown runs while it is up.', charges: 1, cooldown: 45, equip: 0.8, deployed: true,
         use(kit) {
           const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           const hit = g.world.raycast(eye, d, 20);
@@ -1172,7 +1181,7 @@ export const AGENTS = {
     blurb: 'Hunts with nightmares. Her prowlers chase down whoever she’s looking at, her orb holds them in place, and her terror wave marks everyone it touches.',
     abilities: {
       c: {
-        name: 'Hound', desc: 'Send a prowler (10 m/s, 60 HP) that follows your crosshair for 2.5 s. Your hand stays out steering it, so no gun until it locks on or ends. It chases the first enemy it sees within 15 m, or one marked by a terror trail, and bites from 2.5 m: nearsighted for 2.75 s.', charges: 2, cooldown: 25, equip: 1.1, unequip: 0.7, noGun: true,
+        name: 'Hound', desc: 'Send a prowler (10 m/s, 60 HP) that follows your crosshair for 2.5 s. Your hand stays out steering it, so no gun until it locks on or ends. It floats along at waist height. It chases the first enemy it sees within 15 m, or follows a terror trail to whoever is marked, at any distance, hopping up boxes and ledges while it chases (only then); its clock stops while it chases someone, as a Boomer’s does. It bites from 2.5 m: nearsighted for 2.75 s.', charges: 2, cooldown: 25, equip: 1.1, unequip: 0.7, noGun: true,
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
           // Her hand stays out steering it, no gun, until it locks on, bites or runs out (Kit.tick gives the gun back).
@@ -1180,19 +1189,25 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Grasp', desc: 'Throw an orb. It drops straight down after 1.5 s in the air, or when you press Q again, and bursts 0.7 s after landing: enemies within 6.6 m are held in place and deafened for 4.5 s and lose 75 health to Decay (never lethal; it comes back over 5 s).', charges: 1, cooldown: 25, equip: 0.8, throw: 'c2',
+        name: 'Grasp', desc: 'Throw an orb. It drops straight down after 1.5 s in the air, or when you press Q again, and bursts 0.7 s after landing: enemies within 6.6 m are held in place and deafened for 4.5 s and lose 75 health to Decay (never lethal; it comes back over 5 s). They aren’t revealed: a line runs from the centre to each one held.', charges: 1, cooldown: 25, equip: 0.8, throw: 'c2',
         use(kit) {
           const o = kit.owner, g = o.game;
           kit.orb = toss(o, 'c2', { color: 0xb07a9a, drop: { at: 1.5, g: 2.7 }, onStop: (d) => {
             d.removed = true;
             const pos = floorUnder(g, d.pos);
-            later(kit, 0.7, () => { for (const c of g.pulse(o, [pos[0], pos[1] + 1, pos[2]], 6.58, 'hold+deaf', 4.5, 0xb07a9a)) g.decay(c, 75, { delay: 0, over: 5 }); });
+            later(kit, 0.7, () => {
+              const at = [pos[0], pos[1] + 1, pos[2]];
+              for (const c of g.pulse(o, at, 6.58, 'hold+deaf', 4.5, 0xb07a9a)) {
+                g.decay(c, 75, { delay: 0, over: 5 });
+                g.emit('tether', { from: at, who: c, until: g.time + 4.5, color: 0xb07a9a }); // a line from the centre to each one held
+              }
+            });
           } });
         },
         reuse: dropOrbNow,
       },
       e: {
-        name: 'Omen Eye', desc: 'Throw an eye. It drops straight down after 1.5 s in the air, or when you press E again, and opens where it lands: for 1.5 s every enemy in its line of sight within 30 m is revealed and marked with a terror trail for 12 s, which prowlers follow. One shot destroys it.', charges: 1, cooldown: 50, equip: 0.85, throw: 'c2',
+        name: 'Omen Eye', desc: 'Throw an eye. It drops straight down after 1.5 s in the air, or when you press E again, and opens where it lands: for 1.5 s every enemy it can see within 30 m is revealed, the whole time it is open, and marked with a terror trail for 12 s: a line your team sees back to you along the way they went, which prowlers follow. One shot destroys it.', charges: 1, cooldown: 50, equip: 0.85, throw: 'c2',
         use(kit) {
           const o = kit.owner, g = o.game;
           kit.orb = toss(o, 'c2', { color: 0xb07a9a, drop: { at: 1.5, g: 2.7 }, onStop: (d) => {
@@ -1200,7 +1215,15 @@ export const AGENTS = {
             const pos = [d.pos[0], d.pos[1] + 0.3, d.pos[2]];
             later(kit, 0.325, () => {
               const eye = g.addDevice({ kind: 'haunt', owner: o, pos, life: 1.5 });
-              for (const t of [0, 0.5, 1, 1.45]) later(kit, t, () => { if (!eye.removed) for (const c of g.pulse(o, pos, 30, 'reveal', 0.6, 0xb07a9a, true)) c.st.trailUntil = g.time + 12; });
+              // For as long as it is open it reveals whoever it can see (no pulses), and marks them with a trail.
+              for (let t = 0; t < 1.5; t += 0.1) later(kit, t, () => {
+                if (eye.removed) return;
+                for (const c of g.combatants) {
+                  if (!g.affectable(c) || !g.isEnemy(o, c) || hyp(c.pos[0] - pos[0], c.pos[1] - pos[1], c.pos[2] - pos[2]) > 30 || !g.world.lineOfSight(pos, c.eye())) continue;
+                  c.st.revealUntil = Math.max(c.st.revealUntil, g.time + 0.2);
+                  g.markTrail(c, o, 12);
+                }
+              });
             });
           } });
         },
@@ -1218,7 +1241,8 @@ export const AGENTS = {
             for (const c of g.inStrip(o, from, yaw, i * step, (i + 1) * step, 10)) {
               if (hit.has(c)) continue;
               hit.add(c);
-              c.st.revealUntil = c.st.trailUntil = c.st.deafUntil = g.time + 8;
+              c.st.revealUntil = c.st.deafUntil = g.time + 8;
+              g.markTrail(c, o, 8);
               g.decay(c, 75);
             }
           });
@@ -1233,12 +1257,12 @@ export const AGENTS = {
     blurb: 'A healer who shapes ice. Walls off a lane, slows a push, patches herself up — and refuses to stay down.',
     abilities: {
       c: {
-        item: 'orb', name: 'Frost Wall', desc: 'Hold the crystal: a preview shows the wall where you aim (15 m). Right click rotates it, left click raises a solid ice wall of four pieces (10.4 m × 2.6 m, 0.9 m thick) for 40 s; each piece shows cracks as it is shot down. Each piece has 400 HP, hardening to 600 after 2 s, and enemies can shoot it down. You can stand on it — raise it under yourself to boost up.', charges: 1, cooldown: 40, rotate: true, equip: 0.8, unequip: 0.7,
+        item: 'orb', name: 'Frost Wall', desc: 'Hold the crystal: a preview shows the wall where you aim (15 m). Hold right click to turn it to any angle (the preview is exactly where it will stand), left click raises a solid ice wall of four pieces (10.4 m × 2.6 m, 1.2 m thick) for 40 s, on the floor or on top of whatever you aim at; each piece shows cracks as it is shot down. Each piece has 400 HP, hardening to 600 after 2 s, and anyone, you and your team included, can shoot it down. You can stand on it — raise it under yourself to boost up.', charges: 1, cooldown: 40, rotate: true, equip: 0.8, unequip: 0.7,
         preview(kit) { const o = kit.owner; return aimPoint(o, 15, { floor: true, back: 0.4, bodies: false }); },
-        wallPreview: { half: 5.2, h: 2.6, th: 0.9 },
+        wallPreview: { half: 5.2, h: 2.6, th: 1.2 },
         use(kit) {
           const o = kit.owner, pos = target(kit, this);
-          return o.game.addWall(o, pos, o.yaw + (kit.rot ? Math.PI / 2 : 0), 40, { half: 5.2, h: 2.6, th: 0.45, style: 'ice', lift: true, segments: 4, hp: 400, fortify: 200 });
+          return o.game.addTurnedWall(o, pos, o.yaw + kit.wallTurn, 40, { half: 5.2, h: 2.6, th: 0.6, style: 'ice', lift: true, segments: 4, hp: 400, fortify: 200 });
         },
       },
       q: {
@@ -1515,21 +1539,19 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Duel', desc: 'Send a tall column of energy ahead of you (14 m wide, through walls, 40 m over 4 s, starting 0.8 s after the cast); casting it also gives you Focus’s shield if it isn’t up. You and the first enemy it reaches are pulled into an arena of your own, 21 m apart and both healed to 150. You get two cover walls in front of you, they get one; the walls come down 2.5 s into the fight. 1.5 s to face off, then up to 13 s to fight, guns only. The winner goes back 2 s after the kill, to where they were; if time runs out, you both die.', points: 7, equip: 1.1, unequip: 0.8,
+        name: 'Duel', desc: 'Mark out an area ahead of you, 14 m wide and 40 m long, through walls; casting it also gives you Focus’s shield if it isn’t up. 0.8 s later it takes whichever enemy in it is closest to you, and the two of you are pulled into an arena of your own, 21 m apart and both healed to 150. You get two cover walls in front of you, they get one; the walls come down 2.5 s into the fight. 1.5 s to face off, then up to 13 s to fight, guns only. The winner goes back 2 s after the kill, to where they were; if time runs out, you both die.', points: 7, equip: 1.1, unequip: 0.8,
         use(kit) {
-          const o = kit.owner, g = o.game, f = fwd2(o.yaw), from = [o.pos[0], o.pos[1], o.pos[2]];
+          const o = kit.owner, g = o.game, f = fwd2(o.yaw), yaw = o.yaw, from = [...o.pos];
           if (g.contract) return false;
           if (!(kit.now < kit.focusUntil)) { kit.focusUntil = kit.now + 12; kit.shield = true; } // patch 10.04: a won duel always drops an orb
+          // The area lights up on the ground for everyone; when it activates it takes the enemy in it closest to him
+          // (issue #81: an area, not a travelling wave).
+          g.emit('quakeLine', { from: [from[0], from[1] + 0.05, from[2]], to: [from[0] + f[0] * 40, from[1] + 0.05, from[2] + f[1] * 40], width: 14, life: 1.2, color: 0x9b5cff });
           later(kit, 0.8, () => {
-            g.emit('contractColumn', { who: o, from, dir: [f[0], 0, f[1]], dist: 40, time: 4, width: 14 });
-            g.sweep(o, from, [f[0], 0, f[1]], 10, 40, {
-              hit: (c, d) => hyp(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 7,
-              apply: (c) => {
-                if (!o.alive || g.contract) return 'stop';
-                g.startContract(o, c);
-                return 'stop';
-              },
-            });
+            if (!o.alive || g.contract) return;
+            let best = null, bestD = Infinity;
+            for (const c of g.inStrip(o, from, yaw, 0, 40, 7, 6)) { const d = hyp(c.pos[0] - o.pos[0], c.pos[2] - o.pos[2]); if (d < bestD) { bestD = d; best = c; } }
+            if (best) g.startContract(o, best);
           });
           g.emit('ability', { who: o, type: 'ult' });
         },
@@ -1550,7 +1572,7 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Lightspeed', desc: 'Hold the light: left click dashes twice, right click once. Each dash is about 9 m in 0.45 s, the way you are moving; the first also carries you upward.', charges: 1, cooldown: 25, equip: 0.8, unequip: 0.2,
+        name: 'Lightspeed', desc: 'Hold the light: left click dashes twice, right click once. Each dash is about 9 m in 0.45 s, the way you are moving; the first also carries you upward. There is a 0.3 s pause between the two, so you can change the direction of the second.', charges: 1, cooldown: 25, equip: 0.8, unequip: 0.2,
         armHint: 'LEFT CLICK: TWO DASHES · RIGHT CLICK: ONE',
         use(kit, mode) {
           const o = kit.owner;
@@ -1562,7 +1584,9 @@ export const AGENTS = {
             o.game.emit('ability', { who: o, type: 'dash' });
           };
           go(true);
-          if (mode !== 'right') mine(kit, 0.5, () => go(false)); // the second dash follows 0.05 s after the first ends
+          // A short pause between the two (issue #81): the second goes the way you are moving when it starts, so you
+          // can turn it.
+          if (mode !== 'right') mine(kit, 0.75, () => go(false));
         },
       },
       e: {
@@ -1590,7 +1614,11 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Convergent Paths', desc: 'Focus your light and cast a beam 36 m ahead, through walls. Casting briefly slows your aim and movement. After 1 s the beam expands to 13.5 m wide: everyone in it is Hindered for 6 s, and you gain 10% speed for 7 s.', points: 8,
+        name: 'Convergent Paths', desc: 'Press X to focus your light: the strip it will cover (36 m ahead, 13.5 m wide) shows on the ground as you aim. Left click casts the beam, through walls. Casting briefly slows your aim and movement. After 1 s the beam expands to 13.5 m wide: everyone in it is Hindered for 6 s, and you gain 10% speed for 7 s.', points: 8,
+        // Two steps (issue #81): X takes it out and the strip it will cover shows on the ground; left click casts.
+        equip: 0.8, armHint: 'LEFT CLICK: CAST',
+        preview(kit) { const o = kit.owner, f = fwd2(o.yaw); return [o.pos[0] + f[0] * 36, o.pos[1], o.pos[2] + f[1] * 36]; },
+        stripPreview: { start: 0, width: 13.5 },
         use(kit) {
           const o = kit.owner, g = o.game, f = fwd2(o.yaw), a = [o.pos[0], o.pos[1] + 1, o.pos[2]], b = [a[0] + f[0] * 36, a[1], a[2] + f[1] * 36];
           g.emit('ability', { who: o, type: 'ult' });
@@ -1617,18 +1645,18 @@ export const AGENTS = {
     blurb: 'A veteran artillery officer. Scouts with a drone, tags with sticky charges and calls guided missiles onto the map.',
     abilities: {
       c: {
-        item: 'device', name: 'Scout Drone', desc: 'Hold the drone, left click to launch it: it drops to the floor and runs where you look for up to 6 s (7.5 m/s, 42 HP), and its low camera only sees about 12 m. Left click pulses (from 0.6 s after launch, then every 1.5 s): enemies within 16 m are revealed and suppressed (no abilities) for 8 s.', charges: 1, cooldown: 40, equip: 0.8,
+        item: 'device', name: 'Scout Drone', desc: 'Hold the drone, left click to launch it: it drops to the floor and you drive it for up to 6 s like yourself (42 HP): WASD moves it the way you look and it stands still when you let go, Space jumps, and holding Shift or crouch makes it creep, silent (3.5 m/s instead of 7.5 m/s, when it can be heard). Its low camera only sees about 12 m. Left click makes it hop and pulse (from 0.6 s after launch, then every 1.5 s): enemies within 16 m are revealed and suppressed (no abilities) for 8 s.', charges: 1, cooldown: 40, equip: 0.8,
         use(kit) {
           const o = kit.owner, e = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
-          kit.pilot = o.game.addDevice({ kind: 'sdrone', owner: o, pos: [e[0] + d[0], e[1], e[2] + d[2]], dir: d, life: 6, steer: true, fly: true, speed: 7.5 });
+          kit.pilot = o.game.addDevice({ kind: 'sdrone', owner: o, pos: [e[0] + d[0], e[1], e[2] + d[2]], dir: d, life: 6, vel: [0, 0, 0] }); // driven like a player (game.moveScoutDrone)
         },
       },
       q: {
-        item: 'grenade', name: 'Sticky Charge', desc: 'Hold the charge: left click throws it (41 m/s) to stick to the first thing it hits, right click lets it bounce once first. 0.8 s after it sticks it bursts: 35 damage within 1.25 m, down to 20 at 5.25 m, and everyone caught is concussed for 2.5 s.', charges: 1, cooldown: 25, equip: 0.5, throw: 'c5', unequip: 0.4,
+        item: 'grenade', name: 'Sticky Charge', desc: 'Hold the charge: left click throws it (41 m/s, dropping in a fair arc) to stick to the first thing it hits, right click lets it bounce once first. 0.8 s after it sticks it bursts: 35 damage within 1.25 m, down to 20 at 5.25 m, and everyone caught is concussed for 2.5 s.', charges: 1, cooldown: 25, equip: 0.5, throw: 'c5', unequip: 0.4,
         armHint: 'LEFT CLICK: STICK · RIGHT CLICK: BOUNCE ONCE',
         use(kit, mode) {
           const o = kit.owner, g = o.game;
-          toss(o, 'c5', { rule: mode === 'right' ? 'bounce' : 'stick', bounces: 1, bounce: 0.6, color: 0xd9a441, size: 0.11, life: 3, onStop: (d) => {
+          g.throwProj(o, THROW.c5[0], 0.45, { rule: mode === 'right' ? 'bounce' : 'stick', bounces: 1, bounce: 0.6, color: 0xd9a441, size: 0.11, life: 3, onStop: (d) => { // a heavier arc than before (issue #81)
             d.until = g.time + 1; // it only times out in the air
             later(kit, 0.8, () => {
               d.removed = true;
@@ -1639,7 +1667,7 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Missile Call', desc: 'Open the map and mark a target per charge (2 charges, 45 m); press E (or right click) to fire. Each missile flies from you along the shortest way there, around walls (22 m/s), and goes off three times, half a second apart: 65 within 2.5 m, down to 50 at 4.5 m, each time.', charges: 2, cooldown: 35, instant: true, unequip: 0.42, recharge: 'none',
+        name: 'Missile Call', desc: 'Open the map and mark a target per charge (2 charges, 45 m); press E (or right click) to fire. Each missile flies from you along the shortest way there, around walls (22 m/s), and goes off three times: 0.3 s after it lands, then 0.7 s apart: 65 within 2.5 m, down to 50 at 4.5 m, each time.', charges: 2, cooldown: 35, instant: true, unequip: 0.42, recharge: 'none',
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
@@ -1654,7 +1682,7 @@ export const AGENTS = {
                 const route = path.slice(1).map(([cx, cz]) => { const c = map.cellCenter(cx, cz); return [c.x, (map.heights[cz][cx] ?? 0) + 2.2, c.z]; });
                 route.push([p[0], p[1] + 0.5, p[2]]);
                 g.addDevice({ kind: 'missile', owner: o, pos: [eye[0], eye[1] + 0.4, eye[2]], route, idx: 0, speed: 22, vel: [0, 0, 0], life: 20, color: 0xff8c2e,
-                  onArrive: () => { for (const t of [0, 0.5, 1]) later(kit, t, () => g.explode(o, [p[0], p[1] + 0.5, p[2]], 4.5, 65, 50, src('missile', 'Missile Call'), 0xff8c2e, false, false, 2.5)); } });
+                  onArrive: () => { for (const t of [0.3, 1, 1.7]) later(kit, t, () => g.explode(o, [p[0], p[1] + 0.5, p[2]], 4.5, 65, 50, src('missile', 'Missile Call'), 0xff8c2e, false, false, 2.5)); } }); // issue #81: a beat after it lands, then 0.7 s apart
               }
             },
           };
@@ -1714,15 +1742,21 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'knife', name: 'Zero Point', desc: 'Hold the knife, left click to throw it (30 m). It sticks to the first surface and after 1 s pulses 15 m: enemies caught are suppressed (no abilities) for 8 s. It doesn’t show where they are. Enemies can shoot it out first (20 HP).', charges: 1, cooldown: 50, equip: 0.8, unequip: 0.5,
+        item: 'knife', name: 'Zero Point', desc: 'Hold the knife, left click to throw it (30 m/s, dropping only a little). It sticks to the first surface and after 1 s scans a 15 m sphere: enemies caught are suppressed (no abilities) for 8 s. It doesn’t show where they are, but your whole team is shown who was caught, at the bottom of the screen. Enemies can shoot it out first (20 HP).', charges: 1, cooldown: 50, equip: 0.8, unequip: 0.5,
         use(kit) {
-          const o = kit.owner, pos = aimPoint(o, 30, { back: 0.15 });
-          const ft = flight(o.eye(), pos, 22), g = o.game;
-          g.emit('throw', { who: o, from: o.eye(), to: pos, time: ft, color: 0x6fa8ff });
-          later(kit, ft, () => {
-            const knife = g.addDevice({ kind: 'zknife', owner: o, pos, life: 15 });
-            later(kit, 1, () => { if (!knife.removed) g.pulse(o, pos, 15, 'suppress', 8, 0x6fa8ff); }); // suppresses only: no outline
-          });
+          const o = kit.owner, g = o.game;
+          // Thrown like a knife (issue #81): it leaves along your aim and drops only a little, sticking to whatever
+          // it hits first. A second after it sticks it scans a 15 m sphere: everyone caught is suppressed, and your
+          // team is told who.
+          g.throwProj(o, 30, 0.25, { rule: 'stick', model: 'knife', color: 0x6fa8ff, life: 3, onStop: (d) => {
+            d.removed = true;
+            const pos = [...d.pos], knife = g.addDevice({ kind: 'zknife', owner: o, pos, life: 15 });
+            later(kit, 1, () => {
+              if (knife.removed) return;
+              const hit = g.pulse(o, pos, 15, 'suppress', 8, 0x6fa8ff); // suppresses only: no outline
+              g.emit('zeroPoint', { owner: o, hit });
+            });
+          } });
         },
       },
       x: {
@@ -1747,7 +1781,7 @@ export const AGENTS = {
     passive: { name: 'Afterlife', desc: 'Ruse (E) works even while you are dead, until the round (or your respawn) comes.' },
     abilities: {
       c: {
-        instant: true, name: 'Pick-Me-Up', desc: 'Absorb the life force of an enemy you killed or damaged who died in the last 6 s. It takes 0.7 s, then gives +50 temporary health (it lasts 10 s, then fades) and 10% haste for 3 s.', charges: 1, cooldown: 30,
+        instant: true, name: 'Pick-Me-Up', desc: 'Absorb the life force of an enemy you killed or damaged who died in the last 6 s. It takes 0.7 s, then gives +50 temporary health (it lasts 10 s, then fades) and 15% haste for 3 s (shown as a timer).', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, g = o.game;
           const prey = g.combatants.find(c => !c.alive && g.isEnemy(o, c) && c.diedAt > kit.now - 6 && (c.damagedBy?.has(o) || c.killedBy?.killer === o) && !c.soulTaken);
@@ -1756,7 +1790,7 @@ export const AGENTS = {
           g.emit('ability', { who: o, type: 'windup' });
           mine(kit, 0.7, () => {
             kit.healOver(50, 1, 150); // 50 temporary health, at 50 a second
-            o.st.hasteUntil = kit.now + 3; o.st.hasteAmt = 0.1;
+            o.st.hasteUntil = kit.now + 3; o.st.hasteAmt = 0.15; // a clear burst of speed (issue #81)
             g.emit('ability', { who: o, type: 'heal' });
           });
         },
@@ -1901,6 +1935,7 @@ export class Kit {
     this.beams = null;
     this.gunStash = {};
     this.recallT = { e: 0, q: 0 };
+    this.wallTurn = 0; // Frost Wall: how far it has been turned from square-on
     this.armed = null;
     this.tailwind = null;
     this.regrow = null;
@@ -1942,13 +1977,14 @@ export class Kit {
   // F while looking at one of your own gadgets that can be set off by hand (a hidden Hive): set it off.
   activateInView() {
     const o = this.owner, g = o.game, e = o.eye(), f = dirFromAngles(o.yaw, o.pitch);
+    if (g.mode?.phase === 'buy') return false; // nothing goes off before the round (F picks things up instead)
     for (const [k, a] of Object.entries(this.agent.abilities)) {
       if (!a.activates) continue;
       let best = null, bestCos = Math.cos(8 * DEG);
       for (const d of g.devices) {
         if (d.kind !== a.activates || d.owner !== o || d.removed) continue;
         const c = [d.pos[0], d.pos[1] + 0.15, d.pos[2]], dx = c[0] - e[0], dy = c[1] - e[1], dz = c[2] - e[2], dist = hyp(dx, dy, dz);
-        if (dist > 60 || !g.world.lineOfSight(e, c)) continue;
+        if (dist > 60 || (!a.activateThrough && !g.world.lineOfSight(e, c))) continue;
         const cos = (f[0] * dx + f[1] * dy + f[2] * dz) / Math.max(dist, 0.01);
         if (cos > bestCos) { bestCos = cos; best = d; }
       }
@@ -2117,8 +2153,9 @@ export class Kit {
       if (this.armed && this.armed.k === k) { this.armed = null; continue; } // press again to put it away
       if (buyLock && !buyPhaseAllows(this.id, k)) { g.emit('abilityLocked', { who: o, key: k }); continue; } // issue #81: not at all in the buy phase
       if (this.mapPick && this.mapPick.key === k) { this.mapConfirm(); continue; } // press again to confirm map picks
-      if (ab[k].reuse && (!this.busy() || this.view || this.pilot) && ab[k].reuse(this)) continue; // second press: detonate / toggle / teleport
-      if (this.busy()) continue;
+      const driftOk = !!this.drift && (k === 'c' || k === 'e'); // Phase Out: Double and Riftwalk still work (issue #81)
+      if (ab[k].reuse && (!this.busy() || this.view || this.pilot || driftOk) && ab[k].reuse(this)) continue; // second press: detonate / toggle / teleport
+      if (this.busy() && !driftOk) continue;
       if (this.charges[ab[k].shares || k] <= 0 && !ab[k].free?.(this)) continue;
       if (!ab[k].instant) { this.armed = { k, at: now }; o.gun.onHolster(); g.emit('abilityArm', { who: o, key: k }); continue; } // equip first
       this.spend(k);
@@ -2143,7 +2180,7 @@ export class Kit {
         g.emit('abilityLocked', { who: o, key: k }); // held, not thrown: keep holding it
         inp.firePressed = inp.altPressed = false; this.chargeT = 0;
       }
-      if (a.rotate && inp.altPressed) { this.rot = !this.rot; inp.altPressed = false; } // right click rotates the preview
+      if (a.rotate) { if (inp.alt) this.wallTurn = (this.wallTurn + 1.6 / 128) % (2 * Math.PI); inp.altPressed = false; } // hold right click to turn it (about 90 degrees a second)
       if (a.distance) {
         // Hold right click to push the marker out (wraps back in at max range); R makes it stop at walls.
         if (this.dist === undefined || this.distFor !== k) { this.dist = a.distance.start; this.distFor = k; }
@@ -2212,7 +2249,7 @@ export class Kit {
     this.tickWave3(now);
     if (this.shadow || this.mapPick || this.pilot || this.view) {
       // Frozen while picking a spot or channelling. A piloted drone takes the movement keys instead.
-      this.pilotInput = { fwd: inp.fwd, side: inp.side, jumpHeld: inp.jumpHeld, crouch: inp.crouch };
+      this.pilotInput = { fwd: inp.fwd, side: inp.side, jumpHeld: inp.jumpHeld || inp.jump, crouch: inp.crouch, walk: inp.walk };
       inp.fwd = inp.side = 0; inp.jump = false;
       const sh = this.shadow;
       if (sh && sh.phase === 'channel' && sh.shade.removed && now < sh.until) this.endShadow(false); // the shade was shot
@@ -2569,6 +2606,7 @@ export class Kit {
       else if (t.kind === 'sdrone' && inp.firePressed && now >= (t.pulseAt ?? t.born + 0.6)) {
         // Scout Drone's pulse: a flattened sphere 16 m across the ground; revealed and suppressed for 8 s.
         t.pulseAt = now + 1.5;
+        t.hop = true; // it hops as it sends the signal
         g.pulse(o, t.pos, 16, 'suppress+reveal', 8, 0xd9a441, false, { flat: 0.4 });
       }
     }
@@ -2633,7 +2671,7 @@ export class Kit {
     // Only health, never shields; health and shields together never go above 150 (overheal above 100 fades away).
     const cap = Math.max(PLAYER.hp, Math.min(this.healCap, 150 - (o.armor || 0)));
     if (now < this.healOverUntil) { if (o.hp < cap) o.hp = Math.min(cap, o.hp + this.healOverRate * DT); }
-    else if (o.hp > PLAYER.hp && now >= (this.overhealUntil || 0)) o.hp = Math.max(PLAYER.hp, o.hp - 25 * DT);
+    else if (o.hp > PLAYER.hp && now >= (this.overhealUntil || 0) && !this.downed) o.hp = Math.max(PLAYER.hp, o.hp - 25 * DT); // (downed in Overload, the 850 stays put)
     // Viper's Pit holds while Venom stays inside it; once she leaves it ends 8 s later.
     const nz = this.nestZone;
     if (nz && now < nz.until) { // it spreads from 1.5 m to 9 m over 5 s
