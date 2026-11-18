@@ -235,7 +235,7 @@ export class Combatant {
       wz = (-cy * inp.fwd - sy * inp.side) / len;
     }
     const maxS = this.maxSpeed(now);
-    if (inp.jump) this.jumpBuffer = 0.1;
+    if (inp.jump && !this.dash?.slide) this.jumpBuffer = 0.1; // no jumping out of a slide
     else this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
 
     let jumped = false;

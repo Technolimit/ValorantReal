@@ -144,6 +144,18 @@ function hexTexture(cells = 14, fade = true, glow = 0.45) {
   return t;
 }
 
+// A soft round blot: solid in the middle, fading out to the rim (Dread's shadow).
+function softDiscTexture() {
+  const S = 128, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.6, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, S, S);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 // The duel arena's floor: a holodeck grid, a fine line every metre and a brighter one every 4 m.
 function arenaFloorTexture() {
   const S = 256, c = document.createElement('canvas');
@@ -1502,19 +1514,30 @@ export class Renderer {
   }
 
   // A thrown projectile flying from `from` to `to` in `time` seconds, with a little arc.
-  fxThrow({ from, to, via, time, color, wave, straight, rocket, model, stay }) {
+  fxThrow({ from, to, via, path, time, color, wave, disc, straight, rocket, model, stay }) {
     if (rocket) return this.fxRocket(from, to, time);
     if (model === 'paintshell' || model === 'bomblet') return this.fxGrenade(from, to, time, model, stay ?? time);
-    const m = wave
+    const m = disc // Dread: a round, smoky disc of shadow facing the way it goes
+      ? new THREE.Mesh(new THREE.CircleGeometry(disc, 48), new THREE.MeshBasicMaterial({ color, map: (this.softDiscTex ||= softDiscTexture()), transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }))
+      : wave
       ? new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }))
       : new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color }));
     if (wave) m.lookAt(to[0] - from[0], 0, to[2] - from[2]);
     const t0 = this.game.time;
     const d = hyp(to[0] - from[0], to[2] - from[2]);
     const lerp3 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+    let pathLen = 0;
+    if (path) for (let i = 1; i < path.length; i++) pathLen += hyp(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1], path[i][2] - path[i - 1][2]);
     this.fxAdd(m, t0 + time, (now) => {
       const k = Math.min(1, (now - t0) / time);
-      if (via) { // curving throw: quadratic curve through the bend point
+      if (path?.length > 1) { // a set path (Sunflare's curve, with its bounces): along it at an even pace
+        let want = k * pathLen;
+        for (let i = 1; i < path.length; i++) {
+          const a = path[i - 1], b = path[i], l = hyp(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+          if (want <= l || i === path.length - 1) { m.position.set(...lerp3(a, b, l > 0 ? Math.min(1, want / l) : 1)); break; }
+          want -= l;
+        }
+      } else if (via) { // curving throw: quadratic curve through the bend point
         const p = lerp3(lerp3(from, via, k), lerp3(via, to, k), k);
         m.position.set(...p);
       } else if (wave || straight) { // straight line (waves, Glare's eye)

@@ -143,15 +143,19 @@ const BUY_PHASE_OK = {
 BUY_PHASE_OK.regent += 'q'; // Sovereign (Headhunter): a gun, and guns can be fired in the buy phase
 export const buyPhaseAllows = (agentId, k) => (BUY_PHASE_OK[agentId] || '').includes(k);
 
-// The point just beyond the first wall ahead (within `maxWall` m), `beyond` metres past its far side.
+// The point just beyond the first wall ahead (within `maxWall` m), `beyond` metres past its far side. The wall is
+// found along your aim (so a low wall you look down at counts); boxes that touch count as one wall; past it, the
+// point carries on level, the way you face.
 function throughWall(o, maxWall = 8, beyond = 2.5) {
-  const g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, 0);
-  const hits = g.world.raycastAll(eye, d, maxWall + 6).filter(h => !h.box.floor);
+  const g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
+  const hits = g.world.raycastAll(eye, d, maxWall + 12).filter(h => !h.box.floor);
   if (!hits.length || hits[0].tIn > maxWall) return null;
-  const t = hits[0].tOut + beyond;
-  const p = [eye[0] + d[0] * t, eye[1], eye[2] + d[2] * t];
-  const f = g.world.raycast([p[0], p[1] + 0.5, p[2]], [0, -1, 0], 20);
-  if (f) p[1] = p[1] + 0.5 - f.t;
+  let out = hits[0].tOut;
+  for (const h of hits.slice(1)) { if (h.tIn > out + 0.3) break; out = Math.max(out, h.tOut); } // one wall, several boxes
+  const exit = [eye[0] + d[0] * out, eye[1] + d[1] * out, eye[2] + d[2] * out], f = fwd2(o.yaw);
+  const p = [exit[0] + f[0] * beyond, exit[1], exit[2] + f[1] * beyond];
+  const top = Math.max(p[1], eye[1]) + 0.5, fl = g.world.raycast([p[0], top, p[2]], [0, -1, 0], 30);
+  p[1] = fl ? top - fl.t : p[1];
   return p;
 }
 
@@ -388,11 +392,11 @@ export const AGENTS = {
     passive: { name: 'Kindled', desc: 'Your own fire heals you instead of hurting you.' },
     abilities: {
       c: {
-        item: 'orb', name: 'Firebreak', desc: 'Hold the flame, then left click: a wall of fire races out 13 m ahead (20 m/s). Keep the button held and turn to bend it. It stands 8 s, blocks sight, burns enemies (30/s) and heals you (up to 50).', charges: 1, cooldown: 25, equip: 0.8, unequip: 0.5,
+        item: 'orb', name: 'Firebreak', desc: 'Hold the flame, then left click: a wall of fire races out 20 m ahead (30 m/s, so it is up in about 0.67 s). Keep the button held and turn to bend it. It stands 8 s, blocks sight, burns enemies (30/s) and heals you (up to 50).', charges: 1, cooldown: 25, equip: 0.8, unequip: 0.5,
         armHint: 'LEFT CLICK: CAST · KEEP HOLDING AND TURN TO BEND IT',
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
-          o.game.addDevice({ kind: 'blaze', owner: o, pos: [o.pos[0] + f[0] * 1.2, o.pos[1], o.pos[2] + f[1] * 1.2], yaw: o.yaw, life: 2, speed: 20, maxDist: 13.4, h: 6.75, pool: { left: 50 }, travelled: 0, nextSeg: 0, key: 'fire' });
+          o.game.addDevice({ kind: 'blaze', owner: o, pos: [o.pos[0] + f[0] * 1.2, o.pos[1], o.pos[2] + f[1] * 1.2], yaw: o.yaw, life: 2, speed: 30, maxDist: 20, h: 6.75, pool: { left: 50 }, travelled: 0, nextSeg: 0, key: 'fire' }); // issue #81: 20 m, still out in 0.67 s
           o.game.emit('ability', { who: o, type: 'fire' });
         },
       },
@@ -408,22 +412,45 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'flash', name: 'Sunflare', desc: 'Hold a flare in your hand (no gun), then left click to curve it left or right click to curve it right. It bursts just around the corner 0.5 s later (about 8 m of flight), blinding anyone facing it for up to 1.5 s. In 5v5 one is free each round and two kills bring a used one back.', charges: 2, cooldown: 14, recharge: 'kills', equip: 0.8, unequip: 0.48,
+        item: 'flash', name: 'Sunflare', desc: 'Hold a flare in your hand (no gun), then left click to curve it left or right click to curve it right. It follows a set curve laid along where you look, up or down too, and bounces off walls in its way (twice at most). It bursts just around the corner 0.5 s later (about 8 m of flight), blinding anyone facing it for up to 1.5 s. In 5v5 one is free each round and two kills bring a used one back.', charges: 2, cooldown: 14, recharge: 'kills', equip: 0.8, unequip: 0.48,
         arm: true, armHint: 'LEFT CLICK: CURVE LEFT · RIGHT CLICK: CURVE RIGHT',
         use(kit, mode) {
           const o = kit.owner, g = o.game, eye = o.eye();
-          const f = fwd2(o.yaw), r = right(o.yaw), side = mode === 'right' ? 1 : -1;
-          // A short, quick curve: 2.5 m straight out, then a quarter turn to the side (radius 3.5 m), about 8 m of flight.
-          const pts = [], STRAIGHT = 2.5, R = 3.5;
-          for (let i = 1; i <= 4; i++) pts.push([eye[0] + f[0] * STRAIGHT * i / 4, eye[1] + 0.05 * i, eye[2] + f[1] * STRAIGHT * i / 4]);
+          const f = dirFromAngles(o.yaw, o.pitch), r2 = right(o.yaw), r = [r2[0], 0, r2[1]], side = mode === 'right' ? 1 : -1;
+          // A set curve laid along where you look, up and down included: 2.5 m straight out, then a quarter turn to
+          // the side (radius 3.5 m), about 8 m of flight. A wall in the way bounces it off (up to twice) and the
+          // rest of the curve carries on mirrored (issue #81).
+          const STRAIGHT = 2.5, R = 3.5, offs = [];
+          for (let i = 1; i <= 4; i++) offs.push(f.map(v => v * STRAIGHT * i / 4));
           for (let i = 1; i <= 8; i++) {
             const a = (Math.PI / 2) * i / 8, fw = STRAIGHT + R * Math.sin(a), sd = side * R * (1 - Math.cos(a));
-            pts.push([eye[0] + f[0] * fw + r[0] * sd, eye[1] + 0.2, eye[2] + f[1] * fw + r[1] * sd]);
+            offs.push([f[0] * fw + r[0] * sd, f[1] * fw, f[2] * fw + r[2] * sd]);
           }
-          let pop = aimPoint(o, 1, { back: 0.3 }); // it stops at the first wall in its way
-          for (let i = 0, prev = eye; i < pts.length; prev = pts[i], i++) { if (!g.world.lineOfSight(prev, pts[i])) break; pop = pts[i]; }
-          const ft2 = 0.5; // it goes off 0.5 s after the throw
-          g.emit('throw', { who: o, from: eye, via: pts[5], to: pop, time: ft2, color: 0xffc061 });
+          const reflect = (v, n) => { const k = 2 * (v[0] * n[0] + v[1] * n[1] + v[2] * n[2]); return [v[0] - k * n[0], v[1] - k * n[1], v[2] - k * n[2]]; };
+          const path = [eye], normals = [];
+          let at = eye, prev = [0, 0, 0], done = false;
+          for (const off of offs) {
+            let v = [off[0] - prev[0], off[1] - prev[1], off[2] - prev[2]];
+            prev = off;
+            for (const n of normals) v = reflect(v, n);
+            let left = hyp(v[0], v[1], v[2]);
+            while (left > 1e-4 && !done) {
+              const dir = v.map(x => x / hyp(v[0], v[1], v[2]));
+              const hit = g.world.raycast(at, dir, left);
+              if (!hit) { at = [at[0] + dir[0] * left, at[1] + dir[1] * left, at[2] + dir[2] * left]; left = 0; break; }
+              const t = Math.max(0, hit.t - 0.1);
+              at = [at[0] + dir[0] * t, at[1] + dir[1] * t, at[2] + dir[2] * t];
+              path.push(at);
+              if (normals.length >= 2 || !hit.n) { done = true; break; } // out of bounces: it stops there
+              normals.push(hit.n);
+              v = reflect(dir, hit.n);
+              left -= t;
+            }
+            if (done) break;
+            path.push(at);
+          }
+          const pop = at, ft2 = 0.5; // it goes off 0.5 s after the throw
+          g.emit('throw', { who: o, from: eye, path, to: pop, time: ft2, color: 0xffc061 });
           later(kit, ft2, () => g.flash(o, pop, 1.5));
         },
       },
@@ -454,11 +481,11 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Dread', desc: 'Send a wave of shadow straight ahead (20 m/s, 25 m) that passes through walls. Everyone it touches, teammates included, is nearsighted and deafened for 2 s.', charges: 1, cooldown: 30, equip: 1.1, unequip: 0.7,
+        name: 'Dread', desc: 'Send a round wave of shadow 8.6 m across straight ahead (20 m/s, 25 m) that passes through walls. Everyone it touches, teammates included, is nearsighted and deafened for 2 s.', charges: 1, cooldown: 30, equip: 1.1, unequip: 0.7,
         use(kit) {
           const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           const end = [eye[0] + d[0] * 25, eye[1] + d[1] * 25, eye[2] + d[2] * 25];
-          g.emit('throw', { who: o, from: eye, to: end, time: 25 / 20, color: 0x7a4dff, wave: true });
+          g.emit('throw', { who: o, from: eye, to: end, time: 25 / 20, color: 0x7a4dff, wave: true, disc: 4.3 }); // a big round shadow, as wide as what it hits
           g.sweep(o, eye, d, 20, 25, { r: 4.3, all: true, apply: (c) => { g.status(c, 'near', 2, { near: 7.5 }); g.status(c, 'deaf', 2); } });
         },
       },
@@ -501,11 +528,17 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Arc Dart', desc: 'Draw the bow. Hold left click to charge (three bars over 1 s: each one flies faster and flatter), release to fire. Right click sets 0, 1 or 2 bounces. The dart explodes where it ends up: 75 damage within 1.5 m, down to 30 at 4 m.', charges: 2, cooldown: 25, item: 'bow', charge: 1, equip: 0.8, bounces: true,
+        name: 'Arc Dart', desc: 'Draw the bow. Hold left click to charge (three bars over 1 s: each one flies faster and flatter), release to fire. Right click sets 0, 1 or 2 bounces. The dart crackles for 0.35 s where it ends up, then explodes: 75 damage within 1.5 m, down to 30 at 4 m.', charges: 2, cooldown: 25, item: 'bow', charge: 1, equip: 0.8, bounces: true,
         armHint: bowHint, throw: bowClass,
         use(kit) {
           const o = kit.owner, g = o.game;
-          const boom = (d) => { d.removed = true; g.explode(o, d.pos, 4, 75, 30, src('arcdart', 'Arc Dart'), 0x6ab7ff, false, false, 1.5); };
+          // It sits crackling for 0.35 s where it ends up, then goes off (issue #81).
+          const boom = (d) => {
+            if (d.fusing) return;
+            d.fusing = true; d.vel = [0, 0, 0];
+            g.emit('pulse', { pos: [...d.pos], r: 1.5, color: 0x6ab7ff, owner: o });
+            later(kit, 0.35, () => { d.removed = true; g.explode(o, d.pos, 4, 75, 30, src('arcdart', 'Arc Dart'), 0x6ab7ff, false, false, 1.5); });
+          };
           toss(o, bowClass(kit), { rule: 'bounce', bounces: kit.bounces || 0, bounce: 0.7, friction: 1, hitBodies: true, model: 'arrow', color: 0x6ab7ff, fuse: 4, onStop: boom, onFuse: boom });
         },
       },
@@ -652,13 +685,18 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'grenade', name: 'Napalm', desc: 'Fire an incendiary grenade from the launcher (29 m/s). It bounces off walls, hops once when it lands, and then bursts into a fire that spreads to 4.5 m and burns for 7 s (60/s; a third of that to you and teammates).', charges: 1, cooldown: 25, equip: 1.1, throw: 'c3', unequip: 0.7,
+        item: 'grenade', name: 'Napalm', desc: 'Fire an incendiary grenade from the launcher (29 m/s). It bounces off walls and skips along the ground until it settles, then 0.25 s later bursts into a fire that spreads to 4.5 m and burns for 7 s (60/s; a third of that to you and teammates).', charges: 1, cooldown: 25, equip: 1.1, throw: 'c3', unequip: 0.7,
         use(kit) {
           const o = kit.owner, g = o.game;
-          toss(o, 'c3', { rule: 'bounce', bounces: 1, bounce: 0.3, friction: 0.6, color: 0xff6a1a, onStop: (d) => { // a low hop on landing, then it bursts
-            d.removed = true;
-            g.addZone({ kind: 'fire', owner: o, pos: floorUnder(g, d.pos), r: 4.5, spread: 6, life: 7.75, dps: 60, allyDps: 20, heal: 0, burnsOwner: true, def: src('napalm', 'Napalm') }, g.time);
-          } });
+          // It skips along the ground a few times (issue #81) and only bursts once it has settled, a beat later.
+          toss(o, 'c3', { rule: 'bounce', bounces: 8, bounce: 0.4, friction: 0.7, color: 0xff6a1a, fuse: 5, onStop: (d) => {
+            if (d.fusing) return;
+            d.fusing = true;
+            later(kit, 0.25, () => {
+              d.removed = true;
+              g.addZone({ kind: 'fire', owner: o, pos: floorUnder(g, d.pos), r: 4.5, spread: 6, life: 7.75, dps: 60, allyDps: 20, heal: 0, burnsOwner: true, def: src('napalm', 'Napalm') }, g.time);
+            });
+          }, onFuse: (d) => d.onStop?.(d) });
         },
       },
       e: {
@@ -2472,7 +2510,7 @@ export class Kit {
         // Slide: right click while moving at 3 m/s or more. 12 m/s for 0.6 s, about 7 m.
         const len = hyp(inp.fwd, inp.side), sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
         const dir = [(-sy * inp.fwd + cy * inp.side) / len, (-cy * inp.fwd - sy * inp.side) / len];
-        o.dash = { until: now + 0.6, dir, speed: 12, exit: 8 };
+        o.dash = { until: now + 0.6, dir, speed: 12, exit: 8, slide: true }; // locked in: WASD and jump don't change it (issue #81)
         this.slideAt = g.mode ? Infinity : now + 8; // 5v5: one slide a round, back after two kills
         o.slideShootUntil = now + 0.6; // shooting during the slide is as accurate as standing still
         if (!this.overdrive) { // the slide ends Overclock and your best gun is out at once; in Overload you keep running
@@ -2637,7 +2675,7 @@ export function applyDash(c, now, dt) {
     const k = c.st.slowUntil > now || c.st.stunUntil > now || c.st.hinderUntil > now ? 0.5 : 1; // slowed, concussed, hindered: dash x0.5
     c.vel[0] = c.dash.dir[0] * (c.dash.speed || DASH.speed) * k;
     c.vel[2] = c.dash.dir[1] * (c.dash.speed || DASH.speed) * k;
-    c.vel[1] = Math.max(0, c.vel[1]) + PLAYER.gravity * dt; // hover: cancels this tick's gravity
+    if (!c.dash.slide) c.vel[1] = Math.max(0, c.vel[1]) + PLAYER.gravity * dt; // hover: cancels this tick's gravity (a slide stays on the ground)
   } else {
     const ex = c.dash.exit || DASH.exit;
     c.vel[0] = c.dash.dir[0] * ex;
