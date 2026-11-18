@@ -873,7 +873,7 @@ export const AGENTS = {
           const a = [p[0], p[1] + 1, p[2]], b = [a[0] + f[0] * 10, a[1], a[2] + f[1] * 10];
           later(kit, ft, () => g.emit('quakeLine', { from: a, to: b, width: 6, life: 3.6 })); // the blast area lights up while it charges
           for (const t of [2.2, 2.8, 3.4]) later(kit, ft + t, () => {
-            for (const c of g.inStrip(o, p, yaw, 0, 10, 3, 4)) g.damage(c, o, 80, { part: 'body', def: src('rubble', 'Rubble'), dist: 0, point: c.eye(), wallbang: true });
+            for (const c of g.inStrip(o, p, yaw, 0, 10, 3, 4, true)) { const en = g.isEnemy(o, c); g.damage(c, o, en ? 80 : 27, { part: 'body', def: src('rubble', 'Rubble'), dist: 0, point: c.eye(), wallbang: true, friendly: !en }); }
             g.emit('pulse', { pos: [p[0] + f[0] * 5, p[1] + 0.6, p[2] + f[1] * 5], r: 4, type: 'blast', color: 0xf28c38, owner: o });
           });
         },
@@ -911,7 +911,7 @@ export const AGENTS = {
           for (let i = 0; i < N; i++) later(kit, 0.6 + 0.3 + i * 0.255, () => {
             const d0 = 8 + i * step, a = [from[0] + f[0] * d0, from[1] + 1, from[2] + f[1] * d0], b = [a[0] + f[0] * step, a[1], a[2] + f[1] * step];
             g.emit('quakeLine', { from: a, to: b, width: 18, life: 0.5 });
-            for (const c of g.inStrip(o, from, yaw, d0, d0 + step, 9)) { g.concuss(c, 4); c.vel[1] = 6; c.grounded = false; }
+            for (const c of g.inStrip(o, from, yaw, d0, d0 + step, 9, 6, true)) { g.concuss(c, 4); c.vel[1] = 6; c.grounded = false; }
           });
           g.emit('ability', { who: o, type: 'ult' });
         },
@@ -1238,11 +1238,11 @@ export const AGENTS = {
           for (let i = 0; i < N; i++) later(kit, 0.1 + i * 0.325, () => {
             const a = [from[0] + f[0] * i * step, from[1] + 1, from[2] + f[1] * i * step], b = [a[0] + f[0] * step, a[1], a[2] + f[1] * step];
             g.emit('quakeLine', { from: a, to: b, width: 20, life: 0.6, color: 0xb07a9a });
-            for (const c of g.inStrip(o, from, yaw, i * step, (i + 1) * step, 10)) {
+            for (const c of g.inStrip(o, from, yaw, i * step, (i + 1) * step, 10, 6, true)) {
               if (hit.has(c)) continue;
               hit.add(c);
-              c.st.revealUntil = c.st.deafUntil = g.time + 8;
-              g.markTrail(c, o, 8);
+              c.st.deafUntil = g.time + 8;
+              if (g.isEnemy(o, c)) { c.st.revealUntil = g.time + 8; g.markTrail(c, o, 8); } // only enemies are marked
               g.decay(c, 75);
             }
           });
@@ -1704,7 +1704,7 @@ export const AGENTS = {
               for (let i = 0; i < 18; i++) {
                 const x = s0[0] + f[0] * (i * 2 + 1), z = s0[2] + f[1] * (i * 2 + 1), fl = g.floorAt(x, z) || [x, fl0[1], z];
                 for (let k = 0; k < 4; k++) later(kit, 3.08 + (i + k) * 0.25, () => {
-                  for (const c of g.inStrip(o, s0, yaw, i * 2, i * 2 + 2, 6, 30)) g.damage(c, o, 60, { part: 'body', def: src('barrage', 'Barrage'), dist: 0, point: c.eye(), wallbang: true });
+                  for (const c of g.inStrip(o, s0, yaw, i * 2, i * 2 + 2, 6, 30, true)) g.damage(c, o, g.isEnemy(o, c) ? 60 : 20, { friendly: !g.isEnemy(o, c), part: 'body', def: src('barrage', 'Barrage'), dist: 0, point: c.eye(), wallbang: true });
                   if (k % 2 === 0) g.emit('pulse', { pos: [fl[0], fl[1] + 0.5, fl[2]], r: 4, type: 'blast', color: 0xff8c2e, owner: o });
                 });
               }

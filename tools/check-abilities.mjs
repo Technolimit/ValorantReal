@@ -276,6 +276,25 @@ const checks = [
       out.lightspeedPause = paused && turned; }
     return { pass: Object.values(out).every(Boolean), ...out };
   }],
+  ['Abilities reach teammates in range: concuss, nearsight, a third of the damage; never reveals, suppression or Clampdown', async () => {
+    const g = await __start({ mode: 'rounds', map: 'divide', agent: 'quake', botMode: 'static' });
+    __live(g);
+    const p = g.player, mate = g.combatants.find(c => c !== p && !g.isEnemy(p, c));
+    mate.pos = [...p.pos]; mate.pos[0] += 1; mate.prevPos = [...mate.pos]; mate.hp = 100; mate.armor = 0;
+    const at = [mate.pos[0], mate.pos[1] + 1, mate.pos[2]];
+    g.pulse(p, at, 4, 'stun+near', 2);
+    const concussed = mate.st.stunUntil > g.time && mate.st.nearUntil > g.time;
+    g.pulse(p, at, 4, 'reveal+suppress', 2);
+    const notRevealed = !(mate.st.revealUntil > g.time) && !(mate.st.suppressUntil > g.time);
+    g.explode(p, at, 4, 90, 90, { id: 'x', name: 'x', cat: 'Ability' }, 0xffffff);
+    const third = 100 - mate.hp;
+    g.addZone({ kind: 'lockdown', owner: p, pos: [...mate.pos], r: 32, life: 1, armAt: g.time, dur: 8, slow: 0.833 }, g.time); g.tick();
+    const notDetained = !(mate.st.disarmUntil > g.time);
+    const kills = p.stats.kills; mate.hp = 1;
+    g.explode(p, at, 4, 90, 90, { id: 'x', name: 'x', cat: 'Ability' }, 0xffffff);
+    const noCredit = !mate.alive && p.stats.kills === kills;
+    return { pass: concussed && notRevealed && third === 30 && notDetained && noCredit, concussed, notRevealed, third, notDetained, noCredit };
+  }],
   ['Custom game: lobby size and bots set the teams; cheats give money, abilities, ultimate, ammo and no damage', async () => {
     const cheats = { money: true, abilities: true, ult: true, ammo: true, invincible: true };
     const g = await __start({ mode: 'custom', custom: { base: 'rounds', players: 6, bots: 4, botMode: 'static', cheats }, map: 'divide' });
