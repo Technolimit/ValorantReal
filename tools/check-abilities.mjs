@@ -276,6 +276,40 @@ const checks = [
       out.lightspeedPause = paused && turned; }
     return { pass: Object.values(out).every(Boolean), ...out };
   }],
+  ['Abilities reach teammates in range: concuss, nearsight, a third of the damage; never reveals, suppression or Clampdown', async () => {
+    const g = await __start({ mode: 'rounds', map: 'divide', agent: 'quake', botMode: 'static' });
+    __live(g);
+    const p = g.player, mate = g.combatants.find(c => c !== p && !g.isEnemy(p, c));
+    mate.pos = [...p.pos]; mate.pos[0] += 1; mate.prevPos = [...mate.pos]; mate.hp = 100; mate.armor = 0;
+    const at = [mate.pos[0], mate.pos[1] + 1, mate.pos[2]];
+    g.pulse(p, at, 4, 'stun+near', 2);
+    const concussed = mate.st.stunUntil > g.time && mate.st.nearUntil > g.time;
+    g.pulse(p, at, 4, 'reveal+suppress', 2);
+    const notRevealed = !(mate.st.revealUntil > g.time) && !(mate.st.suppressUntil > g.time);
+    g.explode(p, at, 4, 90, 90, { id: 'x', name: 'x', cat: 'Ability' }, 0xffffff);
+    const third = 100 - mate.hp;
+    g.addZone({ kind: 'lockdown', owner: p, pos: [...mate.pos], r: 32, life: 1, armAt: g.time, dur: 8, slow: 0.833 }, g.time); g.tick();
+    const notDetained = !(mate.st.disarmUntil > g.time);
+    const kills = p.stats.kills; mate.hp = 1;
+    g.explode(p, at, 4, 90, 90, { id: 'x', name: 'x', cat: 'Ability' }, 0xffffff);
+    const noCredit = !mate.alive && p.stats.kills === kills;
+    return { pass: concussed && notRevealed && third === 30 && notDetained && noCredit, concussed, notRevealed, third, notDetained, noCredit };
+  }],
+  ['Custom game: lobby size and bots set the teams; cheats give money, abilities, ultimate, ammo and no damage', async () => {
+    const cheats = { money: true, abilities: true, ult: true, ammo: true, invincible: true };
+    const g = await __start({ mode: 'custom', custom: { base: 'rounds', players: 6, bots: 4, botMode: 'static', cheats }, map: 'divide' });
+    __live(g);
+    const p = g.player, k = p.kit, m = g.mode;
+    const mates = g.combatants.filter(c => c !== p && !g.isEnemy(p, c)).length, foes = g.combatants.filter(c => g.isEnemy(p, c)).length;
+    p.credits = 0; k.charges.c = 0; k.ultPoints = 0; p.inv.secondary.mag = 1;
+    g.tick();
+    const cheatsOn = p.credits === 9000 && k.charges.c >= 1 && k.ultPoints === k.ultCost && p.inv.secondary.mag === p.inv.secondary.def.mag;
+    const foe = g.combatants.find(c => g.isEnemy(p, c));
+    g.damage(p, foe, 500, { part: 'head', def: { id: 'vandal', name: 'Vandal' }, dist: 5, point: p.eye() });
+    const g2 = await __start({ mode: 'custom', custom: { base: 'dm', players: 5, bots: 4, botMode: 'fight', cheats: { money: false, abilities: false, ult: false, ammo: false, invincible: false } }, map: 'arena' });
+    const dmBots = g2.bots.length;
+    return { pass: !!m && mates === 1 && foes === 3 && cheatsOn && p.alive && p.hp === 100 && dmBots === 4, mates, foes, cheatsOn, alive: p.alive, dmBots };
+  }],
   ['Collaterals: a headshot or a killing shot carries on to the enemy behind; a body shot that does not kill stops', async () => {
     const g = await __start({ agent: 'cinder', map: 'arena', botCount: 2, botMode: 'static' });
     const p = g.player, [b1, b2] = g.bots;

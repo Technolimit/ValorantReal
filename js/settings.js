@@ -43,7 +43,10 @@ export const DEFAULTS = {
   skins: {}, // weapon id (or melee type) -> skin id (see skins.js)
   melee: 'knife', // melee type shown in the knife slot (see melee.js)
   agent: 'zephyr',
-  mode: 'dm', // 'dm' | 'rounds'
+  mode: 'dm', // 'dm' | 'rounds' | 'custom'
+  // Custom game (issue #84): which rules it plays by, how many players the lobby holds (you included), how many of
+  // them are bots, what the bots do, and cheats for you.
+  custom: { base: 'dm', players: 8, bots: 7, botMode: 'fight', cheats: { money: false, abilities: false, ult: false, ammo: false, invincible: false } },
   map: 'arena', // deathmatch map
   side: 'random', // 5v5 starting side
   // online
@@ -58,9 +61,10 @@ export function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || '{}');
     if (s.dmgNumV !== 2) { s.damageNumbers = false; s.dmgNumV = 2; } // damage numbers are now off unless you turn them on
-    return { ...DEFAULTS, ...s, loadout: { ...DEFAULTS.loadout, ...(s.loadout || {}) }, skins: { ...(s.skins || {}) }, binds: { ...DEFAULT_BINDS, ...(s.binds || {}) }, binds2: { ...DEFAULT_BINDS2, ...(s.binds2 || {}) } };
+    const custom = { ...DEFAULTS.custom, ...(s.custom || {}), cheats: { ...DEFAULTS.custom.cheats, ...(s.custom?.cheats || {}) } };
+    return { ...DEFAULTS, ...s, custom, loadout: { ...DEFAULTS.loadout, ...(s.loadout || {}) }, skins: { ...(s.skins || {}) }, binds: { ...DEFAULT_BINDS, ...(s.binds || {}) }, binds2: { ...DEFAULT_BINDS2, ...(s.binds2 || {}) } };
   } catch {
-    return { ...DEFAULTS, loadout: { ...DEFAULTS.loadout }, skins: {}, binds: { ...DEFAULT_BINDS }, binds2: { ...DEFAULT_BINDS2 } };
+    return { ...DEFAULTS, custom: { ...DEFAULTS.custom, cheats: { ...DEFAULTS.custom.cheats } }, loadout: { ...DEFAULTS.loadout }, skins: {}, binds: { ...DEFAULT_BINDS }, binds2: { ...DEFAULT_BINDS2 } };
   }
 }
 

@@ -29,6 +29,9 @@ export const SHOOTABLE = {
 };
 const FLOOR_NY = Math.cos(44.765 * Math.PI / 180); // a projectile that stops on bounce stops on floors flatter than this
 // The tuning a map's "rules" and "physics" can change, as shipped; every match starts from these.
+// Issue #84: what a harmful ability does to the owner's teammates caught in it. Reveals, trails and suppression
+// only work against enemies, so they don't carry over; Vulnerable does, without the reveal that comes with it.
+const ALLY_EFFECTS = new Set(['stun', 'near', 'deaf', 'hold', 'hinder', 'vuln']);
 const BASE_RULES = { rounds: { ...ROUND }, economy: { ...ECON, loss: [...ECON.loss] }, deathmatch: { ...MATCH }, physics: { gravity: PLAYER.gravity, jumpVelocity: PLAYER.jumpVelocity } };
 // A zone's radius right now: fire spreads out from where it lands (z.spread, m/s) and some zones shrink to
 // nothing over their last z.fade seconds (Sky Hammer).
@@ -110,6 +113,7 @@ export class Game {
     const player = new Combatant(this, { name: 'You' });
     player.loadout = { ...opts.loadout };
     player.kit = opts.noAbilities ? null : new Kit(player, opts.agent);
+    player.cheats = opts.custom?.cheats || null; // a custom game's cheats are yours alone
     this.smokes = [];
     this.zones = [];
     for (const w of this.walls || []) this.removeWall(w);
@@ -162,6 +166,7 @@ export class Game {
     }
     if (this.mode && this.state === 'playing') this.mode.tick(now);
     for (const b of this.bots) if (b.alive) b.brain.think(now, DT);
+    for (const c of this.combatants) if (c.cheats && c.alive) this.applyCheats(c);
     this.onInputs?.(); // online: record this tick's ability inputs (net.js)
     for (const c of this.combatants) {
       if (c.remote) {
@@ -273,14 +278,14 @@ export class Game {
         const enemy = this.isEnemy(z.owner, c) || self;
         if (z.armAt && now < z.armAt) continue; // orbital strike still charging
         const fx = this.affectable(c);
-        if (fx && z.nearsight && (this.isEnemy(z.owner, c) || (z.selfNear && c === z.owner))) { c.st.nearUntil = now + 0.3; c.st.nearRange = z.nearsight === true ? 7.5 : z.nearsight; } // Nest: its owner too
-        if (fx && z.acid && enemy) c.st.vulnUntil = now + 2; // Vulnerable while inside and for 2 s after
-        if (fx && z.slowField && this.isEnemy(z.owner, c)) {
+        if (fx && z.nearsight && (c !== z.owner || z.selfNear)) { c.st.nearUntil = now + 0.3; c.st.nearRange = z.nearsight === true ? 7.5 : z.nearsight; } // Nest: its owner too
+        if (fx && z.acid && (enemy || c !== z.owner)) c.st.vulnUntil = now + 2; // Vulnerable while inside and for 2 s after (teammates too)
+        if (fx && z.slowField && c !== z.owner) { // teammates are slowed too (issue #84)
           c.st.slowUntil = now + (z.slowLinger || 0.2); c.st.slowAmt = z.slowField;
           c.st.slowJump = z.slowJump ?? 0.7; // jumps are weaker too (and dashes, see applyDash)
           if (z.silent) c.st.silentUntil = c.st.slowUntil; // Slow Orb, Trademark: footsteps make no sound
         }
-        if (fx && z.toxin && this.isEnemy(z.owner, c) && c.toxinTick !== now) {
+        if (fx && z.toxin && c !== z.owner && c.toxinTick !== now) { // teammates in the gas decay too (issue #84)
           // Toxin is Decay: a hit on first contact, then a steady drain while inside. It can't kill, and the health
           // climbs back once you've been out of the gas for a moment.
           c.toxinTick = now;
@@ -344,6 +349,27 @@ export class Game {
       c.st.blindLen = dur * k;
     }
     this.emit('flash', { pos, owner });
+  }
+
+  // Custom game cheats (issue #84), every tick for whoever has them: money, abilities with no cooldowns, the
+  // ultimate always ready, and magazines that never run dry.
+  applyCheats(c) {
+    const ch = c.cheats, k = c.kit;
+    if (ch.money && this.mode) c.credits = 9000;
+    if (ch.abilities && k) {
+      for (const key of ['c', 'q', 'e']) {
+        const a = k.agent.abilities[key], max = a.pips && this.mode ? a.pips : Math.max(1, a.charges);
+        if (k.charges[key] < max) k.charges[key] = max;
+        k.ready[key] = 0;
+      }
+      k.gas.fuel = 100; k.energy = 100; k.slideAt = 0; k.nebulas = 2; k.tpReady = 0;
+      if (k.starsLeft !== undefined && k.starsLeft < 1) k.starsLeft = 1;
+    }
+    if (ch.ult && k && !k.blades && !k.beams && !k.launcher) k.ultPoints = k.ultCost;
+    if (ch.ammo) for (const slot of ['primary', 'secondary']) {
+      const g = c.inv[slot];
+      if (g && g.def.mag && !g.reloading) { g.mag = g.def.mag; g.reserve = g.def.reserve ?? g.reserve; }
+    }
   }
 
   // Ballast's Scout Drone (issue #81), driven like a player: WASD the way its owner looks, standing still when
@@ -423,17 +449,19 @@ export class Game {
   // Join several with '+' ('hold+deaf'). Gives back everyone it caught.
   // opts.flat: a sphere squashed to that share of its height (sonar pulses, 0.4); opts.all: allies and the owner too.
   pulse(owner, pos, r, types, dur, color, needSight = false, opts = {}) {
-    const now = this.time, hit = [], flat = opts.flat || 1;
+    const now = this.time, hit = [], flat = opts.flat || 1, list = types.split('+');
+    const allyList = list.filter(t => ALLY_EFFECTS.has(t)).map(t => (t === 'vuln' ? 'vulnOnly' : t)); // what reaches teammates
     for (const c of this.combatants) {
-      if (!this.affectable(c) || !(opts.all || this.isEnemy(owner, c))) continue;
+      const enemy = this.isEnemy(owner, c);
+      if (!this.affectable(c) || !(opts.all || enemy || (c !== owner && allyList.length && !opts.enemiesOnly))) continue;
       if (opts.cyl) { // an upright cylinder: r around, cyl.up above and cyl.down below pos (feet to head counted)
         if (hyp(c.pos[0] - pos[0], c.pos[2] - pos[2]) > r || c.pos[1] > pos[1] + opts.cyl.up || c.pos[1] + PLAYER.standHeight < pos[1] - opts.cyl.down) continue;
       } else if (hyp(c.pos[0] - pos[0], (c.pos[1] + 1 - pos[1]) / flat, c.pos[2] - pos[2]) > r) continue;
       if (needSight && !this.world.lineOfSight(pos, c.eye()) && !this.world.lineOfSight(pos, [c.pos[0], c.pos[1] + 1, c.pos[2]])) continue;
       hit.push(c);
-      for (const type of types.split('+')) this.status(c, type, dur, opts);
+      for (const type of enemy || opts.all ? list : allyList) this.status(c, type, dur, opts);
     }
-    this.emit('pulse', { pos, r, type: types.split('+')[0], color, owner, cyl: opts.cyl });
+    this.emit('pulse', { pos, r, type: list[0], color, owner, cyl: opts.cyl });
     return hit;
   }
 
@@ -445,6 +473,7 @@ export class Game {
     if (type === 'stun') this.concuss(c, dur);
     if (type === 'near') { c.st.nearUntil = now + dur; c.st.nearRange = opts.near || 7.5; }
     if (type === 'reveal') c.st.revealUntil = now + dur;
+    if (type === 'vulnOnly') c.st.vulnUntil = now + dur; // a teammate made Vulnerable isn't revealed to anyone
     if (type === 'suppress') c.st.suppressUntil = now + dur; // no abilities (it doesn't reveal by itself: add 'reveal')
     if (type === 'vuln') { c.st.vulnUntil = now + dur; c.st.revealUntil = now + dur; }
     if (type === 'hold') { c.st.slowUntil = now + dur; c.st.slowAmt = 0.95; } // held, not revealed (issue #81)
@@ -459,11 +488,11 @@ export class Game {
   }
 
   // Enemies standing in a flat strip on the ground: from d0 to d1 metres ahead of `from` along `yaw`, `half`
-  // metres to either side, through walls (seismic lines, waves, barrages).
-  inStrip(owner, from, yaw, d0, d1, half, up = 6) {
+  // metres to either side, through walls (seismic lines, waves, barrages). `allies`: the owner's teammates in it too.
+  inStrip(owner, from, yaw, d0, d1, half, up = 6, allies = false) {
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw), out = [];
     for (const c of this.combatants) {
-      if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
+      if (!this.affectable(c) || !(this.isEnemy(owner, c) || (allies && c !== owner))) continue;
       const dx = c.pos[0] - from[0], dz = c.pos[2] - from[2];
       const along = dx * fx + dz * fz, across = dx * fz - dz * fx;
       if (along >= d0 && along < d1 && Math.abs(across) <= half && Math.abs(c.pos[1] - from[1]) <= up) out.push(c); // half-open, so back-to-back strips never both take someone on the line between them
@@ -493,12 +522,12 @@ export class Game {
   // the target's body.
   explode(owner, pos, r, max, min, def, color, hitSelf = false, throughWalls = false, inner = 0) {
     for (const c of this.combatants) {
-      if (!c.alive || (!this.isEnemy(owner, c) && !(hitSelf && c === owner))) continue;
+      if (!c.alive || (c === owner && !hitSelf)) continue; // teammates are caught too (issue #84)
       const body = [c.pos[0], c.pos[1] + 1, c.pos[2]];
       const d = hyp(body[0] - pos[0], body[1] - pos[1], body[2] - pos[2]);
       if (d > r || (!throughWalls && !this.world.lineOfSight(pos, body))) continue;
-      const full = d <= inner ? max : max - (max - min) * (d - inner) / (r - inner);
-      this.damage(c, owner, Math.round(c === owner ? full / 3 : full), { part: 'body', def, dist: d, point: body, wallbang: false }); // your own blast hurts you a third as much
+      const full = d <= inner ? max : max - (max - min) * (d - inner) / (r - inner), enemy = this.isEnemy(owner, c);
+      this.damage(c, owner, Math.round(enemy ? full : full / 3), { part: 'body', def, dist: d, point: body, wallbang: false, friendly: !enemy }); // you and your teammates take a third
     }
     this.emit('pulse', { pos, r, type: 'blast', color, owner });
   }
@@ -508,22 +537,24 @@ export class Game {
   lineEffect(owner, a, b, width, type, dur, height) {
     const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     const len2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2;
+    const allyTypes = type.split('+').filter(t => ALLY_EFFECTS.has(t));
     for (const c of this.combatants) {
-      if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
+      const enemy = this.isEnemy(owner, c);
+      if (!this.affectable(c) || !(enemy || (c !== owner && allyTypes.length))) continue;
       const p = [c.pos[0], c.pos[1] + 1, c.pos[2]];
       let t = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / len2;
       t = Math.max(0, Math.min(1, t));
       const dy = a[1] + ab[1] * t - p[1];
       const d = hyp(a[0] + ab[0] * t - p[0], height ? 0 : dy, a[2] + ab[2] * t - p[2]);
       if (d > width || (height && Math.abs(dy) > height)) continue;
-      for (const t of type.split('+')) this.status(c, t, dur);
+      for (const t of enemy ? type.split('+') : allyTypes) this.status(c, t, dur);
     }
   }
 
-  // Gravity well: drag enemies within r toward pos.
+  // Gravity well: drag everyone within r toward pos (the owner's teammates too, issue #84).
   pull(owner, pos, r, speed) {
     for (const c of this.combatants) {
-      if (!this.affectable(c) || !this.isEnemy(owner, c)) continue;
+      if (!this.affectable(c) || c === owner) continue;
       const dx = pos[0] - c.pos[0], dz = pos[2] - c.pos[2], d = hyp(dx, dz);
       if (d > r || d < 0.3) continue;
       c.vel[0] = dx / d * speed; c.vel[2] = dz / d * speed;
@@ -704,14 +735,15 @@ export class Game {
   beam(owner, o, d, B) {
     const now = this.time;
     for (const c of this.combatants) {
-      if (!c.alive || !this.isEnemy(owner, c)) continue;
+      if (!c.alive || c === owner) continue;
       const p = [c.pos[0], c.pos[1] + 1.1, c.pos[2]];
       const t = (p[0] - o[0]) * d[0] + (p[1] - o[1]) * d[1] + (p[2] - o[2]) * d[2];
       if (t < 0 || t > (B.range || Infinity)) continue;
       const dist = hyp(o[0] + d[0] * t - p[0], (o[1] + d[1] * t - p[1]) * 0.6, o[2] + d[2] * t - p[2]);
       if (dist > B.width) continue;
-      if (this.affectable(c)) c.st.revealUntil = now + (B.reveal ?? 2);
-      this.damage(c, owner, B.dmg, { part: 'body', def: B, dist: t, point: p, wallbang: true });
+      const enemy = this.isEnemy(owner, c);
+      if (enemy && this.affectable(c)) c.st.revealUntil = now + (B.reveal ?? 2);
+      this.damage(c, owner, enemy ? B.dmg : Math.round(B.dmg / 3), { part: 'body', def: B, dist: t, point: p, wallbang: true, friendly: !enemy }); // a teammate in the way takes a third
     }
     const len = B.range || 140;
     this.emit('beam', { who: owner, from: o, to: [o[0] + d[0] * len, o[1] + d[1] * len, o[2] + d[2] * len] });
@@ -764,7 +796,7 @@ export class Game {
         d.onMove?.(d);
         for (const c of this.combatants) {
           // d.all: teammates in the way are caught too (allied bots know to step aside, as with flashes).
-          if (d.seen.has(c) || !this.affectable(c) || !(this.isEnemy(d.owner, c) || (d.all && c !== d.owner && !c.isBot))) continue;
+          if (d.seen.has(c) || !this.affectable(c) || !(this.isEnemy(d.owner, c) || (!d.enemiesOnly && c !== d.owner))) continue; // teammates too (issue #84)
           if (d.hit ? !d.hit(c, d) : hyp(c.pos[0] - d.pos[0], c.pos[1] + 1 - d.pos[1], c.pos[2] - d.pos[2]) > d.r) continue;
           d.seen.add(c);
           if (d.apply(c, d) === 'stop') { d.removed = true; break; }
@@ -1496,7 +1528,8 @@ export class Game {
 
   damage(target, attacker, amount, info) {
     if (!target.alive || amount <= 0) return;
-    if (attacker !== target && !this.isEnemy(attacker, target)) return; // no friendly fire
+    if (target.cheats?.invincible) return; // custom game: can't die
+    if (attacker !== target && !this.isEnemy(attacker, target) && !info.friendly) return; // no friendly fire (abilities that reach teammates pass info.friendly)
     const now = this.time;
     if (target.st.intangibleUntil > now && !info.spike) return; // Vanish: can't be hurt
     if (target.st.invulnUntil > now && !info.spike) return; // Rendezvous: invulnerable while teleporting
@@ -1674,7 +1707,7 @@ export class Game {
     victim.respawnAt = this.time + MATCH.respawn;
     victim.killedBy = { killer, def: info.def, headshot: info.part === 'head', wallbang: info.wallbang };
     victim.vel = [0, 0, 0];
-    if (killer !== victim) {
+    if (killer !== victim && this.isEnemy(killer, victim)) { // a teammate caught in your ability counts for nothing
       killer.stats.kills++;
       if (killer.brain) killer.brain.lastKillAt = this.time;
       if (killer.kit) killer.kit.onKill(info.def, victim);

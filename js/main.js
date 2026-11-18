@@ -388,13 +388,22 @@ function clickBuy(button = 0) {
   rhud.renderLoadout();
 }
 
+// The rules a match plays by: a custom game plays deathmatch or 5v5 rounds with its own lobby and cheats.
+const baseMode = () => (settings.mode === 'custom' ? settings.custom.base : settings.mode);
+// What a custom game passes to game.start (offline only): lobby size, bots, their behaviour and your cheats.
+function customOpts() {
+  const c = settings.custom, players = Math.max(2, Math.min(c.base === 'rounds' ? 10 : 12, c.players));
+  const bots = Math.max(1, Math.min(players - 1, c.bots));
+  return { botCount: bots, botMode: c.botMode, custom: { players, bots, cheats: { ...c.cheats } } };
+}
+
 // ---- match flow ----
 async function startMatch(extra = {}) {
   sound.init();
   if (!extra.online && net.active) net.close();
   const mapId = extra.map || settings.map;
   try {
-    await preloadMap(settings.mode === 'rounds' && !extra.online && !supportsMode(mapId, 'rounds') ? 'divide' : mapId);
+    await preloadMap(baseMode() === 'rounds' && !extra.online && !supportsMode(mapId, 'rounds') ? 'divide' : mapId);
   } catch (err) {
     hud.center(`<small>${String(err.message).toUpperCase()}</small>`);
     return false;
@@ -408,9 +417,10 @@ async function startMatch(extra = {}) {
     timeLimit: settings.timeMinutes * 60,
     loadout: { ...settings.loadout },
     agent: settings.agent,
-    mode: settings.mode,
+    mode: baseMode(),
     map: mapId,
     side: settings.side,
+    ...(settings.mode === 'custom' && !extra.online ? customOpts() : {}),
     ...extra,
   });
   if (hud.buyOpen) toggleBuy(false);
@@ -1070,7 +1080,7 @@ function switchAgent(id) {
 
 function updateMenuLoadout() {
   for (const b of document.querySelectorAll('.mode')) b.classList.toggle('sel', b.dataset.mode === settings.mode);
-  const a = AGENTS[settings.agent] || AGENTS.zephyr, rounds = settings.mode === 'rounds';
+  const a = AGENTS[settings.agent] || AGENTS.zephyr, rounds = baseMode() === 'rounds';
   $('menu-agent').textContent = a.name;
   const l = settings.loadout;
   $('menu-loadout').textContent = `${WEAPONS[l.primary]?.name || 'No primary'} + ${WEAPONS[l.secondary]?.name}`;
@@ -1087,7 +1097,7 @@ function updateMenuLoadout() {
   drawParty();
 }
 
-$('play').onclick = () => (party.leader && party.members.length > 1 ? hostParty() : settings.mode === 'rounds' ? openLocalPick() : openAgents());
+$('play').onclick = () => (party.leader && party.members.length > 1 ? hostParty() : settings.mode === 'rounds' ? openLocalPick() : openAgents()); // a custom game: pick your agent, bots fill the rest
 
 // ---- party: friends queue together from the home screen (party.js) ----
 const party = new Party({
@@ -1137,13 +1147,13 @@ addEventListener('beforeunload', () => party.leave(true));
 // Leader: open a match room on the pick screen and send the party there. Over the internet if anyone joined
 // from another computer, otherwise within this browser.
 async function hostParty() {
-  const rounds = settings.mode === 'rounds';
+  const rounds = baseMode() === 'rounds';
   const id = rounds && !supportsMode(settings.map, 'rounds') ? 'divide' : settings.map;
   const transport = party.transport, room = roomCode();
   $('play').disabled = true; $('play').textContent = 'Starting…';
   try {
     await preloadMap(id);
-    await net.host({ transport, room, server: { name: `${settings.netName || 'Player'}'s party`, max: 10 }, profile: netProfile(), mapJSON: mapInfo(id)?.file ? null : mapJSON(id), lobby: new Lobby({ mode: settings.mode, map: id, mapName: MAPS[id] || id, botCount: settings.botCount }) });
+    await net.host({ transport, room, server: { name: `${settings.netName || 'Player'}'s party`, max: 10 }, profile: netProfile(), mapJSON: mapInfo(id)?.file ? null : mapJSON(id), lobby: new Lobby({ mode: baseMode(), map: id, mapName: MAPS[id] || id, botCount: settings.botCount }) });
   } catch (err) {
     net.close(); show('menu'); $('party-status').textContent = err.message; $('party-pop').hidden = false;
     return;
@@ -1151,7 +1161,32 @@ async function hostParty() {
   partyGame = { expect: party.members.length };
   party.go(room, transport);
 }
-for (const b of document.querySelectorAll('.mode')) b.onclick = () => { settings.mode = b.dataset.mode; saveSettings(settings); updateMenuLoadout(); };
+for (const b of document.querySelectorAll('.mode')) b.onclick = () => { settings.mode = b.dataset.mode; saveSettings(settings); updateMenuLoadout(); if (b.dataset.mode === 'custom') openCustom(); };
+
+// ---- custom game (issue #84): lobby size, bots and cheats ----
+function drawCustom() {
+  const c = settings.custom, maxP = c.base === 'rounds' ? 10 : 12;
+  c.players = Math.max(2, Math.min(maxP, c.players));
+  c.bots = Math.max(1, Math.min(c.players - 1, c.bots));
+  $('custom-base').value = c.base;
+  $('custom-players').max = maxP; $('custom-players').value = c.players; $('custom-players-v').textContent = c.players;
+  $('custom-bots').max = c.players - 1; $('custom-bots').value = c.bots; $('custom-bots-v').textContent = c.bots;
+  $('custom-botmode').value = c.botMode;
+  for (const el of document.querySelectorAll('#custom-pop [data-cheat]')) el.checked = !!c.cheats[el.dataset.cheat];
+  const t0 = Math.ceil(c.players / 2), t1 = Math.floor(c.players / 2), foes = Math.min(t1, c.bots), mates = Math.min(t0 - 1, c.bots - foes);
+  $('custom-note').textContent = c.base === 'rounds' ? `You and ${mates} bot${mates === 1 ? '' : 's'} against ${foes} bot${foes === 1 ? '' : 's'}.` : `You and ${c.bots} bot${c.bots === 1 ? '' : 's'}, everyone for themselves.`;
+  const on = Object.entries(c.cheats).filter(([, v]) => v).length;
+  $('custom-sum').textContent = `${c.base === 'rounds' ? 'Rounds' : 'Deathmatch'} · ${c.players} players · ${c.bots} bots${on ? ` · ${on} cheat${on === 1 ? '' : 's'}` : ''}`;
+  saveSettings(settings);
+}
+function openCustom() { drawCustom(); $('custom-pop').hidden = false; }
+$('custom-close').onclick = $('custom-done').onclick = () => { $('custom-pop').hidden = true; };
+$('custom-base').onchange = (e) => { settings.custom.base = e.target.value; drawCustom(); updateMenuLoadout(); };
+$('custom-players').oninput = (e) => { settings.custom.players = +e.target.value; drawCustom(); };
+$('custom-bots').oninput = (e) => { settings.custom.bots = +e.target.value; drawCustom(); };
+$('custom-botmode').onchange = (e) => { settings.custom.botMode = e.target.value; drawCustom(); };
+for (const el of document.querySelectorAll('#custom-pop [data-cheat]')) el.onchange = () => { settings.custom.cheats[el.dataset.cheat] = el.checked; drawCustom(); };
+drawCustom();
 $('menu-settings').onclick = () => openSettings('menu');
 for (const b of document.querySelectorAll('#menu [data-go]')) b.onclick = () => $(b.dataset.go).click();
 $('resume').onclick = resume;
@@ -1259,7 +1294,7 @@ function openOnline(tab = 'join') {
   $('net-name').value = settings.netName;
   $('net-color').value = settings.netColor;
   $('net-transport').value = $('net-join-transport').value = settings.netTransport;
-  $('net-mode').value = settings.mode;
+  $('net-mode').value = baseMode();
   fillServerMaps();
   const max = $('net-max');
   if (!max.options.length) for (let n = 2; n <= 10; n++) max.add(new Option(String(n), String(n)));
@@ -1315,7 +1350,7 @@ function buildServerList() {
 async function hostOnline({ lobby = true } = {}) {
   const { transport, room, server } = readCreateForm();
   if (!room) { netStatus('Pick a room code first', true); return false; }
-  const rounds = settings.mode === 'rounds';
+  const rounds = baseMode() === 'rounds';
   const id = rounds && !supportsMode(settings.map, 'rounds') ? 'divide' : settings.map;
   const mj = () => (mapInfo(id)?.file ? null : mapJSON(id));
   if (lobby) {
@@ -1323,11 +1358,11 @@ async function hostOnline({ lobby = true } = {}) {
     if (transport === 'peer') servers.internet.start(); // so the server shows up on other computers
     if (running) { running = false; game.state = 'idle'; }
     try {
-      await net.host({ transport, room, server, profile: netProfile(), mapJSON: mj(), lobby: new Lobby({ mode: settings.mode, map: id, mapName: MAPS[id] || id, botCount: settings.botCount }) });
+      await net.host({ transport, room, server, profile: netProfile(), mapJSON: mj(), lobby: new Lobby({ mode: baseMode(), map: id, mapName: MAPS[id] || id, botCount: settings.botCount }) });
     } catch (err) { netStatus(err.message, true); net.close(); return false; }
     return true;
   }
-  const ok = await startMatch({ online: true, mode: settings.mode, map: id, noResume: true });
+  const ok = await startMatch({ online: true, mode: baseMode(), map: id, noResume: true });
   if (!ok) return false;
   try {
     await net.host({ transport, room, server, profile: netProfile(), mapJSON: mj() });
