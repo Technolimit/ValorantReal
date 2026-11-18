@@ -1,5 +1,5 @@
 // Match simulation: combatants, hitscan with wall penetration, damage, kills and respawns (free-for-all).
-import { DT, MATCH, PEN_DEPTH, MAX_RANGE, TAG, PLAYER } from './config.js';
+import { DT, MATCH, PEN_DEPTH, MAT_DENSITY, MAX_RANGE, TAG, PLAYER } from './config.js';
 import { buildMap, supportsMode } from './map.js';
 import { RoundMode, NetRoundMode, ROUND, ECON } from './rounds.js';
 import { World } from './world.js';
@@ -196,6 +196,8 @@ export class Game {
     }
     if (this.smokes.length && this.smokes.some(s => s.until < now)) this.smokes = this.smokes.filter(s => s.until >= now);
     this.tickZones(now);
+    this.tickCages(now);
+    this.tickTrails(now);
     this.tickDevices(now);
     this.tickDrops(now);
     this.tickContract(now);
@@ -256,12 +258,13 @@ export class Game {
       for (const c of this.combatants) {
         if (!c.alive) continue;
         const dx = c.pos[0] - z.pos[0], dz = c.pos[2] - z.pos[2], dy = c.pos[1] - z.pos[1];
-        if (dy < -1.0 || dy > 3) continue;
-        if (!z.wall && !z.gas && !z.orbital && (z.kind === 'fire' || z.kind === 'slowfield')) {
-          // A patch on the floor (molly, acid, swarm, slow field): it reaches a short way up (acid 1.2 m, others 1.5 m)
-          // and stops at walls, as Valorant's grid patches do.
-          if (dy > (z.acid ? 1.2 : 1.5) || !this.world.lineOfSight([z.pos[0], z.pos[1] + 0.4, z.pos[2]], [c.pos[0], c.pos[1] + 0.4, c.pos[2]])) continue;
-        }
+        if (z.dome) { // Hive: a half dome over the grenade that hurts through everything inside it
+          if (dy < -0.5 || hyp(dx, dy, dz) > zoneRadius(z, now)) continue;
+        } else if (!z.wall && !z.gas && !z.orbital && (z.kind === 'fire' || z.kind === 'slowfield')) {
+          // A patch on the floor (molly, acid, slow field) covers its whole radius over steps, boxes and slopes, up
+          // to 2 m above or 2.5 m below where it landed; only a wall thicker than 0.5 m in between keeps it out.
+          if (dy > 2 || dy < -2.5 || !this.patchReaches(z, c)) continue;
+        } else if (dy < -1.0 || dy > 3) continue;
         if (z.slab) { // a strip (Toxic Wall): along its length, and touching its thickness
           const sl = z.slab, along = dx * sl.dir[0] + dz * sl.dir[1], across = dz * sl.dir[0] - dx * sl.dir[1];
           if (Math.abs(along) > sl.len / 2 || Math.abs(across) > sl.th / 2 + PLAYER.radius) continue;
@@ -343,6 +346,79 @@ export class Game {
     this.emit('flash', { pos, owner });
   }
 
+  // Ballast's Scout Drone (issue #81), driven like a player: WASD the way its owner looks, standing still when
+  // nothing is held; Shift or crouch creeps (3.5 m/s) without a sound, otherwise it runs (7.5 m/s) and its steps
+  // can be heard; Space (or the pulse's hop) jumps. Gravity, 0.45 m steps and walls as for a small body.
+  moveScoutDrone(d, now) {
+    const pin = d.owner.kit?.pilotInput || {}, yaw = d.owner.yaw, len = hyp(pin.fwd || 0, pin.side || 0);
+    let wx = 0, wz = 0;
+    if (len > 0) { const sy = Math.sin(yaw), cy = Math.cos(yaw); wx = (-sy * pin.fwd + cy * pin.side) / len; wz = (-cy * pin.fwd - sy * pin.side) / len; d.dir = [wx, 0, wz]; }
+    const quiet = pin.walk || pin.crouch, sp = quiet ? 3.5 : 7.5, v = d.vel;
+    v[0] = wx * sp; v[2] = wz * sp;
+    const under = this.floorAt(d.pos[0], d.pos[2], d.pos[1] + 0.3), grounded = !!under && d.pos[1] - under[1] < 0.05 && v[1] <= 0;
+    if (grounded && (pin.jumpHeld || d.hop)) v[1] = 5;
+    d.hop = false;
+    if (!grounded || v[1] > 0) v[1] -= 9.8 * DT;
+    for (const ax of [0, 2]) {
+      const np = [...d.pos]; np[ax] += v[ax] * DT;
+      if (!this.world.overlap(np[0] - 0.2, d.pos[1] + 0.46, np[2] - 0.2, np[0] + 0.2, d.pos[1] + 0.86, np[2] + 0.2)) d.pos[ax] = np[ax];
+    }
+    d.pos[1] += v[1] * DT;
+    const fl = this.floorAt(d.pos[0], d.pos[2], d.pos[1] + 0.45);
+    if (fl && d.pos[1] <= fl[1]) { d.pos[1] = fl[1]; if (v[1] < 0) v[1] = 0; }
+    if (!quiet && len > 0 && grounded && now >= (d.stepAt || 0)) { d.stepAt = now + 0.32; this.emit('footstep', { who: { pos: d.pos } }); }
+  }
+
+  // Terror trail (Nyx): c is marked for `dur` s. While marked, the way they walk is recorded (trailPts); her team
+  // sees it as a line back to her, and her prowlers follow it.
+  markTrail(c, by, dur) {
+    const now = this.time;
+    if (!(c.st.trailUntil > now)) { c.trailPts = [[...c.pos]]; c.trailAt = now; }
+    c.st.trailUntil = Math.max(c.st.trailUntil || 0, now + dur);
+    c.trailBy = by;
+  }
+
+  tickTrails(now) {
+    for (const c of this.combatants) {
+      if (!c.trailPts) continue;
+      if (!(c.st.trailUntil > now) || !c.alive) { c.trailPts = null; continue; }
+      const last = c.trailPts[c.trailPts.length - 1];
+      if (now - c.trailAt >= 0.25 && hyp(c.pos[0] - last[0], c.pos[2] - last[2]) > 0.5) {
+        c.trailPts.push([...c.pos]); c.trailAt = now;
+        if (c.trailPts.length > 80) c.trailPts.shift();
+      }
+    }
+  }
+
+  // Lattice's cages: an enemy inside the smoke is revealed to his team while there and for half a second after.
+  tickCages(now) {
+    for (const s of this.smokes) {
+      if (s.kind !== 'cage' || now >= s.until || now < s.born) continue;
+      for (const c of this.combatants) {
+        if (!this.affectable(c) || !this.isEnemy(s.owner, c)) continue;
+        const dy = c.pos[1] - s.pos[1];
+        if (dy > s.cyl.up || dy + c.height < -s.cyl.down || hyp(c.pos[0] - s.pos[0], c.pos[2] - s.pos[2]) > s.radius) continue;
+        if (!(c.st.revealUntil > now)) this.emit('tag', { pos: c.eye() });
+        c.st.revealUntil = Math.max(c.st.revealUntil, now + 0.5);
+      }
+    }
+  }
+
+  // Does a floor patch at z reach c? Checked along a level line at the higher of the two (so a step, box or ledge
+  // between doesn't block), then straight down: any box thicker than 0.5 m on it (a real wall) keeps it out.
+  patchReaches(z, c) {
+    const h = Math.max(z.pos[1] + 1, c.pos[1] + 0.6);
+    const a = [z.pos[0], h, z.pos[2]], b = [c.pos[0], h, c.pos[2]];
+    const blocked = (p, q) => {
+      const d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]], len = hyp(d[0], d[1], d[2]);
+      if (len < 1e-3) return false;
+      for (let i = 0; i < 3; i++) d[i] /= len;
+      for (const hit of this.world.raycastAll(p, d, len)) if (!hit.box.floor && hit.tOut - hit.tIn > 0.5) return true;
+      return false;
+    };
+    return !blocked(a, b) && !blocked(b, [c.pos[0], c.pos[1] + 0.6, c.pos[2]]);
+  }
+
   // Area effect that applies a status to enemies within r of pos: stun, near(sight), reveal, suppress, deaf.
   // Join several with '+' ('hold+deaf'). Gives back everyone it caught.
   // opts.flat: a sphere squashed to that share of its height (sonar pulses, 0.4); opts.all: allies and the owner too.
@@ -371,7 +447,7 @@ export class Game {
     if (type === 'reveal') c.st.revealUntil = now + dur;
     if (type === 'suppress') c.st.suppressUntil = now + dur; // no abilities (it doesn't reveal by itself: add 'reveal')
     if (type === 'vuln') { c.st.vulnUntil = now + dur; c.st.revealUntil = now + dur; }
-    if (type === 'hold') { c.st.slowUntil = now + dur; c.st.slowAmt = 0.95; c.st.revealUntil = now + dur; }
+    if (type === 'hold') { c.st.slowUntil = now + dur; c.st.slowAmt = 0.95; } // held, not revealed (issue #81)
     if (type === 'hinder') c.st.hinderUntil = now + dur;
   }
 
@@ -832,7 +908,8 @@ export class Game {
           this.addZone({ kind: 'fire', owner: d.owner, wall: true, pos: [nx, f[1], nz], r: 0.75, life: 8, dps: 30, heal: 6.25, healPool: d.pool, def: { id: 'firebreak', name: 'Firebreak', cat: 'Ability', dmg: [[50, 0, 0, 0]] } }, now);
         }
       } else if (d.kind === 'decoy' || d.kind === 'gate' || d.kind === 'tiger' || d.kind === 'prowler' || d.kind === 'sdrone') {
-        // Ground runners. Steered ones follow the owner's aim. (Tejo's Stealth Drone drops to the floor and runs.)
+        // Ground runners. Steered ones follow the owner's aim.
+        if (d.kind === 'sdrone') { this.moveScoutDrone(d, now); continue; }
         if (d.still) continue; // a rift left in place
         if (d.steer && d.owner.alive) { const yaw = d.owner.yaw; d.dir = [-Math.sin(yaw), 0, -Math.cos(yaw)]; }
         let sp = d.kind === 'gate' ? 8 : d.kind === 'decoy' ? 5.6 : d.kind === 'tiger' ? 6.4 : d.kind === 'sdrone' ? 7.5 : 10;
@@ -840,10 +917,16 @@ export class Game {
           // Hunts the first enemy it sees ahead of it within 15 m (12 m/s), or one marked by a terror trail within
           // 10 m, seen or not (15 m/s). It bites from 2.5 m: nearsighted for 2.75 s.
           if (!d.target) {
+            // A terror trail draws it from any distance (the nearest marked enemy); otherwise the first one it sees.
+            let best = null, bestD = Infinity;
             for (const c of enemiesOf(d)) {
+              const dist = hyp(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]);
+              if (c.st.trailUntil > now && c.trailPts && dist < bestD) { best = c; bestD = dist; }
+            }
+            if (best) { d.target = best; d.onTrail = true; d.steer = false; }
+            else for (const c of enemiesOf(d)) {
               const dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2], dist = hyp(dx, dz);
-              const trail = c.st.trailUntil > now && dist < 10;
-              if (trail || (dist < 15 && (dx * d.dir[0] + dz * d.dir[2]) / dist > 0.5 && this.world.lineOfSight([d.pos[0], d.pos[1] + 0.4, d.pos[2]], c.eye()))) { d.target = c; d.onTrail = trail; d.steer = false; break; } // its 2.5 s of life don't grow when it locks on
+              if (dist < 15 && (dx * d.dir[0] + dz * d.dir[2]) / dist > 0.5 && this.world.lineOfSight([d.pos[0], d.pos[1] + 0.8, d.pos[2]], c.eye())) { d.target = c; d.onTrail = false; d.steer = false; break; } // its 2.5 s of life don't grow when it locks on
             }
           }
           if (d.target) {
@@ -855,7 +938,17 @@ export class Game {
               continue;
             }
             d.biteAt = 0;
-            d.dir = [dx / dist, 0, dz / dist]; sp = d.onTrail ? 15 : 12;
+            const eyeP = [d.pos[0], d.pos[1] + 0.8, d.pos[2]], sees = this.world.lineOfSight(eyeP, c.eye());
+            let goal = c.pos;
+            // On a trail and out of sight: go to the newest point of the trail it can see, so it follows the way
+            // they went around corners.
+            if (!sees && d.onTrail && c.trailPts) {
+              for (let i = c.trailPts.length - 1; i >= 0; i--) { const q = c.trailPts[i]; if (this.world.lineOfSight(eyeP, [q[0], q[1] + 0.8, q[2]])) { goal = q; break; } }
+            }
+            if (sees || d.onTrail) d.until += DT; // like a Boomer: its clock stops while it is chasing
+            else d.target = null; // lost sight of someone it only saw: back to roaming
+            const gx = goal[0] - d.pos[0], gz = goal[2] - d.pos[2], gl = hyp(gx, gz) || 1;
+            d.dir = [gx / gl, 0, gz / gl]; sp = d.onTrail ? 15 : 12;
           }
         }
         if (d.kind === 'decoy' && now >= d.armAt) {
@@ -894,8 +987,12 @@ export class Game {
         let blocked = false;
         for (const ax of [0, 2]) {
           const np = [...d.pos]; np[ax] += d.dir[ax] * sp * DT;
-          if (this.world.overlap(np[0] - 0.25, np[1] + 0.4, np[2] - 0.25, np[0] + 0.25, np[1] + 1.2, np[2] + 0.25)) blocked = true;
-          else d.pos[ax] = np[ax];
+          if (this.world.overlap(np[0] - 0.25, np[1] + 0.4, np[2] - 0.25, np[0] + 0.25, np[1] + 1.2, np[2] + 0.25)) {
+            // A prowler on the hunt hops up onto a box or ledge in its way (up to 1.8 m); roaming, it can't.
+            const up = d.kind === 'prowler' && d.target && this.floorAt(np[0], np[2], d.pos[1] + 2.2);
+            if (up && up[1] - d.pos[1] > 0.3 && up[1] - d.pos[1] <= 1.8 && !this.world.overlap(np[0] - 0.25, up[1] + 0.05, np[2] - 0.25, np[0] + 0.25, up[1] + 0.9, np[2] + 0.25)) { d.pos[ax] = np[ax]; d.pos[1] = up[1]; }
+            else blocked = true;
+          } else d.pos[ax] = np[ax];
         }
         const f = this.floorAt(d.pos[0], d.pos[2], d.pos[1] + 0.6);
         if (f && f[1] - d.pos[1] > -3) d.pos[1] = f[1];
@@ -968,15 +1065,13 @@ export class Game {
           const px = d.pos[0] + ax * t - c.pos[0], pz = d.pos[2] + az * t - c.pos[2];
           if (hyp(px, pz) > 0.45 || d.pos[1] < c.pos[1] - 0.05 || d.pos[1] > c.pos[1] + c.height) continue; // the wire has to cross the body
           d.victim = c; d.caughtAt = now; d.zapped = false;
+          c.st.slowUntil = now + 0.15; c.st.slowAmt = 0.5; c.st.slowJump = 0.25; // slowed on the spot
           d.hold = [d.pos[0] + ax * t, d.pos[1], d.pos[2] + az * t];
           this.emit('alarm', { pos: d.pos });
           break;
         }
       } else if (d.kind === 'cam') {
-        const ownerView = d.owner.kit?.view === d;
-        if (ownerView) {
-          for (const c of enemiesOf(d)) if (hyp(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 40 && this.world.lineOfSight(d.pos, c.eye())) c.st.revealUntil = now + 0.25;
-        }
+        // Looking through the camera shows what it sees, nothing more: only its dart reveals (issue #81).
         if (d.dart) {
           if (now >= d.dart.until || !d.dart.target.alive) d.dart = null;
           else if (now >= d.dart.next) { d.dart.next = now + 2; this.snapshot(d.owner, [d.dart.target], 1); this.emit('tag', { pos: d.dart.target.eye() }); } // a snapshot every 2 s
@@ -1151,7 +1246,47 @@ export class Game {
     return first;
   }
 
+  // A wall at any angle (Frost Wall turned with right click). The map's boxes are all axis-aligned, so off the
+  // axes it is built for collision from a chain of small overlapping blocks along its line, and drawn as one
+  // turned slab (w.rot). `yaw` is the way you face, as for addWall: the wall runs across it.
+  addTurnedWall(owner, pos, yaw, life, opts) {
+    const { half, th, h, segments = 1, hp = 0, fortify = 0, style = 'bulwark', lift = false } = opts;
+    if (Math.abs(Math.sin(2 * yaw)) < Math.sin(4 * Math.PI / 180)) return this.addWall(owner, pos, yaw, life, opts); // close enough to an axis
+    const r = [Math.cos(yaw), -Math.sin(yaw)], s = 2 * th, step = s * 0.7, Ls = 2 * half / segments;
+    const nb = Math.ceil(Ls / step), blocks = [];
+    for (let i = 0; i < segments; i++) for (let j = 0; j < nb; j++) {
+      const t = -half + Ls * i + (j + 0.5) * Ls / nb, c = [pos[0] + r[0] * t, pos[2] + r[1] * t];
+      blocks.push({ seg: i, min: [c[0] - s / 2, pos[1], c[1] - s / 2], max: [c[0] + s / 2, pos[1] + h, c[1] + s / 2] });
+    }
+    const R = PLAYER.radius, lifted = new Set();
+    for (const c of this.combatants) {
+      if (!c.alive) continue;
+      for (const b of blocks) {
+        if (c.pos[0] + R > b.min[0] && c.pos[0] - R < b.max[0] && c.pos[2] + R > b.min[2] && c.pos[2] - R < b.max[2] && c.pos[1] + c.height > b.min[1] && c.pos[1] < b.max[1]) {
+          if (!lift) return false; // would trap someone
+          lifted.add(c);
+        }
+      }
+    }
+    const top = pos[1] + h;
+    for (const c of lifted) if (this.world.overlap(c.pos[0] - R, top + 0.02, c.pos[2] - R, c.pos[0] + R, top + c.height, c.pos[2] + R)) return false;
+    for (const c of lifted) { c.stepSmooth -= top - c.pos[1]; c.pos[1] = top; c.prevPos[1] = top; c.vel[1] = 0; c.grounded = true; }
+    let first = null;
+    for (let i = 0; i < segments; i++) {
+      const t = -half + Ls * (i + 0.5), center = [pos[0] + r[0] * t, pos[1], pos[2] + r[1] * t];
+      const boxes = blocks.filter(b => b.seg === i).map(b => ({ min: b.min, max: b.max, pen: false, mat: 'wall', temp: true }));
+      const w = { box: boxes[0], boxes, owner, until: this.time + life, born: this.time, style, pos: center, rot: { yaw, len: Ls, th: s, h } };
+      if (hp) { w.kind = 'icewall'; w.hp = hp; w.fortify = fortify; }
+      for (const b of boxes) { b.wall = w; this.world.boxes.push(b); }
+      this.walls.push(w);
+      this.emit('wall', w);
+      first ||= w;
+    }
+    return first;
+  }
+
   removeWall(w) {
+    for (const b of w.boxes || []) { const j = this.world.boxes.indexOf(b); if (j >= 0) this.world.boxes.splice(j, 1); }
     const i = this.world.boxes.indexOf(w.box);
     if (i >= 0) this.world.boxes.splice(i, 1);
     w.removed = true;
@@ -1220,34 +1355,40 @@ export class Game {
     const perTarget = new Map();
     for (const d of dirs) {
       const res = this.trace(shooter, o, d, budget);
-      const block = this.utilOnRay(shooter, o, d, res.endT);
+      const block = this.utilOnRay(shooter, o, d, res.hits.length ? res.hits[0].t : res.stopT);
       if (block) {
         // Utility in the way takes the shot (and its damage) instead of whoever is behind it.
         const end = [o[0] + d[0] * block.t, o[1] + d[1] * block.t, o[2] + d[2] * block.t];
         this.emit('tracer', { who: shooter, gun, from: o, to: end });
         this.emit('impact', { who: shooter, point: end, normal: [-d[0], -d[1], -d[2]], util: block.it });
-        if (this.isEnemy(shooter, block.it.owner)) this.hitUtil(block.it, damageAt(def, block.t)[2] * res.mult, shooter);
+        if (this.isEnemy(shooter, block.it.owner)) this.hitUtil(block.it, damageAt(def, block.t)[2] * this.wallMult(res, block.t, budget), shooter);
         continue;
       }
-      const end = [o[0] + d[0] * res.endT, o[1] + d[1] * res.endT, o[2] + d[2] * res.endT];
+      // Bodies on the line, nearest first: a headshot, or a hit that kills, carries on to whoever is behind.
+      let endT = res.stopT;
+      for (const h of res.hits) {
+        const { c, part, t } = h;
+        const b = damageAt(def, t);
+        const dmg = (part === 'head' ? b[1] : part === 'body' ? b[2] : b[3]) * h.mult;
+        const point = [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t];
+        let acc = perTarget.get(c);
+        if (!acc) { acc = { dmg: 0, head: 0, body: 0, legs: 0, dist: t, point, wallbang: false }; perTarget.set(c, acc); }
+        acc.dmg += dmg;
+        acc[part]++;
+        acc.dist = Math.min(acc.dist, t);
+        acc.wallbang ||= h.mult < 1;
+        if (part === 'head') acc.point = point;
+        if (part !== 'head' && !this.wouldKill(c, acc.dmg)) { endT = t; break; }
+      }
+      const end = [o[0] + d[0] * endT, o[1] + d[1] * endT, o[2] + d[2] * endT];
       this.emit('tracer', { who: shooter, gun, from: o, to: end });
       // A shot stopped by a wall that has health (Frost Wall) wears that piece down.
-      const stopped = !res.hit && res.impacts.length ? res.impacts[res.impacts.length - 1].box.wall : null;
-      if (stopped?.hp > 0 && this.isEnemy(shooter, stopped.owner)) this.hitUtil(stopped, damageAt(def, res.endT)[2], shooter);
+      const stopped = endT === res.stopT && res.impacts.length ? res.impacts[res.impacts.length - 1].box.wall : null;
+      if (stopped?.hp > 0 && (stopped.kind === 'icewall' || this.isEnemy(shooter, stopped.owner))) this.hitUtil(stopped, damageAt(def, endT)[2] * this.wallMult(res, endT, budget), shooter); // anyone can break a Frost Wall
       for (const imp of res.impacts) {
+        if (imp.t > endT) break;
         this.emit('impact', { who: shooter, point: [o[0] + d[0] * imp.t, o[1] + d[1] * imp.t, o[2] + d[2] * imp.t], normal: imp.n, box: imp.box });
       }
-      if (!res.hit) continue;
-      const { c, part, t } = res.hit;
-      const b = damageAt(def, t);
-      const dmg = (part === 'head' ? b[1] : part === 'body' ? b[2] : b[3]) * res.mult;
-      let acc = perTarget.get(c);
-      if (!acc) { acc = { dmg: 0, head: 0, body: 0, legs: 0, dist: t, point: end, wallbang: false }; perTarget.set(c, acc); }
-      acc.dmg += dmg;
-      acc[part]++;
-      acc.dist = Math.min(acc.dist, t);
-      acc.wallbang ||= res.mult < 1;
-      if (part === 'head') acc.point = end;
     }
     for (const [target, acc] of perTarget) {
       const part = acc.head ? 'head' : acc.body ? 'body' : 'legs';
@@ -1293,6 +1434,7 @@ export class Game {
     if (this.devices.includes(it)) it.removed = true;
     else it.until = this.time; // a zone or a dome ends now
     if (it.kind === 'decoy') this.flash(it.owner, [it.pos[0], it.pos[1] + 1, it.pos[2]], 2); // Double: shooting it blinds you
+    it.owner?.kit?.onUtilBroken?.(it); // a placed signature comes back 45 s later
     this.emit('utilBroken', it);
   }
 
@@ -1302,34 +1444,54 @@ export class Game {
     return this.devices.find(x => !x.removed && near(x)) || this.zones.find(near) || this.smokes.find(near) || this.walls.find(x => x.pos && !x.removed && near(x)) || null;
   }
 
+  // A shot's path. Each wall it crosses costs thickness x material density (MAT_DENSITY) from the gun's budget;
+  // where boxes overlap, as at a corner, that stretch is paid once. It stops at a solid wall or one it can't
+  // afford. Returns every enemy on the line before that, nearest first, with the damage share left after the
+  // walls in front of them (80% through a sliver, down to 30% through the gun's whole budget).
   trace(shooter, o, d, budget) {
     const walls = this.world.raycastAll(o, d, MAX_RANGE);
-    let stopT = MAX_RANGE, used = 0;
-    const crossed = [];
+    let stopT = MAX_RANGE, used = 0, covered = -Infinity;
+    const crossed = []; // [from, to, density]
     const impacts = [];
     for (const h of walls) {
       if (h.tIn > stopT) break;
-      const thick = h.tOut - h.tIn;
-      if (!h.box.pen || used + thick > budget) {
-        stopT = h.tIn;
-        impacts.push({ t: h.tIn, n: h.n, box: h.box });
+      const from = Math.max(h.tIn, covered), thick = Math.max(0, h.tOut - from), dens = MAT_DENSITY[h.box.mat] ?? 1;
+      const face = h.tIn >= covered; // entering from open air, not from inside the box it overlaps
+      if (!h.box.pen || used + thick * dens > budget) {
+        stopT = Math.max(h.tIn, Math.min(covered, h.tOut));
+        if (face || !h.box.pen) impacts.push({ t: stopT, n: h.n, box: h.box });
         break;
       }
-      used += thick;
-      crossed.push(h);
-      impacts.push({ t: h.tIn, n: h.n, box: h.box });
+      used += thick * dens;
+      if (thick > 0) crossed.push([from, h.tOut, dens]);
+      if (face) impacts.push({ t: h.tIn, n: h.n, box: h.box });
+      covered = Math.max(covered, h.tOut);
     }
-    let hit = null;
+    const res = { stopT, impacts, crossed, hits: [] };
     for (const c of this.combatants) {
       if (!c.alive || !this.isEnemy(shooter, c)) continue;
       const r = c.rayHit(o, d, stopT);
-      if (r && (!hit || r.t < hit.t)) hit = { c, part: r.part, t: r.t };
+      if (r) res.hits.push({ c, part: r.part, t: r.t });
     }
-    if (!hit) return { endT: stopT, impacts, hit: null, mult: 1 };
+    res.hits.sort((a, b) => a.t - b.t);
+    for (const h of res.hits) h.mult = this.wallMult(res, h.t, budget);
+    res.hit = res.hits[0] || null; // single-hit users (blades, Overload, darts): the first body ends it
+    res.endT = res.hit ? res.hit.t : stopT;
+    return res;
+  }
+
+  // Share of a bullet's damage left at distance t along a traced shot, after the walls before it.
+  wallMult(res, t, budget) {
     let through = 0;
-    for (const h of crossed) if (h.tIn < hit.t) through += Math.min(h.tOut, hit.t) - h.tIn;
-    const mult = through > 0 ? Math.max(0.3, 0.8 - 0.4 * through / budget) : 1;
-    return { endT: hit.t, impacts: impacts.filter(i => i.t < hit.t), hit, mult };
+    for (const [a, b, k] of res.crossed) if (a < t) through += (Math.min(b, t) - a) * k;
+    return through > 0 ? Math.max(0.3, 0.8 - 0.4 * through / budget) : 1;
+  }
+
+  // Would `dmg` more damage kill c outright? (A Focus shield eats the hit; Vulnerable doubles it.)
+  wouldKill(c, dmg) {
+    const now = this.time;
+    if (c.kit?.shield || c.st.intangibleUntil > now || c.st.invulnUntil > now) return false;
+    return dmg * (c.st.vulnUntil > now ? 2 : 1) >= c.hp + c.armor;
   }
 
   damage(target, attacker, amount, info) {

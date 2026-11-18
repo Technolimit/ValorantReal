@@ -189,7 +189,7 @@ export class Bot {
     if (full && !gun.reloading && gun.reserve > 0 && (gun.mag < full * 0.25 || (quiet && gun.mag < full * 0.6))) inp.reload = true;
     // Switched to the sidearm mid-fight: back to the primary once it's over.
     const prim = me.inv.primary;
-    if (quiet && me.slot === 'secondary' && prim && (prim.mag > 0 || prim.reserve > 0)) me.equip('primary', now);
+    if (quiet && me.slot === 'secondary' && prim && (prim.mag > 0 || prim.reserve > 0) && !me.kit?.busy()) me.equip('primary', now);
 
     // Round mode: the team plan gives each bot a goal (hold a spot, stage, entry, plant, defuse, pick up).
     // Active play: after a contact (or right after throwing a flash) push the spot instead of waiting on
@@ -325,7 +325,7 @@ export class Bot {
       if (dist < 2) inp.fire = true;
       return;
     }
-    if (gun.mag === 0 && gun.reserve === 0 && me.inv.secondary && me.slot !== 'secondary') me.equip('secondary', now);
+    if (gun.mag === 0 && gun.reserve === 0 && me.inv.secondary && me.slot !== 'secondary' && !me.kit?.busy()) me.equip('secondary', now);
     // Caught mid-reload up close: drawing the sidearm is quicker than finishing the reload. Otherwise, while the
     // gun can't fire, keep moving instead of standing still in the open.
     if (gun.reloading && !def.perRound) {
