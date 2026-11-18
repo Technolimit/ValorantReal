@@ -22,7 +22,7 @@ const AB_INPUT = { q: 'abQ', e: 'abE', c: 'abC', x: 'abX' }; // the input flag o
 // Numbers follow VALORANT_SPECS.md (the Valorant ability specs for patch 13.10) unless a comment says otherwise.
 export const LIFT_HEIGHT = 5; // Lift (Updraft) carries you about 5 m up
 export const DASH = { speed: 36.7, time: 0.3, exit: 7 }; // Tailwind: 11 m in 0.3 s, level, keep 7 m/s afterwards (issue #84: faster)
-export const GLIDE_FALL = 0.1; // max fall speed while gliding, m/s (issue #84: slower)
+export const GLIDE_FALL = 1.5; // max fall speed while gliding, m/s (issue #84: slower)
 // Thrown abilities: the VALORANT wiki's projectile classes as [speed in m/s, gravity scale on 9.8 m/s²].
 export const THROW = { lob: [6.3, 0.3], c1: [16.5, 0.7], c2: [18, 0.3], c3: [29, 0.45], c4: [41.25, 0.3], c5: [41.25, 0.15] };
 export const SMOKE = { radius: 2.8, life: 4.5, range: 14, grow: 0.25 };
