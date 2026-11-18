@@ -26,6 +26,9 @@ the Valorant names are in brackets.
   with no wall in between; Bastion holds E or Q for 0.6 s to call her turret or alarm bot back from anywhere.
 - **Placed signatures (Sentry, Watcher, Anchor)** start no cooldown while they stand: picked up, they come back
   25 s later; destroyed, 45 s later.
+- **Abilities and teammates.** Harmful effects (concussions, nearsight, deafening, holds, hinders, slows,
+  Decay, Vulnerable, pulls) also catch your teammates in range, and ability damage hits them for a third.
+  Reveals, trails, suppression, gadgets that pick a target, and Clampdown only ever affect enemies.
 - **5v5 buy phase.** Only set-up, healing and movement abilities can be used (as listed in `BUY_PHASE_OK`); the
   others can't even be taken out. A signature on a cooldown comes back after 3 s during the buy phase.
 
@@ -37,7 +40,7 @@ Passive: **Drift**: Hold Space while falling to glide down slowly.
 |---|---|---|---|---|---|
 | C | **Veil** (Cloudburst) | 2 × 200 | bought only | 16 s | Throw a smoke orb (29 m/s). Hold C and it curves toward your crosshair; let go and it falls. It bursts into a 2.5 s smoke on the first surface it touches, or after 2 s in the air. |
 | Q | **Lift** (Updraft) | 1 × 150 | bought only | 9 s | Launch yourself about 5 m straight up. |
-| E | **Slipstream** (Tailwind) | 1 free | 2 kills | 12 s | Press to gather the wind (1 s); press again within 7.5 s to dash ~11 m the way you are moving. Unused, the charge is lost. In 5v5 it comes back after two kills. |
+| E | **Slipstream** (Tailwind) | 1 free | 2 kills | 12 s | Press to gather the wind (1 s); press again within 7.5 s to dash ~11 m in 0.3 s the way you are moving, in a straight line that keeps your height. Unused, the charge is lost. In 5v5 it comes back after two kills. |
 | X | **Edgestorm** (Blade Storm) | 8 points | | | Draw five throwing blades: left click throws one (150 head / 50 body / 42 legs), right click fans out all of them. Each kill refills the set. Switch to a gun and the blades you have left wait for you: press X to take them out again. |
 
 ## Cinder (Phoenix) · Duelist
@@ -48,8 +51,8 @@ Passive: **Kindled**: Your own fire heals you instead of hurting you.
 |---|---|---|---|---|---|
 | C | **Firebreak** (Blaze) | 1 × 150 | bought only | 25 s | Hold the flame, then left click: a wall of fire races out 20 m ahead (30 m/s, so it is up in about 0.67 s). Keep the button held and turn to bend it. It stands 8 s, blocks sight, burns enemies (30/s) and heals you (up to 50). |
 | Q | **Ember** (Hot Hands) | 1 × 200 | bought only | 18 s | Hold a fireball: left click throws it, right click lobs it short. It drops after 1.5 s in the air and bursts on the ground into a pool of fire that spreads to 4.5 m and burns for 4 s (60/s to enemies; heals you, up to 50). |
-| E | **Sunflare** (Curveball) | 2 × 250 (1 free) | 2 kills | 14 s | Hold a flare in your hand (no gun), then left click to curve it left or right click to curve it right. It follows a set curve laid along where you look, up or down too, and bounces off walls in its way (twice at most). It bursts just around the corner 0.5 s later (about 8 m of flight), blinding anyone facing it for up to 1.5 s. In 5v5 one is free each round and two kills bring a used one back. |
-| X | **Rekindle** (Run It Back) | 7 points | | | Mark where you stand. For 10 s you can fight freely: if you die, or when time runs out, you burn away and re-form at the mark 2.4 s later at full health, with the shields you had. The death does not count. |
+| E | **Sunflare** (Curveball) | 2 × 250 (1 free) | 2 kills | 14 s | Hold a flare in your hand (no gun), then left click to curve it left or right click to curve it right. It follows a set curve laid along where you look, up or down too, and bounces off walls in its way (twice at most). It bursts just around the corner 0.5 s later (about 5.7 m of flight), blinding anyone facing it for up to 1.5 s. In 5v5 one is free each round and two kills bring a used one back. |
+| X | **Rekindle** (Run It Back) | 7 points | | | Mark where you stand. For 10 s you can fight freely: if you die, or when time runs out, you burn away and re-form at the mark 1 s later at full health, with the shields you had. The death does not count. |
 
 ## Umbra (Omen) · Controller
 
@@ -57,14 +60,14 @@ Passive: **Kindled**: Your own fire heals you instead of hurting you.
 |---|---|---|---|---|---|
 | C | **Rift** (Shrouded Step) | 2 × 100 | bought only | 25 s | Hold it: a marker shows where you will land (up to 15 m) and follows your aim. Left click to go; 0.7 s later you step through the shadows to it, and take another 0.5 s to arrive before you can shoot. |
 | Q | **Dread** (Paranoia) | 1 × 250 | bought only | 30 s | Send a round wave of shadow 8.6 m across straight ahead (20 m/s, 25 m) that passes through walls. Everyone it touches, teammates included, is nearsighted and deafened for 2 s. |
-| E | **Shade** (Dark Cover) | 2 × 150 (1 free) | 40 s | 40 s | Hold the orb: your view follows the smoke out through walls, and the sphere shows exactly where it will form. It passes through walls: hold right click to push it farther (up to 80 m), press R to make it stop at the first wall instead, left click to cast. The orb flies there at 64 m/s and the smoke lasts 14.7 s. |
+| E | **Shade** (Dark Cover) | 2 × 150 (1 free) | 40 s | 40 s | Hold the orb: your view follows the smoke out through walls, and the sphere shows exactly where it will form. It passes through walls and can sit at any height: hold right click to push it farther (up to 80 m), hold E to pull it closer, press R to make it stop at the first wall instead, left click to cast; switch to a weapon to put it away. The orb flies there at 64 m/s and the smoke lasts 14.7 s; placed up in the air, it sinks slowly to the ground. |
 | X | **Nightwalk** (From the Shadows) | 7 points | | | Take out the tablet (0.5 s), then click anywhere on the map. You fade out (untouchable) while a shade of you forms there; after 4 s you step out of it. Enemies who shoot the shade first cancel it and you stay where you were. |
 
 ## Hawke (Sova) · Initiator
 
 | Key | Ability | 5v5 charges · price | 5v5 recharge | Deathmatch cooldown | What it does |
 |---|---|---|---|---|---|
-| C | **Kestrel** (Owl Drone) | 1 × 400 | bought only | 40 s | Hold the drone, left click to launch it. Fly it smoothly (up to 5 m/s) with WASD and your mouse for up to 7 s while your body stands exposed (damage to your body ends it). Left click fires a tracking dart (every 5 s): an enemy it hits is revealed in two pings. |
+| C | **Kestrel** (Owl Drone) | 1 × 400 | bought only | 40 s | Hold the drone, left click to launch it. Fly it smoothly (up to 5 m/s) with WASD and your mouse for up to 7 s, or press C again to leave it, while your body stands exposed (damage to your body ends it). Left click fires a tracking dart (every 5 s): an enemy it hits is revealed in two pings. |
 | Q | **Arc Dart** (Shock Bolt) | 2 × 150 | bought only | 25 s | Draw the bow. Hold left click to charge (three bars over 1 s: each one flies faster and flatter), release to fire. Right click sets 0, 1 or 2 bounces. The dart crackles for 0.35 s where it ends up, then explodes: 75 damage within 1.5 m, down to 30 at 4 m. |
 | E | **Sonar Bolt** (Recon Bolt) | 1 free | 50 s | 50 s | Draw the bow. Hold left click to charge (three bars over 1 s), release to fire; right click sets 0, 1 or 2 bounces. The bolt sticks where it lands and pulses twice (0.7 s after landing, then 1.6 s later), revealing every enemy in its line of sight within 30 m. Enemies can shoot it out (20 HP). |
 | X | **Talon Strike** (Hunter's Fury) | 8 points | | | Fire up to three energy beams (66 m long, 3.5 m across) within 6 s, at least 0.75 s apart. Each one fires 0.4 s after you click, and everyone, enemies included, sees the line it will hit first; until it fires you can still nudge it up to 8°. They go through every wall, dealing 80 damage and revealing whoever they hit. You stand still while the bow is out. Press X (or switch weapons) to put it away and X to take it out again (0.5 s); the 6 s keep running. |
@@ -76,7 +79,7 @@ Passive: **Kindled**: Your own fire heals you instead of hurting you.
 | C | **Hive** (Nanoswarm) | 2 × 200 | bought only | 40 s | Throw a swarm grenade (left click) or lob it short (right click); it hides where it lands, and enemies only see it from within 5.25 m. Look at one, even through a wall (you see an icon on yours), and press F to set off just that one, or press C again once both are out (or you have none left) to set them all off: 0.5 s later, 45/s for 5 s in a 4.5 m radius. |
 | Q | **Watchdog** (Alarmbot) | 1 × 200 | bought only | 40 s | Deploy an alarm bot (10 m); it takes 1.5 s to dig in. When an enemy comes within 6 m it chases them and bursts 2.5 m from them: Vulnerable (double damage taken) for 4 s. It switches off while you are more than 40 m away. Hold Q for 0.6 s to call it back from anywhere (back 20 s later). |
 | E | **Sentry** (Turret) | 1 free | 45 s | 45 s | Deploy a turret (4.5 m) facing where you aim. It fires three-round bursts at enemies in its 100° view out to 40 m (8 damage a shot up close, 6 past 20 m, 4 past 35 m; hits slow) until it is destroyed (back 45 s later) or picked up (back 25 s later); no cooldown runs while it stands. Hold E for 0.6 s to call it back from anywhere. It takes 2 s to set up, and opens fire 0.75 s after it spots someone. It switches off while you are more than 40 m away. Placing a new one takes the old one down. |
-| X | **Clampdown** (Lockdown) | 9 points | | | Take out the device (0.8 s), then left click to plant it. It can be shot (200 HP) while it charges for 13 s, and everyone sees the sphere it covers; then it detains every enemy within 32 m of it for 8 s: they cannot fire or use abilities and can barely move. |
+| X | **Clampdown** (Lockdown) | 9 points | | | Take out the device (0.8 s), then left click to plant it. The device stands in the middle, where it can be shot (200 HP) to call it off while it charges for 13 s; everyone sees the sphere it covers and a countdown on their screen, and is told how many it caught; then it detains every enemy within 32 m of it for 8 s: they cannot fire or use abilities and can barely move. |
 
 ## Blitz (Raze) · Duelist
 
@@ -93,7 +96,7 @@ Passive: **Kindled**: Your own fire heals you instead of hurting you.
 |---|---|---|---|---|---|
 | C | **Rally** (Stim Beacon) | 1 × 200 | bought only | 30 s | Instantly toss a beacon that sets up a 6 m field for 12 s where it lands. You and teammates in it get Combat Stim (10% faster fire rate, reload, draw and recovery) and 10% faster movement, lasting 4 s after you leave. |
 | Q | **Napalm** (Incendiary) | 1 × 250 | bought only | 25 s | Fire an incendiary grenade from the launcher (29 m/s). It bounces off walls and skips along the ground until it settles, then 0.25 s later bursts into a fire that spreads to 4.5 m and burns for 7 s (60/s; a third of that to you and teammates). |
-| E | **Overcast** (Sky Smoke) | 3 × 100 (1 free) | once a round | 35 s | Take out the tablet (0.8 s), then the map opens: click up to three spots (one per charge) for sky smokes; press E again to call them in. Each lasts 19.25 s. |
+| E | **Overcast** (Sky Smoke) | 3 × 100 (1 free) | once a round | 35 s | Take out the tablet (0.8 s), then the map opens: each click calls a sky smoke onto that spot (one per charge, up to three); E or right click only closes the map. Each lasts 19.25 s. |
 | X | **Sky Hammer** (Orbital Strike) | 8 points | | | Take out the tablet (0.74 s), then click a spot on the map within 60 m: after 2 s a 9 m orbital strike burns it for 3 s (20 every 0.15 s), then shrinks away over 0.75 s. |
 
 ## Venom (Viper) · Controller
@@ -105,7 +108,7 @@ Passive: **Fuel**: Gas drains fuel while on and refills while everything is off.
 | C | **Acid Vial** (Snake Bite) | 2 × 300 | bought only | 25 s | Launch a vial (29 m/s) that bursts on the floor into a 4.5 m pool of acid for 6.5 s: 12.5/s, and Vulnerable (double damage, so 25/s) while you stand in it and for 2 s after. |
 | Q | **Miasma** (Poison Cloud) | 1 × 200 | bought only | — | Throw a gas emitter (left click) or lob it short (right click). Where it lands it releases a 4.5 m toxic cloud; press Q again to switch the cloud off and on (uses fuel; 5.5 s before it can come back on). |
 | E | **Toxic Wall** (Toxic Screen) | 1 free | once a round | — | Hold the launcher: the line where its emitters will land is shown, straight ahead through walls up to 60 m (one every 2 m). Left click to fire them: they lie on the floor, where everyone can see them. Press E to raise a wall of toxic gas 6.75 m high along them, and again to drop it (uses fuel; 5 s before it can come back on). Anyone in the gas takes Decay. |
-| X | **Nest** (Viper's Pit) | 9 points | | | Flood the area around you with a toxic cloud that spreads to 9 m over 5 s. It lasts as long as you stay inside it, and 8 s after you leave. Everyone inside, you included, is nearsighted (8 m); enemies also lose 50 health to Decay at once, then 10 a second. Enemies inside are outlined in red for your team, which makes them stand out but doesn’t show them through walls or past what you can see. |
+| X | **Nest** (Viper's Pit) | 9 points | | | Flood the area around you with a toxic cloud that spreads to 14 m over 5 s. It lasts as long as you stay inside it, and 8 s after you leave. Everyone inside, you included, is nearsighted (8 m); enemies also lose 50 health to Decay at once, then 10 a second. Enemies inside are outlined in red for your team, which makes them stand out but doesn’t show them through walls or past what you can see. |
 
 ## Vex (Reyna) · Duelist
 
@@ -122,7 +125,7 @@ Passive: **Soul Harvest**: An enemy who dies within 3 s of taking your damage dr
 
 | Key | Ability | 5v5 charges · price | 5v5 recharge | Deathmatch cooldown | What it does |
 |---|---|---|---|---|---|
-| C | **Rubble** (Aftershock) | 1 × 200 | bought only | 25 s | Fire a charge at a wall up to 35 m ahead (25 m/s). 2.2 s later it blasts the far side three times, 0.6 s apart: 80 damage each to everyone in a strip 10 m deep and 6 m wide behind the wall. |
+| C | **Rubble** (Aftershock) | 1 × 200 | bought only | 25 s | Fire a charge at a wall up to 35 m ahead along your aim (25 m/s). 2.2 s later it blasts the far side three times, 0.6 s apart: 80 damage each to everyone in a long cylinder (10 m long, 3 m around) running on from the wall the way you were looking, up or down too. The cylinder shows while it charges. |
 | Q | **Glimmer** (Flashpoint) | 2 × 250 | bought only | 18 s | Hold the charge: a marker shows, through the wall, where the flash will burst on its far side (a wall up to 35 m ahead). Left click to set it there; it bursts 0.5 s later, blinding for up to 2.25 s. |
 | E | **Fissure** (Fault Line) | 1 free | 50 s | 50 s | Hold left click to charge its length (8 m up to 56 m over 1 s, shown on the ground; you move slower while you charge), release to send a seismic line through walls. It starts 8 m ahead of you, is 8 m wide, and 1.1 s later concusses everyone on it for 2.5 s. |
 | X | **Aftershock Wave** (Rolling Thunder) | 8 points | | | Send a seismic charge rolling out through every wall: a strip 18 m wide that starts 8 m ahead of you and runs 30 m, going off zone by zone (the first 0.9 s after the cast, then every 0.255 s). Enemies in a zone when it goes are knocked up and concussed for 4 s. |
@@ -152,9 +155,9 @@ Passive: **Energy**: Overclock runs on energy: a full bar is 16 s of sprinting a
 | Key | Ability | 5v5 charges · price | 5v5 recharge | Deathmatch cooldown | What it does |
 |---|---|---|---|---|---|
 | C | **Bloom** (Regrowth) | 1 × 150 | bought only | 25 s | Hold C to channel: every hurt teammate you can see within 18 m heals 20 HP/s. One charge holds a 100 HP pool — let go to stop, hold C again to keep spending it. You cannot shoot while channelling, and it cannot heal you. |
-| Q | **Stalker** (Trailblazer) | 1 × 300 | bought only | 40 s | Hold the tiger, left click to send it. You see through its eyes and steer with the mouse for up to 6 s (6.4 m/s, 80 HP). Left click makes it leap up to 12 m: the first enemy it hits takes 30, and everyone within 3.5 m of where it lands is concussed for up to 4 s. |
-| E | **Lantern Hawk** (Guiding Light) | 2 × 250 (1 free) | 50 s | 50 s | Hold the hawk, left click to release it; it flies where you aim (18 m/s, 60 HP). Press E again to make it burst 0.3 s later, blinding anyone facing it for 1 to 2.25 s: the full time once it has flown 0.75 s (it bursts on its own after 2 s). In 5v5 one is free each round and a second costs 250. |
-| X | **Hunters** (Seekers) | 8 points | | | Release three seekers (120 HP each) that track the three closest enemies for up to 15 s, through walls. Each one that reaches its target nearsights them for 3 s. |
+| Q | **Stalker** (Trailblazer) | 1 × 300 | bought only | 40 s | Hold the tiger, left click to send it. You see through its eyes and drive it like yourself for up to 6 s (80 HP): WASD moves it the way you look and it stands still when you let go, Space jumps, Shift or crouch creeps silently (3.2 m/s instead of 6.4 m/s). Left click makes it leap up to 12 m: the first enemy it hits takes 30, and everyone within 3.5 m of where it lands is concussed for up to 4 s. |
+| E | **Lantern Hawk** (Guiding Light) | 2 × 250 (1 free) | 50 s | 50 s | Hold the hawk, left click to release it; it flies where you aim (18 m/s, 60 HP). Press E again to make it burst 0.3 s later, blinding anyone facing it for 1 to 2.25 s: the full time once it has flown 0.75 s. It also bursts by itself 0.3 s after an enemy first has it in view, and on its own after 2 s. You hear a bird call when it blinds an enemy. In 5v5 one is free each round and a second costs 250. |
+| X | **Hunters** (Seekers) | 8 points | | | Release three seekers (120 HP each) that track the three closest enemies for up to 15 s. They find their way around walls rather than through them; a breakable wall in the way (Frost Wall) they chew through, a little at a time. Each one that reaches its target nearsights them for 3 s. |
 
 ## Lattice (Cypher) · Sentinel
 
@@ -198,10 +201,10 @@ Passive: **Stars**: You have up to 5 stars (in 5v5 one is free each round and mo
 
 | Key | Ability | 5v5 charges · price | 5v5 recharge | Deathmatch cooldown | What it does |
 |---|---|---|---|---|---|
-| C | **Snare** (Trademark) | 1 × 200 | bought only | 30 s | Hold the trap, left click to place it on the floor (12 m); it arms after 2 s. When it sees an enemy within 10 m, 0.9 s later the ground around it breaks into a 6 m field that slows by half for 6 s. It resets 10 s later. Enemies can shoot it (20 HP). |
+| C | **Snare** (Trademark) | 1 × 200 | bought only | 30 s | Hold the trap, left click to place it on the floor (12 m); it arms after 2 s. When it sees an enemy within 10 m, 0.9 s later the ground around it breaks into a 6 m field that slows by half for 6 s, and the trap is used up. Enemies can shoot it (20 HP). |
 | Q | **Sovereign** (Headhunter) | 8 × 100 | bought only | 30 s | Draw a heavy pistol (8 rounds; 159 to the head, right click to aim). Press Q again to holster it and keep the rest of the rounds. The ability bar shows one pip per round. |
 | E | **Anchor** (Rendezvous) | 1 free | — | — | Hold the anchor, left click to place it on the floor (8.5 m). Press E again anywhere within 18 m of it to teleport back (1.3 s, invulnerable on the way; 30 s cooldown between teleports). Enemies can shoot it (50 HP; back 45 s later); pick it up with F and it is back 25 s later. No cooldown runs while it is placed. |
-| X | **Coup de Grace** (Tour De Force) | 8 points | | | Summon a custom sniper rifle (1 s; 5 rounds, 1.6 shots a second): one hit to the body or head kills, and every kill leaves a 6 m field that slows by half for 4 s where the target fell. Right click to scope. Press X to holster it and again to draw it. |
+| X | **Coup de Grace** (Tour De Force) | 8 points | | | Summon a custom sniper rifle (1 s; 5 rounds, 0.9 shots a second). It handles like an Operator: right click scopes in twice (2.5x, 5x) and a shot drops you out of the scope. One hit to the body or head kills, and every kill leaves a 6 m field that slows by half for 4 s where the target fell. Press X to holster it and again to draw it. |
 
 ## Marina (Harbor) · Controller
 
@@ -209,7 +212,7 @@ Passive: **Stars**: You have up to 5 stars (in 5v5 one is free each round and mo
 |---|---|---|---|---|---|
 | C | **Squall** (Cascade; Valorant now has Storm Surge here) | 1 × 200 | bought only | 30 s | Hold the water, left click to throw it (29 m/s). It bursts into a whirlpool where it lands, and 0.6 s later every enemy within 6 m is nearsighted for 2 s, seen or not. |
 | Q | **Riptide** (High Tide) | 1 × 300 | bought only | 40 s | Hold the water, then left click: a wall of water 8 m high races forward along the ground (20 m/s, up to 60 m), through walls. Keep the button held and turn to steer it; right click stops it early. It stands 15 s, blocks sight and slows whoever crosses it. |
-| E | **Lagoon** (Cove) | 1 free | 30 s | 30 s | Hold the orb: your view follows it out through walls, and the dome shows exactly where it will form, on the ground. Hold right click to push it farther (up to 80 m), press R to make it stop at the first wall instead, left click to cast. The orb flies there at 64 m/s and rises into a water dome 9.2 m across for 19.25 s that blocks sight; 0.8 s later its shell forms and stops bullets until it takes 680 damage. |
+| E | **Lagoon** (Cove) | 1 free | 30 s | 30 s | Hold the orb: your view follows it out through walls, and the dome shows exactly where it will form, at any height. Hold right click to push it farther (up to 80 m), hold E to pull it closer, press R to make it stop at the first wall instead, left click to cast; switch to a weapon to put it away. Placed up in the air, it sinks slowly to the ground. The orb flies there at 64 m/s and rises into a water dome 9.2 m across for 19.25 s that blocks sight. Press E again to raise its shell: 0.8 s later it stops bullets until it takes 680 damage. |
 | X | **Undertow** (Reckoning) | 7 points | | | Send a towering wave of water (10 m high) rolling out ahead of you through walls: 28 m wide, 8 m/s, for 40 m. It blocks sight as it goes, and every enemy it washes over is nearsighted for 3 s. |
 
 ## Vanta (Iso) · Duelist
@@ -247,7 +250,7 @@ Passive: **Afterlife**: Ruse (E) works even while you are dead, until the round 
 |---|---|---|---|---|---|
 | C | **Pick-Me-Up** (Pick-Me-Up) | 1 × 200 | bought only | 30 s | Absorb the life force of an enemy you killed or damaged who died in the last 6 s. It takes 0.7 s, then gives +50 temporary health (it lasts 10 s, then fades) and 15% haste for 3 s (shown as a timer). |
 | Q | **Meddle** (Meddle) | 1 × 250 | bought only | 25 s | Hold the fragment, left click to throw it (29 m/s). 0.75 s after it lands it erupts in a 4 m burst: enemies caught lose 90 health to Decay (never lethal), which comes back over 5 s. |
-| E | **Ruse** (Ruse) | 2 × 150 (1 free) | 40 s | 40 s | Take out the tablet (0.6 s), then click up to two spots on the map (one per charge, within 55 m); press E or right click to drop smokes there 1 s later (13.5 s). Works while you are dead: one smoke, 5.5 s, within 42.5 m. |
+| E | **Ruse** (Ruse) | 2 × 150 (1 free) | 40 s | 40 s | Take out the tablet (0.6 s), then each click on the map (one per charge, within 55 m) drops a smoke there 1 s later (13.5 s); E or right click only closes the map. Works while you are dead: one smoke, 5.5 s, within 42.5 m. |
 | X | **Not Dead Yet** (Not Dead Yet) | 8 points | | | After you die, press X to come back where you fell. Reviving takes 1.5 s, untouchable. You then have 10 s to get a kill or damage an enemy — otherwise you die again. |
 
 ## Lumen (Waylay) · Duelist
