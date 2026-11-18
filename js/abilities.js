@@ -556,14 +556,14 @@ export const AGENTS = {
         activates: 'swarm',
       },
       q: {
-        item: 'device', name: 'Watchdog', desc: 'Deploy an alarm bot (10 m); it takes 1.5 s to dig in. When an enemy comes within 6 m it chases them and bursts 2.5 m from them: Vulnerable (double damage taken) for 4 s. It switches off while you are more than 40 m away.', charges: 1, cooldown: 40, equip: 0.85,
+        item: 'device', name: 'Watchdog', desc: 'Deploy an alarm bot (10 m); it takes 1.5 s to dig in. When an enemy comes within 6 m it chases them and bursts 2.5 m from them: Vulnerable (double damage taken) for 4 s. It switches off while you are more than 40 m away. Hold Q for 0.6 s to call it back from anywhere (back 20 s later).', charges: 1, cooldown: 40, equip: 0.85,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 10, { floor: true, back: 0.4 });
           o.game.addDevice({ kind: 'alarm', owner: o, pos, life: 90, armAt: kit.now + 1.5 });
         },
       },
       e: {
-        item: 'device', name: 'Sentry', desc: 'Deploy a turret (4.5 m) facing where you aim. It fires three-round bursts at enemies in its 100° view out to 40 m (8 damage a shot up close, 6 past 20 m, 4 past 35 m; hits slow) until it is destroyed (45 s to get it back) or picked up (20 s). It takes 2 s to set up, and opens fire 0.75 s after it spots someone. It switches off while you are more than 40 m away. Placing a new one takes the old one down.', charges: 1, cooldown: 45, equip: 1.1, deployed: true,
+        item: 'device', name: 'Sentry', desc: 'Deploy a turret (4.5 m) facing where you aim. It fires three-round bursts at enemies in its 100° view out to 40 m (8 damage a shot up close, 6 past 20 m, 4 past 35 m; hits slow) until it is destroyed (back 45 s later) or picked up (back 25 s later); no cooldown runs while it stands. Hold E for 0.6 s to call it back from anywhere. It takes 2 s to set up, and opens fire 0.75 s after it spots someone. It switches off while you are more than 40 m away. Placing a new one takes the old one down.', charges: 1, cooldown: 45, equip: 1.1, deployed: true,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 4.5, { floor: true, back: 0.5 });
           for (const d of o.game.devices) if (d.kind === 'turret' && d.owner === o) d.removed = true; // one turret at a time (a second only after it's back)
@@ -1064,7 +1064,7 @@ export const AGENTS = {
     blurb: 'An information broker. Wires, cages and a camera tell him everything — and his ultimate reads the minds of the fallen.',
     abilities: {
       c: {
-        item: 'device', name: 'Tripline', desc: 'Hold the wire, aim at a wall (up to 20 m) and left click to stretch it across the gap at that height (up to 15 m); it arms 1.5 s later. An enemy who crosses it is tethered and slowed by half. 0.7 s later it zaps them: slowed for another second and revealed for as long as it holds them. Tearing free (6.2 m) costs a zap too; shooting the wire (20 HP) frees them. It resets and can catch again.', charges: 2, cooldown: 30, equip: 0.8, unequip: 0.7,
+        item: 'device', name: 'Tripline', desc: 'Hold the wire, aim at a wall (up to 20 m) and left click to stretch it across the gap at that height (up to 15 m); it arms 1.5 s later. An enemy who crosses it is tethered and slowed by half. 0.7 s later it zaps them: slowed for another second and revealed for as long as it holds them. Tearing free (6.2 m) costs a zap too; shooting the wire (20 HP) frees them. It resets and can catch again. Look at it from anywhere with no wall in between and press F to pick it up.', charges: 2, cooldown: 30, equip: 0.8, unequip: 0.7,
         // While held: a dotted line shows exactly where the wire will stretch.
         pointsPreview(kit) {
           const e = tripEnds(kit.owner);
@@ -1101,7 +1101,7 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'device', name: 'Watcher', desc: 'Hold the camera, left click to stick it on the surface you aim at (20 m). Press E again to look through it; enemies it sees are revealed, and left click fires a tracking dart (pings every 2 s for 8 s). E again to leave. One shot destroys it (45 s to get it back; 20 s if you pick it up).', charges: 1, cooldown: 45, equip: 0.8, deployed: true,
+        item: 'device', name: 'Watcher', desc: 'Hold the camera, left click to stick it on the surface you aim at (20 m). Press E again to look through it; enemies it sees are revealed, and left click fires a tracking dart (pings every 2 s for 8 s). E again to leave. One shot destroys it (back 45 s later). Look at it from anywhere with no wall in between and press F to pick it up (back 25 s later); no cooldown runs while it is up.', charges: 1, cooldown: 45, equip: 0.8, deployed: true,
         use(kit) {
           const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           const hit = g.world.raycast(eye, d, 20);
@@ -1342,7 +1342,7 @@ export const AGENTS = {
         reuse(kit) { return toggleAbilityGun(kit, 'headhunter'); },
       },
       e: {
-        item: 'device', name: 'Anchor', desc: 'Hold the anchor, left click to place it on the floor (8.5 m). Press E again anywhere within 18 m of it to teleport back (1.3 s, invulnerable on the way; 30 s cooldown between teleports). Enemies can shoot it (50 HP).', charges: 1, cooldown: 0, unequip: 1.2, deployed: true,
+        item: 'device', name: 'Anchor', desc: 'Hold the anchor, left click to place it on the floor (8.5 m). Press E again anywhere within 18 m of it to teleport back (1.3 s, invulnerable on the way; 30 s cooldown between teleports). Enemies can shoot it (50 HP; back 45 s later); pick it up with F and it is back 25 s later. No cooldown runs while it is placed.', charges: 1, cooldown: 0, unequip: 1.2, deployed: true,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 8.5, { floor: true, back: 0.6 });
           if (kit.anchor) kit.anchor.removed = true;
