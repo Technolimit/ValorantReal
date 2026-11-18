@@ -109,6 +109,38 @@ Issue #81 asked for these. Several go against Valorant on purpose; the current n
   - Smokes already differ in size by agent (Omen 4.1 m, Brimstone 4.15, Astra 4.75, Harbor 4.6, Clove 4, Viper
     4.5, Jett 3.35).
 
+## Changed at the request of issue #84
+
+- **Custom game.** A Custom entry in the queue sets the rules (deathmatch or 5v5), the lobby size, how many are
+  bots, what the bots do, and cheats for you: infinite money, infinite abilities, ultimate always ready, infinite
+  ammo, can't die. Offline only.
+- **Abilities reach teammates.** Harmful effects catch the owner's teammates in range too, and ability damage
+  hits them for a third. Reveals, trails, suppression, target-seeking gadgets and Clampdown stay enemy-only. A
+  teammate killed by your ability gives no credit.
+- **Duelists.**
+  - Zephyr: Slipstream is 11 m in 0.3 s in a level line; Drift falls at 1.5 m/s; Veil steers faster; the rest of
+    her kit works during Edgestorm.
+  - Cinder: Firebreak turns faster; Rekindle brings him back in 1 s; Sunflare flies about 5.7 m.
+- **Controllers.**
+  - Umbra and Marina: Shade and Lagoon aim at any height, sink slowly to the ground if placed in the air, come
+    closer while E is held, and are put away by switching weapons.
+  - Marina: Lagoon's shell goes up only on a second E press.
+  - Granite and Thistle: Overcast and Ruse place a smoke on each click; E or right click only closes the map.
+    Rally's stim and haste show as a timer.
+  - Venom: Nest spreads to 14 m.
+- **Initiators.**
+  - Hawke: C again leaves Kestrel.
+  - Quake: Aftershock Wave throws people up and back further; Rubble's blast is a 10 m cylinder along your aim.
+  - Fawn: Stalker is driven like the Scout Drone. Lantern Hawk bursts 0.3 s after an enemy has it in view, with a
+    bird call when it blinds one. Hunters path around walls and chew through Frost Walls.
+  - Nyx: terror trails are hidden by walls.
+- **Sentinels.**
+  - Bastion: Clampdown has a device in the middle, a countdown on everyone's screen, and a count of who it caught.
+  - Regent: Snare is used up when it goes off. Coup de Grace handles like an Operator (2.5x / 5x, out of the scope
+    after a shot) at 0.9 shots a second.
+- **Not changed.** The gun models keep their sway and bob ("gun models should be immobile and not flexible" was
+  tried and undone on request).
+
 ## Where the spec was unclear
 
 These follow one reading of the spec, which may not be what Valorant does:

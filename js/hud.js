@@ -82,6 +82,8 @@ export class Hud {
     g.on('start', () => { if (g.player.kit) this.buildAbilities(g.player.kit.id); });
     g.on('abilityLocked', ({ who, key }) => { if (who === g.player && performance.now() - (this.lockMsgAt || 0) > 600) { this.lockMsgAt = performance.now(); this.center(key === 'suppressed' ? '<small>SUPPRESSED · NO ABILITIES</small>' : '<small>CAN\'T USE THAT UNTIL THE ROUND STARTS</small>'); } });
     g.on('abilityFail', ({ who }) => { if (who === g.player) this.center('<small>CAN\'T PLACE THAT THERE</small>'); });
+    // Clampdown: everyone is told how many it caught, for 3 s (the countdown before is in update()).
+    g.on('lockdown', ({ caught }) => { this.lockMsg = { text: `CLAMPDOWN · ${caught} CAUGHT`, until: performance.now() + 3000 }; });
     // Zero Point: the whole team is told who it caught, at the bottom of the screen, for 4 s.
     g.on('zeroPoint', ({ owner, hit }) => {
       if (!g.player || g.isEnemy(g.player, owner)) return;
@@ -200,6 +202,10 @@ export class Hud {
     if (abWho.kit && this.abFor !== abWho.kit.id) this.buildAbilities(abWho.kit.id);
     this.updateAbilities(abWho, g.time);
     this.updateTimers(p, g.time);
+    // Clampdown charging somewhere: a countdown on everyone's screen; once it goes, how many it caught.
+    const lz = g.zones.find(z => z.kind === 'lockdown' && !z.fired && g.time < z.until);
+    const lockText = lz ? `CLAMPDOWN · ${Math.max(0, lz.armAt - g.time).toFixed(1)}s` : this.lockMsg && performance.now() < this.lockMsg.until ? this.lockMsg.text : '';
+    if (this.lockText !== lockText) { this.lockText = lockText; $('lockbar').textContent = lockText; $('lockbar').hidden = !lockText; }
     this.updateBow(p);
     this.updateScreenFx(p, g.time);
     let mode = '';
@@ -400,6 +406,7 @@ export class Hud {
     if (kit.downed && !kit.downed.upAt) add('Down', kit.downed.until, 15);
     if (kit.launcher) add('Finale', kit.launcher.until, 10);
     if (now < p.st.hasteUntil) add('Haste', p.st.hasteUntil, 3);
+    if (now < p.st.stimUntil) add('Combat Stim · haste', p.st.stimUntil, 4);
     if (g.contract && (g.contract.a === p || g.contract.b === p)) add('Duel', g.contract.until, 15);
     if (kit.nest) add('Nest', kit.nest.until, 15);
     for (const o of kit.orbs || []) add('Soul orb', o.until, 3);

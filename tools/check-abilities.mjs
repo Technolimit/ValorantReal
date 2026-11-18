@@ -276,6 +276,72 @@ const checks = [
       out.lightspeedPause = paused && turned; }
     return { pass: Object.values(out).every(Boolean), ...out };
   }],
+  ['Issue #84 agents: Slipstream level, kit during Edgestorm, Rekindle 1 s, Kestrel exit, Overcast per click, Nest 14 m, Rubble cylinder, Stalker, hawk, seekers, Snare, Lagoon shell, Clampdown count', async () => {
+    const out = {};
+    { const g = await __start({ agent: 'zephyr', map: 'arena' }), p = g.player, k = p.kit; __place(g, p, 20); __tick(g, 0.3);
+      p.pos[1] += 2; p.prevPos = [...p.pos]; p.vel = [0, 0, 0]; p.grounded = false; const y0 = p.pos[1];
+      p.dash = { until: g.time + 0.3, dir: [0, -1], level: true }; __tick(g, 0.25);
+      out.dashLevel = Math.abs(p.pos[1] - y0) < 0.05;
+      k.ultPoints = 99; k.agent.abilities.x.use(k); __tick(g, 0.6); k.charges.q = 1;
+      p.input.abQ = true; g.tick(); p.input.abQ = false; __tick(g, 0.2);
+      out.updraftInBladestorm = !!k.blades && k.charges.q === 0; }
+    { const g = await __start({ agent: 'cinder', map: 'arena' }), p = g.player, k = p.kit, b = g.bots[0]; __place(g, p, 12); __tick(g, 0.3);
+      k.ultPoints = 99; k.agent.abilities.x.use(k); const t0 = g.time; g.damage(p, b, 500, { part: 'body', def: { id: 'vandal', name: 'Vandal' }, dist: 5, point: p.eye() });
+      while (p.st.channelUntil > g.time && g.time - t0 < 3) g.tick();
+      out.rekindle1s = Math.abs(g.time - t0 - 1) < 0.05; }
+    { const g = await __start({ agent: 'hawke', map: 'arena' }), p = g.player, k = p.kit; __place(g, p, 12); __tick(g, 0.3);
+      k.agent.abilities.c.use(k); __tick(g, 0.5); const owl = k.pilot;
+      p.input.abC = true; g.tick(); p.input.abC = false; out.kestrelExit = !k.pilot && owl.removed; }
+    { const g = await __start({ agent: 'granite', mode: 'rounds', map: 'divide' }), p = g.player, k = p.kit; __live(g);
+      k.charges.e = 2; k.agent.abilities.e.use(k); const at = __ahead(p, 6); at[1] = p.pos[1];
+      k.mapClick([...at]); __tick(g, 1.2); const first = g.smokes.length;
+      out.overcastPerClick = first === 1 && !!k.mapPick && k.charges.e === 1; }
+    { const g = await __start({ agent: 'venom', map: 'arena' }), p = g.player, k = p.kit; __place(g, p, 12); __tick(g, 0.3);
+      k.agent.abilities.x.use(k); __tick(g, 5.5); out.nest14 = Math.abs(k.nestZone.r - 14) < 0.01; }
+    { const g = await __start({ agent: 'quake', map: 'arena', botCount: 1, botMode: 'static' }), p = g.player, k = p.kit, b = g.bots[0]; __place(g, p, 20); __tick(g, 0.3);
+      const at = __ahead(p, 4); at[1] = p.pos[1]; __box(g, [at[0] - 3, at[1], at[2] - 0.4], [at[0] + 3, at[1] + 4, at[2]]);
+      b.pos = __ahead(p, 9); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.hp = 100; b.armor = 0; p.pitch = 0;
+      k.agent.abilities.c.use(k); __tick(g, 4); const hitLevel = b.hp < 100;
+      b.hp = 100; p.pitch = -0.6; k.agent.abilities.c.use(k); __tick(g, 4); const missedLookingDown = b.hp === 100;
+      out.rubbleCylinder = hitLevel && missedLookingDown; }
+    { const g = await __start({ agent: 'fawn', map: 'arena', botCount: 1, botMode: 'static' }), p = g.player, k = p.kit, b = g.bots[0]; __place(g, p, 20); __tick(g, 0.3);
+      k.agent.abilities.q.use(k); __tick(g, 1); const t = k.pilot, at0 = [...t.pos]; __tick(g, 1);
+      out.stalkerStill = Math.hypot(t.pos[0] - at0[0], t.pos[2] - at0[2]) < 0.05;
+      t.removed = true; k.pilot = null; __tick(g, 0.1);
+      b.pos = __ahead(p, 14); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.yaw = p.yaw + Math.PI; b.pitch = 0;
+      let calls = 0; g.on('birdCall', () => calls++);
+      p.pitch = 0; k.agent.abilities.e.use(k); __tick(g, 0.9);
+      out.hawkPopsWhenSeen = !!k.hawk === false && b.st.blindUntil > g.time - 1 && calls === 1; }
+    { const g = await __start({ agent: 'fawn', map: 'arena', botCount: 1, botMode: 'static' }), p = g.player, b = g.bots[0]; __place(g, p, 20); __tick(g, 0.3);
+      b.pos = __ahead(p, 10); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos];
+      const at = __ahead(p, 5); at[1] = p.pos[1];
+      __box(g, [at[0] - 20, at[1] - 1, at[2] - 20], [at[0] + 20, at[1], at[2] + 20]); // a floor all round, no ledge to drop past
+      // A solid wall (not breakable) 6 m tall between them: the seeker must never be inside it.
+      const solid = __box(g, [at[0] - 6, at[1], at[2] - 0.3], [at[0] + 6, at[1] + 6, at[2] + 0.3]);
+      const s = g.addDevice({ kind: 'seeker', owner: p, pos: p.eye(), target: b, life: 15 });
+      let inside = false;
+      for (let i = 0; i < 128 * 2; i++) { g.tick(); const q = s.pos; if (q[0] > solid.min[0] && q[0] < solid.max[0] && q[1] > solid.min[1] && q[1] < solid.max[1] && q[2] > solid.min[2] && q[2] < solid.max[2]) inside = true; }
+      s.removed = true; g.world.boxes = g.world.boxes.filter(x => x !== solid);
+      // A Frost Wall in the way instead: it gets chewed, not flown over.
+      g.addTurnedWall(b, at, p.yaw, 40, { half: 5.2, h: 2.6, th: 0.6, style: 'ice', segments: 4, hp: 400, fortify: 0 });
+      g.addDevice({ kind: 'seeker', owner: p, pos: p.eye(), target: b, life: 15 });
+      __tick(g, 2.5);
+      out.seekersRespectWalls = !inside && g.walls.some(x => x.kind === 'icewall' && (x.hp < 400 || x.removed)); }
+    { const g = await __start({ agent: 'regent', map: 'arena', botCount: 1, botMode: 'static' }), p = g.player, b = g.bots[0]; __place(g, p, 14); __tick(g, 0.3);
+      const at = __ahead(p, 3); at[1] = p.pos[1];
+      const d = g.addDevice({ kind: 'trademark', owner: p, pos: at, life: 999, armAt: g.time });
+      b.pos = __ahead(p, 7); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; __tick(g, 1.5);
+      out.snareUsedUp = d.removed && g.zones.some(z => z.kind === 'slowfield'); }
+    { const g = await __start({ agent: 'marina', map: 'arena' }), p = g.player, k = p.kit; __place(g, p, 20); __tick(g, 0.3);
+      k.agent.abilities.e.use(k); __tick(g, 1); const cv = k.cove; const noShell = cv && !cv.shellOn;
+      p.input.abE = true; g.tick(); p.input.abE = false; out.coveShellOnE = noShell && cv.shellOn; }
+    { const g = await __start({ agent: 'bastion', map: 'arena', botCount: 2, botMode: 'static' }), p = g.player; __place(g, p, 12); __tick(g, 0.3);
+      let caught = null; g.on('lockdown', (e) => { caught = e.caught; });
+      g.addZone({ kind: 'lockdown', owner: p, pos: [...p.pos], r: 32, life: 1, armAt: g.time + 0.1, dur: 8, slow: 0.833 }, g.time);
+      for (const b of g.bots) { b.pos = __ahead(p, 4); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; }
+      __tick(g, 0.3); out.clampdownCount = caught === 2; }
+    return { pass: Object.values(out).every(Boolean), ...out };
+  }],
   ['Abilities reach teammates in range: concuss, nearsight, a third of the damage; never reveals, suppression or Clampdown', async () => {
     const g = await __start({ mode: 'rounds', map: 'divide', agent: 'quake', botMode: 'static' });
     __live(g);
@@ -530,7 +596,7 @@ const checks = [
     for (let i = 0; i < 20; i++) { __tick(g, 0.125); const bot = g.devices.find(d => d.kind === 'boombot'); if (bot) top = Math.max(top, bot.pos[1] - base); }
     return { pass: top > 1.5, highestPoint: +top.toFixed(2) };
   }],
-  ['Shade smoke forms exactly where its preview showed, also after pushing it out', async () => {
+  ['Shade smoke forms exactly where its preview showed, also after pushing it out (then sinks to the ground if in the air)', async () => {
     const g = await __start({ agent: 'umbra', map: 'arena' });
     const o = g.player, k = o.kit;
     if (!__place(g, o, 14)) return { error: 'no open ground' };
@@ -539,10 +605,12 @@ const checks = [
     for (let i = 0; i < 40; i++) { o.input.alt = true; g.tick(); } // hold right click: farther
     o.input.alt = false; g.tick();
     const pv = [...k.previewPos];
+    let formed = null; g.on('smoke', (sm) => { formed ||= [...sm.pos]; });
     o.input.firePressed = true; __tick(g, 1);
     const s = g.smokes[g.smokes.length - 1];
-    const off = s ? Math.hypot(s.pos[0] - pv[0], s.pos[1] - pv[1], s.pos[2] - pv[2]) : null;
-    return { pass: off !== null && off < 1e-6, offset: off };
+    const off = formed ? Math.hypot(formed[0] - pv[0], formed[1] - pv[1], formed[2] - pv[2]) : null;
+    const sinking = s.settleTo != null && s.pos[1] >= s.settleTo - 1e-6 && s.pos[1] <= formed[1];
+    return { pass: off !== null && off < 1e-6 && sinking, offset: off, sinking };
   }],
   ['Zero Point suppresses: no abilities for 8 s, guns still work', async () => {
     const g = await __start({ agent: 'override' });
@@ -591,7 +659,7 @@ const checks = [
     const maps = Object.values(out).every(r => r.orbs === 2 && r.reach.every(x => x.onFloor && x.atk && x.def));
     return { pass: maps && early === 0 && got === 1 && taken && back, ...out, pointsAt2s: early, pointsAt3s: got, orbTaken: taken, backNextRound: back };
   }],
-  ['Enemy utility can be shot down; a Lagoon dome stops bullets until it breaks', async () => {
+  ['Enemy utility can be shot down; a Lagoon dome stops bullets once its shell is raised, until it breaks', async () => {
     const g = await __start({});
     const p = g.player, b = g.bots[0];
     if (!__place(g, p, 12)) return { error: 'no open ground' };
@@ -603,7 +671,11 @@ const checks = [
     // A dome between p and b: b takes nothing until the dome has soaked up 500.
     b.pos = __ahead(p, 9); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.hp = 9999; b.armor = 0; // tanky until after the slide
     const dome = g.addSmoke(b, __ahead(p, 5), g.time, { radius: 2.2, life: 12, kind: 'cove' });
-    __tick(g, 0.9); // its shell forms 0.8 s after the cast
+    __tick(g, 0.9);
+    b.pos = __ahead(p, 9); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.hp = 9999; b.armor = 0;
+    g.fireBullets(p, p.gun, [dir(b.eye())]);
+    const passesBeforeShell = b.hp < 9999; // no shell until its owner presses E again
+    dome.shellOn = true; dome.shellAt = g.time + 0.8; __tick(g, 0.9); // raised: it forms 0.8 s later
     b.pos = __ahead(p, 9); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos]; b.hp = 9999; b.armor = 0;
     const hpBefore = b.hp;
     let n = 0;
@@ -611,7 +683,7 @@ const checks = [
     const blockedHp = b.hp;
     g.tick();
     g.fireBullets(p, p.gun, [dir(b.eye())]);
-    return { pass: tur.removed && shots > 1 && blockedHp === hpBefore && dome.hp <= 0 && b.hp < hpBefore, turretShots: shots, botHpWhileDomeUp: blockedHp, shotsToBreakDome: n, botHpAfter: b.hp };
+    return { pass: tur.removed && shots > 1 && passesBeforeShell && blockedHp === hpBefore && dome.hp <= 0 && b.hp < hpBefore, turretShots: shots, passesBeforeShell, botHpWhileDomeUp: blockedHp, shotsToBreakDome: n, botHpAfter: b.hp };
   }],
   ['Seize deafens and decays; deafened bots ignore sounds; Paranoia deafens', async () => {
     const g = await __start({ agent: 'nyx', botMode: 'fight' });
@@ -1132,9 +1204,10 @@ const checks = [
     const flash = g.flash.bind(g);
     g.flash = (owner, pos, dur) => {
       const before = new Map(g.combatants.map(c => [c, c.st.blindUntil]));
-      flash(owner, pos, dur);
+      const blinded = flash(owner, pos, dur);
       s.flashes++;
       for (const c of g.combatants) if (c.st.blindUntil > before.get(c) + 0.3) { if (c === owner) s.self++; else if (g.isEnemy(owner, c)) s.enemy++; else s.ally++; }
+      return blinded;
     };
     g.on('roundEnd', () => s.rounds++);
     g.on('live', () => { if (g.player.alive) g.kill(g.player, g.player, { part: 'body', def: { id: 'x', name: 'x' } }); });

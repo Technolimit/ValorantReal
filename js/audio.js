@@ -672,6 +672,9 @@ export class Sound {
       this.noiseHit({ dest: d, lp: 1400, hp: 100, decay: 0.6, gain: 0.4, attack: 0.05 });
     } else if (type === 'heal') {
       this.tone({ dest: d, freq: 520, end: 780, decay: 0.4, gain: 0.12, type: 'triangle' });
+    } else if (type === 'birdcall') { // a hawk's quick two-note call
+      this.tone({ dest: d, freq: 2600, end: 3400, decay: 0.12, gain: 0.07, type: 'sine' });
+      this.tone({ dest: d, freq: 3300, end: 2500, decay: 0.16, gain: 0.07, type: 'sine', at: 0.14 });
     } else if (type === 'ult') {
       this.tone({ dest: d, freq: 660, end: 1320, decay: 0.3, gain: 0.15, type: 'triangle' });
       this.tone({ dest: d, at: 0.08, freq: 990, end: 1760, decay: 0.3, gain: 0.12, type: 'triangle' });

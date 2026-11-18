@@ -200,6 +200,7 @@ export class Game {
       i.abQ = i.abE = i.abC = i.abX = false;
     }
     if (this.smokes.length && this.smokes.some(s => s.until < now)) this.smokes = this.smokes.filter(s => s.until >= now);
+    for (const s of this.smokes) if (s.settleTo != null && s.pos[1] > s.settleTo) s.pos[1] = Math.max(s.settleTo, s.pos[1] - 1.2 * DT);
     this.tickZones(now);
     this.tickCages(now);
     this.tickTrails(now);
@@ -234,8 +235,10 @@ export class Game {
 
   // grow / contract: seconds to reach full size and to shrink away at the end (default 0.75 s and 1 s; walls appear
   // at once). cyl: a vertical cylinder instead of a sphere (Cyber Cage).
-  addSmoke(owner, pos, now, { radius = SMOKE.radius, life = SMOKE.life, color = 0xcfdbe6, kind = 'smoke', nest = false, slab = null, grow, contract, cyl = null } = {}) {
+  addSmoke(owner, pos, now, { radius = SMOKE.radius, life = SMOKE.life, color = 0xcfdbe6, kind = 'smoke', nest = false, slab = null, grow, contract, cyl = null, settle = false } = {}) {
     const s = { owner, pos, born: now, until: now + life, radius, color, kind, nest, slab, cyl };
+    // settle: placed up in the air, it sinks slowly (1.2 m/s) until it sits on the floor below (issue #84).
+    if (settle) { const f = this.floorAt(pos[0], pos[2], pos[1] + 0.1); s.settleTo = (f ? f[1] : pos[1] - 0.3) + 0.3; }
     if (grow != null) s.grow = grow; else if (slab || nest) s.grow = 0;
     if (contract != null) s.contract = contract; else if (slab) s.contract = 0;
     if (SHOOTABLE[kind]) s.hp = SHOOTABLE[kind].hp;
@@ -316,13 +319,15 @@ export class Game {
       }
       if (z.kind === 'lockdown' && !z.fired && now >= z.armAt) {
         z.fired = true;
+        let caught = 0;
         for (const c of this.combatants) {
           if (!this.affectable(c) || !this.isEnemy(z.owner, c)) continue;
           if (hyp(c.pos[0] - z.pos[0], c.pos[1] + 1 - z.pos[1], c.pos[2] - z.pos[2]) > z.r) continue; // a sphere, not a column
           c.st.disarmUntil = now + z.dur;
           c.st.slowUntil = now + z.dur; c.st.slowAmt = z.slow; c.st.slowJump = 0.7; c.st.silentUntil = now + z.dur; // detained: weak jumps, silent
+          caught++;
         }
-        this.emit('lockdown', { zone: z });
+        this.emit('lockdown', { zone: z, caught }); // everyone is told how many it caught (hud.js)
       }
     }
     for (let i = 0; i < this.zones.length; i++) if (now >= this.zones[i].until) { this.zones = this.zones.filter(z => now < z.until); break; } // a new list only when one ran out
@@ -335,6 +340,7 @@ export class Game {
     const now = this.time, R2D = 180 / Math.PI;
     // 1 up to x0 degrees off centre, falling to 0.068 at x1; past that only a glance, and nothing from behind.
     const angle = (x, x0, x1) => (x <= x0 ? 1 : x >= 90 ? 0 : x >= x1 ? 0.068 : 1 - 0.932 * (x - x0) / (x1 - x0));
+    const blinded = [];
     for (const c of this.combatants) {
       if (!this.affectable(c)) continue;
       if (c.isBot && !this.isEnemy(owner, c)) continue;
@@ -347,8 +353,10 @@ export class Game {
       if (dur * k < 0.1) continue; // looking away, or too far for more than a flicker
       c.st.blindUntil = Math.max(c.st.blindUntil, now + dur * k);
       c.st.blindLen = dur * k;
+      blinded.push(c);
     }
     this.emit('flash', { pos, owner });
+    return blinded;
   }
 
   // Custom game cheats (issue #84), every tick for whoever has them: money, abilities with no cooldowns, the
@@ -375,11 +383,11 @@ export class Game {
   // Ballast's Scout Drone (issue #81), driven like a player: WASD the way its owner looks, standing still when
   // nothing is held; Shift or crouch creeps (3.5 m/s) without a sound, otherwise it runs (7.5 m/s) and its steps
   // can be heard; Space (or the pulse's hop) jumps. Gravity, 0.45 m steps and walls as for a small body.
-  moveScoutDrone(d, now) {
+  moveScoutDrone(d, now, run = 7.5) {
     const pin = d.owner.kit?.pilotInput || {}, yaw = d.owner.yaw, len = hyp(pin.fwd || 0, pin.side || 0);
     let wx = 0, wz = 0;
     if (len > 0) { const sy = Math.sin(yaw), cy = Math.cos(yaw); wx = (-sy * pin.fwd + cy * pin.side) / len; wz = (-cy * pin.fwd - sy * pin.side) / len; d.dir = [wx, 0, wz]; }
-    const quiet = pin.walk || pin.crouch, sp = quiet ? 3.5 : 7.5, v = d.vel;
+    const quiet = pin.walk || pin.crouch, sp = quiet ? run / 2 : run, v = d.vel;
     v[0] = wx * sp; v[2] = wz * sp;
     const under = this.floorAt(d.pos[0], d.pos[2], d.pos[1] + 0.3), grounded = !!under && d.pos[1] - under[1] < 0.05 && v[1] <= 0;
     if (grounded && (pin.jumpHeld || d.hop)) v[1] = 5;
@@ -872,12 +880,12 @@ export class Game {
           else { d.pos[ax] = np[ax]; d.pos[1] = y; }
         }
       } else if (d.kind === 'cloud') {
-        // Veil's orb flies at 29 m/s. While the key is held it steers toward the crosshair; let go and it falls
+        // Veil's orb flies at 29 m/s. While the key is held it steers toward the crosshair (quickly: issue #84); let go and it falls
         // (gravity x0.45). It bursts into smoke on the first surface it meets, or after 2 s in the air.
         const held = !d.released && d.owner.alive && d.owner.input[d.key];
         if (held) {
           const want = dirOf(d.owner.yaw, d.owner.pitch);
-          for (let i = 0; i < 3; i++) d.dir[i] += (want[i] - d.dir[i]) * Math.min(1, 6 * DT);
+          for (let i = 0; i < 3; i++) d.dir[i] += (want[i] - d.dir[i]) * Math.min(1, 14 * DT);
           const l = hyp(d.dir[0], d.dir[1], d.dir[2]); d.dir = d.dir.map(v => v / l);
           d.vel = d.dir.map(v => v * d.speed);
         } else {
@@ -901,8 +909,7 @@ export class Game {
           const c = enemiesOf(d).find(c => hyp(c.pos[0] - d.pos[0], c.pos[2] - d.pos[2]) < 10 && c.pos[1] - d.pos[1] < 4 && d.pos[1] - c.pos[1] < 10 && this.world.lineOfSight(eye, c.eye()));
           if (c) { d.seenAt = now; this.emit('alarm', { pos: d.pos }); }
         } else if (now >= d.seenAt + 0.9) {
-          d.seenAt = 0;
-          d.armAt = now + 10;
+          d.removed = true; // used up once it goes off (issue #84)
           this.addZone({ kind: 'slowfield', color: 0xe8c26a, owner: d.owner, pos: [...d.pos], r: 6, life: 6, slowField: 0.5, silent: true }, now);
         }
       } else if (d.kind === 'pushwall') {
@@ -918,7 +925,8 @@ export class Game {
         // Growing fire wall: the head moves forward, bending toward where you look while you hold the key.
         if (d.owner.input[d.key] && d.owner.alive) {
           const diff = Math.atan2(Math.sin(d.owner.yaw - d.yaw), Math.cos(d.owner.yaw - d.yaw));
-          d.yaw += Math.max(-1.6 * DT, Math.min(1.6 * DT, diff)); // ~90 degrees a second
+          const turn = d.key === 'fire' ? 4 : 1.6; // Firebreak follows the cursor quickly (issue #84), ~230 degrees a second
+          d.yaw += Math.max(-turn * DT, Math.min(turn * DT, diff));
         }
         const step = d.speed * DT, nx = d.pos[0] - Math.sin(d.yaw) * step, nz = d.pos[2] - Math.cos(d.yaw) * step;
         let f = this.floorAt(nx, nz, d.pos[1] + 0.6);
@@ -942,6 +950,7 @@ export class Game {
       } else if (d.kind === 'decoy' || d.kind === 'gate' || d.kind === 'tiger' || d.kind === 'prowler' || d.kind === 'sdrone') {
         // Ground runners. Steered ones follow the owner's aim.
         if (d.kind === 'sdrone') { this.moveScoutDrone(d, now); continue; }
+        if (d.kind === 'tiger' && !d.leap) { this.moveScoutDrone(d, now, 6.4); continue; } // Stalker: driven the same way (issue #84)
         if (d.still) continue; // a rift left in place
         if (d.steer && d.owner.alive) { const yaw = d.owner.yaw; d.dir = [-Math.sin(yaw), 0, -Math.cos(yaw)]; }
         let sp = d.kind === 'gate' ? 8 : d.kind === 'decoy' ? 5.6 : d.kind === 'tiger' ? 6.4 : d.kind === 'sdrone' ? 7.5 : 10;
@@ -1067,14 +1076,48 @@ export class Game {
         }
         const np = [d.pos[0] + d.dir[0] * d.speed * DT, d.pos[1] + d.dir[1] * d.speed * DT, d.pos[2] + d.dir[2] * d.speed * DT];
         if (this.world.lineOfSight(d.pos, np)) d.pos = np;
-        if (d.kind === 'hawk' && now + DT >= d.until) { d.removed = true; this.flash(d.owner, [...d.pos], 2.25); } // bursts on its own, after its full 2 s flight
+        // An enemy who has it in view (within 60 degrees of where they look, 40 m, a clear line) sets it off 0.3 s
+        // later (issue #84).
+        if (!d.popAt && now - d.born >= 0.25) {
+          const seen = enemiesOf(d).some(c => {
+            const e = c.eye(), dx = d.pos[0] - e[0], dy = d.pos[1] - e[1], dz = d.pos[2] - e[2], dist = hyp(dx, dy, dz);
+            if (dist > 40) return false;
+            const f = dirOf(c.yaw, c.pitch);
+            return (f[0] * dx + f[1] * dy + f[2] * dz) / dist > 0.5 && this.canSee(e, d.pos);
+          });
+          if (seen) d.popAt = now + 0.3;
+        }
+        const pop = (len) => { d.removed = true; if ((this.flash(d.owner, [...d.pos], len) || []).some(c => this.isEnemy(d.owner, c))) this.emit('birdCall', { who: d.owner }); };
+        if (d.popAt && now >= d.popAt) { const kit = d.owner.kit; if (kit?.hawk === d) kit.hawk = null; pop(1 + 1.25 * Math.min(1, (now - d.born) / 0.75)); }
+        else if (now + DT >= d.until) pop(2.25); // bursts on its own, after its full 2 s flight
       } else if (d.kind === 'seeker') {
+        // Hunters (issue #84): they find their way around walls, not through them: straight at the target once
+        // there is a clear line, otherwise along the map's shortest walkable path (re-planned twice a second).
+        // A breakable wall in the way (Frost Wall) they chew through, 120 damage a second.
         const c = d.target;
         if (!c.alive) { d.removed = true; continue; }
-        const t = c.eye(), dx = t[0] - d.pos[0], dy = t[1] - 0.4 - d.pos[1], dz = t[2] - d.pos[2], dist = hyp(dx, dy, dz);
-        if (dist < 1.2) { this.status(c, 'near', 3, { near: 7.5 }); d.removed = true; this.emit('pulse', { pos: t, r: 1.5, type: 'near', color: 0x9be15d, owner: d.owner }); continue; }
-        const sp = 6.4 * DT;
-        d.pos = [d.pos[0] + dx / dist * sp, d.pos[1] + dy / dist * sp, d.pos[2] + dz / dist * sp];
+        const t = c.eye(), aim = [t[0], t[1] - 0.4, t[2]];
+        if (hyp(aim[0] - d.pos[0], aim[1] - d.pos[1], aim[2] - d.pos[2]) < 1.2) { this.status(c, 'near', 3, { near: 7.5 }); d.removed = true; this.emit('pulse', { pos: t, r: 1.5, type: 'near', color: 0x9be15d, owner: d.owner }); continue; }
+        let goal = aim;
+        if (!this.world.lineOfSight(d.pos, aim)) {
+          if (!d.path || now >= (d.repath || 0)) {
+            const map = this.map, from = map.nearestWalkable(...map.cellOf(d.pos[0], d.pos[2])), to = map.nearestWalkable(...map.cellOf(c.pos[0], c.pos[2]));
+            // Waypoints 1.2 m over the floor there (a breakable wall doesn't count: a Frost Wall on the way gets
+            // chewed through, not flown over).
+            const top = Math.max(d.pos[1], c.pos[1]) + 3;
+            const floorY = (x, z) => { const h = this.world.raycastAll([x, top, z], [0, -1, 0], 60).find(q => !q.box.wall); return h ? top - h.tIn : c.pos[1]; };
+            d.path = ((from && to && map.findPath(from, to)) || []).map(([cx, cz]) => { const cc = map.cellCenter(cx, cz); return [cc.x, floorY(cc.x, cc.z) + 1.2, cc.z]; });
+            d.repath = now + 0.5;
+          }
+          while (d.path.length > 1 && this.world.lineOfSight(d.pos, d.path[1])) d.path.shift(); // cut corners it can see past
+          if (d.path.length) goal = d.path[0];
+        }
+        const gx = goal[0] - d.pos[0], gy = goal[1] - d.pos[1], gz = goal[2] - d.pos[2], gl = hyp(gx, gy, gz) || 1, sp = 6.4 * DT;
+        const dir = [gx / gl, gy / gl, gz / gl], hit = this.world.raycast(d.pos, dir, sp + 0.35);
+        if (hit?.box.wall?.hp > 0) { this.hitUtil(hit.box.wall, 120 * DT, d.owner); continue; } // chewing through a Frost Wall
+        if (hit) { if (d.path?.length > 1 && gl < 1) d.path.shift(); continue; } // a solid wall: never through it
+        if (d.path?.length && goal === d.path[0] && gl < 0.6) d.path.shift();
+        d.pos = [d.pos[0] + dir[0] * sp, d.pos[1] + dir[1] * sp, d.pos[2] + dir[2] * sp];
       } else if (d.kind === 'wire') {
         // Tripline: an enemy who crosses it is tethered and slowed. 0.7 s later the wire zaps them (a 1 s slow and
         // they stay revealed while held); tearing free by getting more than 6.2 m away costs a zap too. Shooting the
@@ -1450,7 +1493,7 @@ export class Game {
       const s = SHOOTABLE[z.kind];
       if (s && z.hp > 0 && !z.fired && this.time < z.until && this.isEnemy(shooter, z.owner)) test(z, [z.pos[0], z.pos[1] + s.y, z.pos[2]], s.r, false);
     }
-    for (const sm of this.smokes) if (sm.kind === 'cove' && sm.hp > 0 && this.time < sm.until && this.time >= sm.born + 0.8) test(sm, sm.pos, sm.radius, true);
+    for (const sm of this.smokes) if (sm.kind === 'cove' && sm.hp > 0 && sm.shellOn && this.time < sm.until && this.time >= sm.shellAt) test(sm, sm.pos, sm.radius, true); // only once its shell is up
     return best;
   }
 

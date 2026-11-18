@@ -870,6 +870,7 @@ export class Renderer {
       const ripples = new THREE.Mesh(this.smokeGeo, new THREE.MeshBasicMaterial({ color: 0x8fe8ff, wireframe: true, transparent: true, opacity: 0.22, depthWrite: false }));
       ripples.scale.setScalar(R * 1.01); ripples.userData.spin = 0.35;
       group.add(ripples);
+      group.userData.shell = ripples; // the rippling skin shows once the shell is raised (E again)
     }
     group.position.set(...s.pos);
     this.scene.add(group);
@@ -953,6 +954,15 @@ export class Renderer {
       const shell = new THREE.Mesh(new THREE.SphereGeometry(z.r, 40, 20), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false }));
       const lines = new THREE.Mesh(new THREE.SphereGeometry(z.r, 24, 12), new THREE.MeshBasicMaterial({ color: col, wireframe: true, transparent: true, opacity: 0.22, depthWrite: false }));
       g.add(shell, lines);
+      // The device itself in the middle, like a planted spike: a squat drum with a glowing core and a light that
+      // blinks faster as it charges. Shoot it (200 HP) to call the whole thing off.
+      const dm = (c, e = 0) => new THREE.MeshStandardMaterial({ color: c, emissive: e, emissiveIntensity: e ? 1.4 : 0, roughness: 0.5, metalness: 0.5 });
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.35, 16), dm(0x2b3440)); base.position.y = 0.18;
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.5, 16), dm(0x1b4a3c, col)); core.position.y = 0.6;
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.26, 0.12, 16), dm(0xf2d04a)); cap.position.y = 0.9;
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3344 })); lamp.position.y = 1.0;
+      g.add(base, core, cap, lamp);
+      g.userData.lockLamp = lamp;
     }
     if (z.orbital) {
       // Orbital strike: a column of light from the sky, thin while charging, full once it lands.
@@ -981,7 +991,11 @@ export class Renderer {
         fan.set(grown * z.r0, fan.walls);
         for (const c of g.children) if (c.userData.a != null) c.visible = c.userData.d < Math.min(grown * z.r0, fan.walls[Math.round(((c.userData.a / (Math.PI * 2)) % 1) * fan.n) % fan.n]) - 0.2;
       } else g.scale.setScalar(grown);
-      if (z.kind === 'lockdown') { rim.material.opacity = 0.4 + 0.4 * Math.abs(Math.sin(now * 6)); disc.material.opacity = 0.08 + 0.1 * Math.min(1, age / 2.5); }
+      if (z.kind === 'lockdown') {
+        rim.material.opacity = 0.4 + 0.4 * Math.abs(Math.sin(now * 6)); disc.material.opacity = 0.08 + 0.1 * Math.min(1, age / 2.5);
+        const lamp = g.userData.lockLamp, left = Math.max(0, z.armAt - now);
+        if (lamp) lamp.visible = Math.sin(now * (4 + 20 * (1 - left / 13))) > 0; // blinks faster as it charges
+      }
       if (z.kind === 'trap') rim.material.opacity = 0.35 + 0.25 * Math.sin(now * 3);
       if (z.kind === 'stim') { rim.material.opacity = 0.5 + 0.3 * Math.sin(now * 4); disc.material.opacity = 0.1; }
       if (z.orbital) {
@@ -1089,7 +1103,7 @@ export class Renderer {
   // its wind-up.
   fxBeamWarn(w) {
     const { len, width, time } = w;
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(width, width, len, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0x3f9dff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false }));
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(width, width, len, 16, 1, true), new THREE.MeshBasicMaterial({ color: w.color ?? 0x3f9dff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false })); // (Rubble's blast cylinder too, in orange)
     const up = new THREE.Vector3(0, 1, 0), d = new THREE.Vector3();
     const place = () => {
       const { from, dir } = w;
@@ -2046,7 +2060,7 @@ export class Renderer {
   }
 
   // Terror trails (Nyx): for her team, a line from her back along the way each marked enemy has gone since being
-  // marked, up to where they are now, drawn over everything.
+  // marked, up to where they are now. Walls hide it.
   updateTrails() {
     const g = this.game, me = g.player, pool = (this.trailLines ||= new Map());
     const live = new Set();
@@ -2056,8 +2070,8 @@ export class Renderer {
       let L = pool.get(c);
       if (!L) {
         const geo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(84 * 3), 3));
-        L = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xc58ab0, transparent: true, opacity: 0.85, depthTest: false }));
-        L.frustumCulled = false; L.renderOrder = 998;
+        L = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xc58ab0, transparent: true, opacity: 0.85 })); // hidden behind walls (issue #84)
+        L.frustumCulled = false;
         this.scene.add(L); pool.set(c, L);
       }
       const pts = [c.trailBy.pos, ...c.trailPts, c.pos], a = L.geometry.attributes.position;
@@ -2075,6 +2089,7 @@ export class Renderer {
       if (now >= sm.s.until) { this.scene.remove(sm.group); return false; }
       if (now < sm.s.born) { sm.group.visible = false; return true; } // not up yet (a gas wall rises emitter by emitter)
       sm.group.visible = true;
+      if (sm.group.userData.shell) sm.group.userData.shell.visible = !!sm.s.shellOn && now >= sm.s.shellAt; // Lagoon's shell, once raised
       const grow = sm.slab ? Math.min(1, (now - sm.s.born) / 0.25) : smokeScale(sm.s, now);
       const fade = Math.min(1, (sm.s.until - now) / 0.4);
       if (sm.slab) { // a wall grows up out of the floor
