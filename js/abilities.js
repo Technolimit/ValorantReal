@@ -193,7 +193,7 @@ function tripEnds(o) {
 function setOffHive(kit, d) {
   const g = kit.owner.game;
   d.removed = true;
-  g.addZone({ kind: 'fire', color: 0x9be15d, owner: kit.owner, pos: d.pos, r: 4.5, life: 5.5, armAt: kit.now + 0.5, dps: 45, heal: 0, def: src('hive', 'Hive') }, kit.now);
+  g.addZone({ kind: 'fire', color: 0x9be15d, owner: kit.owner, pos: d.pos, r: 4.5, life: 5.5, armAt: kit.now + 0.5, dps: 45, heal: 0, dome: true, def: src('hive', 'Hive') }, kit.now); // a half dome, through everything
   g.emit('ability', { who: kit.owner, type: 'swarm' });
 }
 
@@ -219,17 +219,22 @@ function gasOff(kit, gr) {
 // Placed utility its owner can pick back up with F, by Valorant's rules: which key's charge comes back, after
 // how long (in the buy phase it is always straight back), and what can only be picked up in the buy phase.
 // Stars are recalled from anywhere you can look at them; everything else has to be within reach.
+// sight: Lattice picks these up from any distance he can see them from, wall-free (issue #81).
+// A placed signature (`deployed` on the ability: Sentry, Watcher, Anchor) starts no cooldown when it's placed:
+// picked up it comes back 25 s later, destroyed 45 s later (SIGNATURE_BACK).
 export const PICKUPS = {
-  wire: { k: 'c', cd: 0 },             // Trapwire
-  cam: { k: 'e', cd: 20 },             // Spycam (13.10)
-  cage: { k: 'q', buyOnly: true },     // Cyber Cage
+  wire: { k: 'c', cd: 0, sight: true }, // Trapwire
+  cam: { k: 'e', cd: 25, sight: true }, // Spycam
+  cage: { k: 'q', buyOnly: true, sight: true }, // Cyber Cage
   alarm: { k: 'q', cd: 20 },           // Alarmbot
-  turret: { k: 'e', cd: 20 },          // Turret
+  turret: { k: 'e', cd: 25 },          // Turret
   trademark: { k: 'c', cd: 30 },       // Trademark
   anchor: { k: 'e', cd: 0 },           // Rendezvous
   emitter: { k: 'q', cd: 0, reach: 4 },  // Poison Cloud: any time, within 4 m
   star: { star: true, cd: 25, far: true },
 };
+
+const SIGNATURE_BACK = { pickedUp: 25, destroyed: 45 };
 
 // Devices that shut off the moment their owner dies (see Kit.onDeath).
 const DIES_WITH_OWNER = new Set(['alarm', 'turret', 'swarm', 'wire', 'cam', 'trademark', 'anchor', 'satchel', 'owl', 'tiger', 'sdrone']);
@@ -302,8 +307,11 @@ function toggleAbilityGun(kit, id) {
   return true;
 }
 
+// Placed smokes sit on the ground: their centre just above the floor below (issue #81), so they rise as a dome.
+export const SMOKE_LIFT = 0.3;
+
 // Where a placed smoke goes: along the aim, `kit.dist` metres out, straight through walls (or, with
-// kit.stopAtWalls, in front of the first wall). Dropped onto the floor below, centred 2 m up.
+// kit.stopAtWalls, in front of the first wall). Dropped onto the floor below, centred SMOKE_LIFT up.
 function smokeTarget(kit, radius) {
   const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
   let t = kit.dist ?? 16;
@@ -311,7 +319,7 @@ function smokeTarget(kit, radius) {
   const p = [eye[0] + d[0] * t, eye[1] + d[1] * t, eye[2] + d[2] * t];
   const top = Math.max(p[1], eye[1]) + 0.5; // aiming at the floor can put the point underground
   const f = g.world.raycast([p[0], top, p[2]], [0, -1, 0], 60);
-  p[1] = f ? top - f.t + 2.0 : 2.0; // a full sphere where you put it, its core 2 m over the floor below
+  p[1] = (f ? top - f.t : 0) + SMOKE_LIFT;
   return p;
 }
 
@@ -555,10 +563,10 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'device', name: 'Sentry', desc: 'Deploy a turret (4.5 m) facing where you aim. It fires three-round bursts at enemies in its 100° view out to 40 m (8 damage a shot up close, 6 past 20 m, 4 past 35 m; hits slow) until it is destroyed (45 s to get it back) or picked up (20 s). It takes 2 s to set up, and opens fire 0.75 s after it spots someone. It switches off while you are more than 40 m away. Placing a new one takes the old one down.', charges: 1, cooldown: 45, equip: 1.1,
+        item: 'device', name: 'Sentry', desc: 'Deploy a turret (4.5 m) facing where you aim. It fires three-round bursts at enemies in its 100° view out to 40 m (8 damage a shot up close, 6 past 20 m, 4 past 35 m; hits slow) until it is destroyed (45 s to get it back) or picked up (20 s). It takes 2 s to set up, and opens fire 0.75 s after it spots someone. It switches off while you are more than 40 m away. Placing a new one takes the old one down.', charges: 1, cooldown: 45, equip: 1.1, deployed: true,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 4.5, { floor: true, back: 0.5 });
-          for (const d of o.game.devices) if (d.kind === 'turret' && d.owner === o) d.removed = true; // one turret at a time
+          for (const d of o.game.devices) if (d.kind === 'turret' && d.owner === o) d.removed = true; // one turret at a time (a second only after it's back)
           o.game.addDevice({ kind: 'turret', owner: o, pos, yaw: o.yaw, aimYaw: o.yaw, life: 1e5, next: kit.now + 2 }); // 2 s to set up
         },
       },
@@ -663,8 +671,8 @@ export const AGENTS = {
               for (const p of picks) {
                 kit.charges.e--;
                 if (!kit.ready.e) kit.ready.e = kit.now + this.cooldown;
-                o.game.emit('throw', { who: o, from: [p[0], p[1] + 30, p[2]], to: [p[0], p[1] + 2, p[2]], time: 1, color: 0xe0844f });
-                later(kit, 1, () => o.game.addSmoke(o, [p[0], p[1] + 2, p[2]], kit.now, { radius: 4.15, life: 19.25, color: 0x9a8f86 })); // lands 1 s after the call
+                o.game.emit('throw', { who: o, from: [p[0], p[1] + 30, p[2]], to: [p[0], p[1] + SMOKE_LIFT, p[2]], time: 1, color: 0xe0844f });
+                later(kit, 1, () => o.game.addSmoke(o, [p[0], p[1] + SMOKE_LIFT, p[2]], kit.now, { radius: 4.15, life: 19.25, color: 0x9a8f86 })); // lands 1 s after the call
               }
               kit.lastUse.e = kit.now;
             },
@@ -1093,7 +1101,7 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'device', name: 'Watcher', desc: 'Hold the camera, left click to stick it on the surface you aim at (20 m). Press E again to look through it; enemies it sees are revealed, and left click fires a tracking dart (pings every 2 s for 8 s). E again to leave. One shot destroys it (45 s to get it back; 20 s if you pick it up).', charges: 1, cooldown: 45, equip: 0.8,
+        item: 'device', name: 'Watcher', desc: 'Hold the camera, left click to stick it on the surface you aim at (20 m). Press E again to look through it; enemies it sees are revealed, and left click fires a tracking dart (pings every 2 s for 8 s). E again to leave. One shot destroys it (45 s to get it back; 20 s if you pick it up).', charges: 1, cooldown: 45, equip: 0.8, deployed: true,
         use(kit) {
           const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           const hit = g.world.raycast(eye, d, 20);
@@ -1284,7 +1292,7 @@ export const AGENTS = {
           kit.nebulas--;
           mine(kit, 35, () => { kit.nebulas = Math.min(2, kit.nebulas + 1); });
           st.removed = true;
-          const at = [st.pos[0], st.pos[1] + 2, st.pos[2]];
+          const fl = floorUnder(kit.owner.game, st.pos), at = [st.pos[0], fl[1] + SMOKE_LIFT, st.pos[2]];
           kit.owner.game.addSmoke(kit.owner, at, kit.now, { radius: 4.75, life: 14.25, color: 0x6b4d8f }); // grows over 0.75 s
           return true;
         },
@@ -1334,7 +1342,7 @@ export const AGENTS = {
         reuse(kit) { return toggleAbilityGun(kit, 'headhunter'); },
       },
       e: {
-        item: 'device', name: 'Anchor', desc: 'Hold the anchor, left click to place it on the floor (8.5 m). Press E again anywhere within 18 m of it to teleport back (1.3 s, invulnerable on the way; 30 s cooldown between teleports). Enemies can shoot it (50 HP).', charges: 1, cooldown: 0, unequip: 1.2,
+        item: 'device', name: 'Anchor', desc: 'Hold the anchor, left click to place it on the floor (8.5 m). Press E again anywhere within 18 m of it to teleport back (1.3 s, invulnerable on the way; 30 s cooldown between teleports). Enemies can shoot it (50 HP).', charges: 1, cooldown: 0, unequip: 1.2, deployed: true,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 8.5, { floor: true, back: 0.6 });
           if (kit.anchor) kit.anchor.removed = true;
@@ -1388,34 +1396,36 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'orb', name: 'Lagoon', desc: 'Hold the orb, left click to send it to the spot you aim at (64 m/s, up to 80 m). It becomes a water dome 9.2 m across for 19.25 s that blocks sight; 0.8 s later its shell forms and stops bullets until it takes 680 damage.', charges: 1, cooldown: 30, equip: 1,
+        item: 'orb', name: 'Lagoon', desc: 'Hold the orb: your view follows it out through walls, and the dome shows exactly where it will form, on the ground. Hold right click to push it farther (up to 80 m), press R to make it stop at the first wall instead, left click to cast. The orb flies there at 64 m/s and rises into a water dome 9.2 m across for 19.25 s that blocks sight; 0.8 s later its shell forms and stops bullets until it takes 680 damage.', charges: 1, cooldown: 30, equip: 1,
+        armHint: 'LEFT CLICK: CAST · HOLD RIGHT CLICK: FARTHER · R: STOP AT WALLS', shadowSight: true,
+        smokePreview: 4.6, distance: { min: 4, max: 80, start: 16, speed: 22 }, // placed like Shade (issue #81)
+        preview(kit) { return smokeTarget(kit, 4.6); },
         use(kit) {
-          const o = kit.owner, g = o.game, e = o.eye(), pos = aimPoint(o, 80, { back: 0.6, bodies: false });
-          const fl = floorUnder(g, pos);
-          if (pos[1] < fl[1] + 1.4) pos[1] = fl[1] + 1.4; // not sunk into the floor
+          const o = kit.owner, g = o.game, e = o.eye(), pos = [...target(kit, this)];
           const ft = Math.max(0.05, hyp(pos[0] - e[0], pos[1] - e[1], pos[2] - e[2]) / 64);
           g.emit('throw', { who: o, from: e, to: pos, time: ft, color: 0x2fb3a8, straight: true });
           later(kit, ft, () => g.addSmoke(o, pos, kit.now, { radius: 4.6, life: 19.25, color: 0x2fb3a8, kind: 'cove', grow: 0.8 }));
         },
       },
       x: {
-        name: 'Undertow', desc: 'Send a tall wave of water rolling out ahead of you through walls: 28 m wide, 8 m/s, for 40 m. It blocks sight as it goes, and every enemy it washes over is nearsighted for 3 s.', points: 7, equip: 0.8,
+        name: 'Undertow', desc: 'Send a towering wave of water (10 m high) rolling out ahead of you through walls: 28 m wide, 8 m/s, for 40 m. It blocks sight as it goes, and every enemy it washes over is nearsighted for 3 s.', points: 7, equip: 0.8,
         use(kit) {
           const o = kit.owner, g = o.game, f = fwd2(o.yaw), r = right(o.yaw);
           o.st.castLockUntil = kit.now + 1;
           const cast = kit.now;
           later(kit, 0.6, () => {
-            const at = [o.pos[0] + f[0] * 1.5, o.pos[1] + SLAB.h / 2, o.pos[2] + f[1] * 1.5];
-            const wave = g.addSmoke(o, at, kit.now, { radius: 1, life: 5.2, color: 0x2fb3a8, kind: 'water', slab: { dir: r, len: 28, th: SLAB.th * 1.6, h: SLAB.h } });
+            const H = 10; // a towering wave (issue #81), more than twice a normal wall
+            const at = [o.pos[0] + f[0] * 1.5, o.pos[1] + H / 2, o.pos[2] + f[1] * 1.5];
+            const wave = g.addSmoke(o, at, kit.now, { radius: 1, life: 5.2, color: 0x2fb3a8, kind: 'water', slab: { dir: r, len: 28, th: SLAB.th * 1.6, h: H } });
             kit.waveSweep = g.sweep(o, at, [f[0], 0, f[1]], 8, 40, {
               onMove: (d) => { // the water follows the ground
-                const fl = g.floorAt(d.pos[0], d.pos[2], d.pos[1] - SLAB.h / 2 + 1.5);
-                if (fl && Math.abs(fl[1] - (d.pos[1] - SLAB.h / 2)) < 1.5) d.pos[1] = fl[1] + SLAB.h / 2;
+                const fl = g.floorAt(d.pos[0], d.pos[2], d.pos[1] - H / 2 + 1.5);
+                if (fl && Math.abs(fl[1] - (d.pos[1] - H / 2)) < 1.5) d.pos[1] = fl[1] + H / 2;
                 wave.pos[0] = d.pos[0]; wave.pos[1] = d.pos[1]; wave.pos[2] = d.pos[2];
               },
               hit: (c, d) => {
                 const dx = c.pos[0] - d.pos[0], dz = c.pos[2] - d.pos[2];
-                return Math.abs(dx * f[0] + dz * f[1]) < 0.8 && Math.abs(dx * r[0] + dz * r[1]) < 14 && Math.abs(c.pos[1] + 1 - d.pos[1]) < 4;
+                return Math.abs(dx * f[0] + dz * f[1]) < 0.8 && Math.abs(dx * r[0] + dz * r[1]) < 14 && c.pos[1] + 1 > d.pos[1] - H / 2 - 1 && c.pos[1] < d.pos[1] + H / 2;
               },
               apply: (c) => g.status(c, 'near', 3, { near: 7.5 }),
             });
@@ -1738,8 +1748,8 @@ export const AGENTS = {
               for (const p of picks) {
                 kit.charges.e--;
                 if (!kit.ready.e) kit.ready.e = kit.now + this.cooldown;
-                o.game.emit('throw', { who: o, from: [p[0], p[1] + 25, p[2]], to: [p[0], p[1] + 2, p[2]], time: 1, color: 0xe07bd0 });
-                const at = [p[0], p[1] + 2, p[2]];
+                o.game.emit('throw', { who: o, from: [p[0], p[1] + 25, p[2]], to: [p[0], p[1] + SMOKE_LIFT, p[2]], time: 1, color: 0xe07bd0 });
+                const at = [p[0], p[1] + SMOKE_LIFT, p[2]];
                 const t0 = kit.now, life = o.alive ? 13.5 : 5.5;
                 kit.timers.push({ at: t0 + 1, dead: true, fn: () => o.game.addSmoke(o, at, kit.now, { radius: 4, life, color: 0x7a3f74 }) });
               }
@@ -1852,6 +1862,7 @@ export class Kit {
     this.bladesAway = 0;
     this.beams = null;
     this.gunStash = {};
+    this.recallT = { e: 0, q: 0 };
     this.armed = null;
     this.tailwind = null;
     this.regrow = null;
@@ -1910,17 +1921,28 @@ export class Kit {
 
   pickupInView() {
     const o = this.owner, g = o.game, e = o.eye(), f = dirFromAngles(o.yaw, o.pitch);
-    let best = null, bestCos = Math.cos(12 * DEG);
+    let best = null, bestCos = -1;
     for (const d of g.devices) {
       const rule = PICKUPS[d.kind];
       if (!rule || d.owner !== o || d.removed || !this.canPickUp(d)) continue;
       const c = [d.pos[0], d.pos[1] + 0.2, d.pos[2]], dx = c[0] - e[0], dy = c[1] - e[1], dz = c[2] - e[2], dist = hyp(dx, dy, dz);
-      if (!rule.far && (hyp(d.pos[0] - o.pos[0], d.pos[2] - o.pos[2]) > (rule.reach || 2.6) || Math.abs(d.pos[1] - o.pos[1]) > 2.2 || !g.world.lineOfSight(e, c))) continue;
+      if (rule.sight) { if (!g.world.lineOfSight(e, c)) continue; } // any distance, as long as no wall is in the way
+      else if (!rule.far && (hyp(d.pos[0] - o.pos[0], d.pos[2] - o.pos[2]) > (rule.reach || 2.6) || Math.abs(d.pos[1] - o.pos[1]) > 2.2 || !g.world.lineOfSight(e, c))) continue;
       const near = !rule.far && dist < 1.2; // standing over it counts as looking at it
       const cos = near ? 1 : (f[0] * dx + f[1] * dy + f[2] * dz) / Math.max(dist, 0.01);
-      if (cos > bestCos) { bestCos = cos; best = d; }
+      // Close by, anywhere within 12 degrees of the crosshair; picked up from afar, within about 0.6 m of it.
+      const cone = rule.sight && dist > 3 ? Math.max(2 * DEG, Math.atan2(0.6, dist)) : 12 * DEG;
+      if (cos > Math.cos(cone) && cos > bestCos) { bestCos = cos; best = d; }
     }
     return best;
+  }
+
+  // One of your placed signatures was destroyed: it comes back 45 s later (5v5: still owed next round).
+  onUtilBroken(d) {
+    const rule = PICKUPS[d.kind];
+    if (!rule || rule.star || d.pickedUp || !this.agent.abilities[rule.k].deployed) return;
+    if (d.kind === 'anchor' && this.anchor !== d) return; // Lumen's Refract beacon shares the kind
+    this.timers.push({ at: this.now + SIGNATURE_BACK.destroyed, fn: () => { this.charges[rule.k]++; }, refund: rule.k });
   }
 
   canPickUp(d) {
@@ -1940,14 +1962,15 @@ export class Kit {
     }
     if (!d) return false;
     const rule = PICKUPS[d.kind];
-    d.removed = true;
+    d.removed = true; d.pickedUp = true;
     if (d.kind === 'cam') { if (this.view === d) this.view = null; this.cam = null; }
     if (d.kind === 'anchor' && this.anchor === d) this.anchor = null;
     if (d.kind === 'emitter' && this.gas.groups.cloud) { gasOff(this, this.gas.groups.cloud); delete this.gas.groups.cloud; }
     const back = () => { if (rule.star) this.starsLeft++; else this.charges[rule.k]++; };
-    if (rule.star) g.addSmoke(o, [d.pos[0], d.pos[1] + 2, d.pos[2]], this.now, { radius: 4.75, life: 1.75, color: 0x6b4d8f, contract: 0.5 }); // Dissipate: a brief fake Nebula
-    if (!rule.cd || g.mode?.phase === 'buy') back();
-    else this.timers.push({ at: this.now + rule.cd, fn: back, refund: rule.star ? null : rule.k }); // 5v5: still owed at the next round
+    if (rule.star) g.addSmoke(o, [d.pos[0], floorUnder(g, d.pos)[1] + SMOKE_LIFT, d.pos[2]], this.now, { radius: 4.75, life: 1.75, color: 0x6b4d8f, contract: 0.5 }); // Dissipate: a brief fake Nebula
+    const cd = !rule.star && this.agent.abilities[rule.k].deployed ? SIGNATURE_BACK.pickedUp : rule.cd;
+    if (!cd || g.mode?.phase === 'buy') back();
+    else this.timers.push({ at: this.now + cd, fn: back, refund: rule.star ? null : rule.k }); // 5v5: still owed at the next round
     g.emit('pickedUp', { who: o, kind: d.kind, pos: [...d.pos] });
     return true;
   }
@@ -1989,7 +2012,7 @@ export class Kit {
     const cap = g.mode ? Math.min(ab.charges, this.held[k]) : ab.charges;
     if (this.ready[k] && now >= this.ready[k]) {
       this.charges[k] = Math.min(cap, this.charges[k] + 1);
-      this.ready[k] = this.charges[k] < cap ? now + ab.cooldown : 0;
+      this.ready[k] = this.charges[k] < cap ? now + (g.mode?.phase === 'buy' ? 3 : ab.cooldown) : 0;
     }
   }
 
@@ -2023,7 +2046,11 @@ export class Kit {
     const ck = ab.shares || k; // Devour and Dismiss draw on one pool
     if (!ab.free?.(this)) {
       this.charges[ck]--;
-      if (!this.ready[ck]) this.ready[ck] = this.now + ab.cooldown;
+      const buy = this.owner.game.mode?.phase === 'buy';
+      // A placed signature waits until it's picked up or destroyed (see pickUp, onUtilBroken). In the 5v5 buy
+      // phase a signature on a cooldown comes back after 3 s (issue #81).
+      if (buy && this.roundTimer(ck)) this.ready[ck] = Math.min(this.ready[ck] || Infinity, this.now + 3);
+      else if (!this.ready[ck] && !ab.deployed) this.ready[ck] = this.now + ab.cooldown;
     }
     this.lastUse[k] = this.now;
     this.owner.game.emit('abilityUsed', { who: this.owner, key: k });
@@ -2050,18 +2077,21 @@ export class Kit {
       const k = ABILITY_KEYS[i];
       if (!inp[AB_INPUT[k]]) continue;
       if (this.armed && this.armed.k === k) { this.armed = null; continue; } // press again to put it away
-      if (buyLock && !buyPhaseAllows(this.id, k)) {
-        // Buy phase: you can still take it out and line it up; using it waits for the round to start.
-        if (!ab[k].instant && !this.busy() && this.charges[k] > 0) { this.armed = { k, at: now }; o.gun.onHolster(); g.emit('abilityArm', { who: o, key: k }); }
-        else g.emit('abilityLocked', { who: o, key: k });
-        continue;
-      }
+      if (buyLock && !buyPhaseAllows(this.id, k)) { g.emit('abilityLocked', { who: o, key: k }); continue; } // issue #81: not at all in the buy phase
       if (this.mapPick && this.mapPick.key === k) { this.mapConfirm(); continue; } // press again to confirm map picks
       if (ab[k].reuse && (!this.busy() || this.view || this.pilot) && ab[k].reuse(this)) continue; // second press: detonate / toggle / teleport
       if (this.busy()) continue;
       if (this.charges[ab[k].shares || k] <= 0 && !ab[k].free?.(this)) continue;
       if (!ab[k].instant) { this.armed = { k, at: now }; o.gun.onHolster(); g.emit('abilityArm', { who: o, key: k }); continue; } // equip first
       this.spend(k);
+    }
+    // Bastion: hold E (Sentry) or Q (Watchdog) for 0.6 s to call it back from anywhere (issue #81).
+    if (this.id === 'bastion' && o.alive && !o.isBot) {
+      for (const [k, kind, held] of [['e', 'turret', inp.abEHeld], ['q', 'alarm', inp.abQHeld]]) {
+        const d = held && !this.armed && g.devices.find(x => x.kind === kind && x.owner === o && !x.removed && this.canPickUp(x));
+        this.recallT[k] = d ? this.recallT[k] + 1 / 128 : 0;
+        if (d && this.recallT[k] >= 0.6) { this.recallT[k] = 0; this.pickUp(d.pos); }
+      }
     }
     // Steering Hound: the hand comes down and the gun back once it locks on, bites or runs out.
     const sh = this.steerHand;

@@ -909,7 +909,7 @@ export class Renderer {
     const flames = z.kind === 'fire' && !z.gas && !z.acid && !z.color;
     // A patch on the floor (molly, acid, swarm, slow field) stops at walls in play (game.tickZones), so it is drawn
     // only as far as it reaches in each direction.
-    const patch = !z.wall && !z.gas && !z.orbital && (z.kind === 'fire' || z.kind === 'slowfield');
+    const patch = !z.wall && !z.gas && !z.orbital && !z.dome && (z.kind === 'fire' || z.kind === 'slowfield');
     const g = new THREE.Group();
     const discMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: z.gas ? 0.15 : z.kind === 'fire' ? 0.5 : 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
     const rimMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
@@ -925,6 +925,10 @@ export class Renderer {
       rim.rotation.x = -Math.PI / 2;
     }
     g.add(disc, rim);
+    if (z.dome) { // Hive: the half dome it burns, through walls
+      const shell = new THREE.Mesh(new THREE.SphereGeometry(z.r, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }));
+      g.add(shell);
+    }
     if (z.kind === 'lockdown') {
       // Clampdown covers a sphere: everyone sees its edge while it charges.
       const shell = new THREE.Mesh(new THREE.SphereGeometry(z.r, 40, 20), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false }));
@@ -972,13 +976,16 @@ export class Renderer {
 
   // How far a floor patch reaches in each of n directions: out to its radius, or to the first wall in the way at
   // the height the game tests (0.4 m up), so what you see is where it hurts.
+  // How far a floor patch reaches each way: up to the first wall thicker than 0.5 m (game.patchReaches); steps,
+  // low boxes and thin panels don't stop it.
   patchReach(z, n) {
-    const o = [z.pos[0], z.pos[1] + 0.4, z.pos[2]], out = new Float32Array(n), d = [0, 0, 0];
+    const o = [z.pos[0], z.pos[1] + 1, z.pos[2]], out = new Float32Array(n), d = [0, 0, 0];
     for (let i = 0; i < n; i++) {
       const a = i / n * Math.PI * 2;
       d[0] = Math.cos(a); d[2] = Math.sin(a);
-      const hit = this.game.world.raycast(o, d, z.r0);
-      out[i] = hit ? Math.max(0.05, hit.t) : z.r0;
+      let r = z.r0;
+      for (const h of this.game.world.raycastAll(o, d, z.r0)) if (!h.box.floor && h.tOut - h.tIn > 0.5) { r = Math.max(0.05, h.tIn); break; }
+      out[i] = r;
     }
     return out;
   }

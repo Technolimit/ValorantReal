@@ -256,12 +256,13 @@ export class Game {
       for (const c of this.combatants) {
         if (!c.alive) continue;
         const dx = c.pos[0] - z.pos[0], dz = c.pos[2] - z.pos[2], dy = c.pos[1] - z.pos[1];
-        if (dy < -1.0 || dy > 3) continue;
-        if (!z.wall && !z.gas && !z.orbital && (z.kind === 'fire' || z.kind === 'slowfield')) {
-          // A patch on the floor (molly, acid, swarm, slow field): it reaches a short way up (acid 1.2 m, others 1.5 m)
-          // and stops at walls, as Valorant's grid patches do.
-          if (dy > (z.acid ? 1.2 : 1.5) || !this.world.lineOfSight([z.pos[0], z.pos[1] + 0.4, z.pos[2]], [c.pos[0], c.pos[1] + 0.4, c.pos[2]])) continue;
-        }
+        if (z.dome) { // Hive: a half dome over the grenade that hurts through everything inside it
+          if (dy < -0.5 || hyp(dx, dy, dz) > zoneRadius(z, now)) continue;
+        } else if (!z.wall && !z.gas && !z.orbital && (z.kind === 'fire' || z.kind === 'slowfield')) {
+          // A patch on the floor (molly, acid, slow field) covers its whole radius over steps, boxes and slopes, up
+          // to 2 m above or 2.5 m below where it landed; only a wall thicker than 0.5 m in between keeps it out.
+          if (dy > 2 || dy < -2.5 || !this.patchReaches(z, c)) continue;
+        } else if (dy < -1.0 || dy > 3) continue;
         if (z.slab) { // a strip (Toxic Wall): along its length, and touching its thickness
           const sl = z.slab, along = dx * sl.dir[0] + dz * sl.dir[1], across = dz * sl.dir[0] - dx * sl.dir[1];
           if (Math.abs(along) > sl.len / 2 || Math.abs(across) > sl.th / 2 + PLAYER.radius) continue;
@@ -341,6 +342,21 @@ export class Game {
       c.st.blindLen = dur * k;
     }
     this.emit('flash', { pos, owner });
+  }
+
+  // Does a floor patch at z reach c? Checked along a level line at the higher of the two (so a step, box or ledge
+  // between doesn't block), then straight down: any box thicker than 0.5 m on it (a real wall) keeps it out.
+  patchReaches(z, c) {
+    const h = Math.max(z.pos[1] + 1, c.pos[1] + 0.6);
+    const a = [z.pos[0], h, z.pos[2]], b = [c.pos[0], h, c.pos[2]];
+    const blocked = (p, q) => {
+      const d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]], len = hyp(d[0], d[1], d[2]);
+      if (len < 1e-3) return false;
+      for (let i = 0; i < 3; i++) d[i] /= len;
+      for (const hit of this.world.raycastAll(p, d, len)) if (!hit.box.floor && hit.tOut - hit.tIn > 0.5) return true;
+      return false;
+    };
+    return !blocked(a, b) && !blocked(b, [c.pos[0], c.pos[1] + 0.6, c.pos[2]]);
   }
 
   // Area effect that applies a status to enemies within r of pos: stun, near(sight), reveal, suppress, deaf.
@@ -1299,6 +1315,7 @@ export class Game {
     if (this.devices.includes(it)) it.removed = true;
     else it.until = this.time; // a zone or a dome ends now
     if (it.kind === 'decoy') this.flash(it.owner, [it.pos[0], it.pos[1] + 1, it.pos[2]], 2); // Double: shooting it blinds you
+    it.owner?.kit?.onUtilBroken?.(it); // a placed signature comes back 45 s later
     this.emit('utilBroken', it);
   }
 
