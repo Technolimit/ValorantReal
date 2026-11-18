@@ -231,7 +231,7 @@ export class Hud {
     else if (kit?.regrow?.on) mode = `BLOOM · ${kit.regrow.healing?.length ? 'HEALING ' + kit.regrow.healing.map(c => esc(c.name)).join(', ') : 'NO ONE TO HEAL'} · POOL ${Math.ceil(kit.regrow.pool)}`;
     else if (kit?.id === 'fawn' && sv === p && (kit.regrow || kit.charges.c > 0) && bloomTargets(p).length) { const n = bloomTargets(p).length; mode = `BLOOM CAN HEAL ${n} TEAMMATE${n > 1 ? 'S' : ''} · HOLD C`; }
     else if (kit?.id === 'venom') mode = `FUEL ${Math.round(kit.gas.fuel)}%`;
-    else if (kit?.id === 'lattice' && g.devices.some(d => d.kind === 'cage' && d.owner === p)) mode = 'LOOK AT A CAGE AND PRESS Q TO TRIGGER IT';
+    else if (kit?.id === 'lattice' && g.devices.some(d => d.kind === 'cage' && d.owner === p)) mode = `LOOK AT A CAGE (EVEN THROUGH A WALL) AND PRESS ${fk} TO TRIGGER IT`;
     else if (kit?.id === 'stella') mode = g.devices.some(d => d.kind === 'star' && d.owner === p) ? `LOOK AT A STAR: C GRAVITY WELL · Q NOVA PULSE · E NEBULA · ${kit.starsLeft} TO PLACE` : `${kit.starsLeft} STARS · E TO PLACE THEM`;
     else if (kit?.pilot?.kind === 'sdrone') mode = `SCOUT DRONE · FLY WITH MOUSE · LEFT CLICK TO PULSE · ${(kit.pilot.until - g.time).toFixed(1)}s`;
     else if (kit?.downed) mode = kit.downed.upAt ? 'GETTING BACK UP' : `DOWN · A TEAMMATE CAN REVIVE YOU (HOLD ${fk}) · ${(kit.downed.until - g.time).toFixed(0)}s`;

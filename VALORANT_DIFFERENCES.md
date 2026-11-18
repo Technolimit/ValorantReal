@@ -42,6 +42,73 @@ in play:
   - The maps have no breakable walls for Missile Call to break, so its missiles fly around walls instead.
   - Iso's right click (Contingency at half speed) works in testing; the issue doesn't say which part fails.
 
+## Changed at the request of issue #81
+
+Issue #81 asked for these. Several go against Valorant on purpose; the current numbers are in
+[ABILITIES.md](ABILITIES.md).
+
+- **Guns.**
+  - Wallbangs cost thickness × material density: wood and crates 0.6, ordinary walls 1, stone and concrete 1.25,
+    metal 1.6, grates 0.3. Where two boxes overlap, as at a corner, that stretch is paid once.
+  - A headshot, or a shot that kills, carries on to the enemy behind.
+  - The Marshal and Operator drop out of the scope after each shot, the Outlaw once both barrels are fired.
+- **Ultimates you can put away.** Finale, Talon Strike and Coup de Grace can be put away (X or switching weapons)
+  and taken out again; their timers keep running. Finale shows its time left.
+- **Buy phase (5v5).**
+  - Abilities that aren't allowed can't even be taken out.
+  - A signature on a cooldown comes back after 3 s.
+  - The issue's wording ("used … with consuming its charge") was read literally: allowed abilities still spend
+    their charge. Free charges would let sentinels place unlimited traps before the round.
+- **Placed signatures.**
+  - Sentry, Watcher and Anchor start no cooldown while they stand. Picked up, they come back 25 s later;
+    destroyed, 45 s later.
+  - Bastion holds E or Q to call her turret or alarm bot back from anywhere.
+  - Lattice picks up his wire, camera and cages from any distance with no wall in between.
+- **Smokes and mollies.**
+  - Smokes placed on the map sit on the ground, their centre 0.3 m up.
+  - Floor patches cover steps, boxes and ledges (2 m up, 2.5 m down), and only walls over 0.5 m thick stop them.
+  - Hive burns a half dome through everything.
+- **Duelists.**
+  - Volt: the slide ignores WASD and jump.
+  - Cinder: Sunflare follows a set curve laid along where you look and bounces off walls (twice). Firebreak is
+    20 m long, still out in about 0.67 s.
+  - Mirage: Double and Riftwalk work during Phase Out.
+  - Vanta: Duel is an area 14 × 40 m that takes the closest enemy in it 0.8 s after the cast, not a travelling
+    column.
+  - Lumen: Convergent Paths takes two steps, with its strip shown; Lightspeed pauses 0.3 s between dashes.
+- **Controllers.**
+  - Umbra: Dread is drawn as a round disc.
+  - Granite: Napalm skips along the ground and bursts 0.25 s after it settles.
+  - Marina: Lagoon is placed like Shade; Undertow's wave is 10 m high.
+  - Thistle: Pick-Me-Up gives 15% haste (was 10%).
+- **Initiators.**
+  - Hawke: Arc Dart waits 0.35 s before it goes off. Talon Strike has its own bow, and each shot can be nudged
+    8° during its 0.4 s wind-up.
+  - Quake: Rubble and Glimmer find the wall along your aim and treat touching boxes as one wall.
+  - Nyx: Seize holds without revealing, with a line to each one held. Haunt reveals what it sees the whole time
+    it is open. Terror trails show her team a line back to her.
+  - Nyx's prowlers follow a trail at any range, float, hop up boxes only while chasing, and stop their clock
+    while chasing (as a Boomer does).
+  - Ballast: the Scout Drone is driven like a player (silent while creeping, Space jumps, left click hops and
+    pulses). Missile Call's blasts are 0.3 s after landing, then 0.7 s apart. Sticky Charge drops more.
+  - Override: Zero Point is thrown like a knife and tells the team who it caught. Downed in Overload, the 850 no
+    longer drains away.
+- **Sentinels.**
+  - Solace: Frost Wall is 1.2 m thick and opaque, turns to any angle while right click is held, and anyone can
+    shoot it down. Vanta's Push Wall is opaque too.
+  - Lattice: cages are thrown at once and set off with F through walls, and enemies passing through the smoke are
+    revealed. Watcher only reveals with its dart. Tripline slows on the spot. Cages and Hives show their owner an
+    icon through walls.
+  - Regent: Coup de Grace fires 1.6 rounds a second and is ready 1 s after the cast. Sovereign shows one pip per
+    round.
+- **Not done or unclear.**
+  - Deadlock and Vyse aren't in Tapfire.
+  - Venom's Q and E already toggle from anywhere without looking at the gas; nothing was changed there.
+  - "His sticky grenade has to have more gravity" sits in the Sage item, and Sage has no sticky grenade. Tejo's
+    Sticky Charge was made heavier, as asked later in the issue.
+  - Smokes already differ in size by agent (Omen 4.1 m, Brimstone 4.15, Astra 4.75, Harbor 4.6, Clove 4, Viper
+    4.5, Jett 3.35).
+
 ## Where the spec was unclear
 
 These follow one reading of the spec, which may not be what Valorant does:
