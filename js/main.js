@@ -116,6 +116,7 @@ game.on('pulse', ({ pos, type }) => sound.pulse(type === 'reveal' ? null : pos, 
 game.on('wall', ({ box }) => sound.thunk(0));
 game.on('droneSpotted', ({ who }) => { if (isPlayer(who)) sound.ability('spotted'); });
 game.on('teleport', ({ who, fake }) => { if (isPlayer(who) && !fake) sound.ability('dash'); });
+game.on('birdCall', ({ who }) => { if (isPlayer(who)) sound.ability('birdcall'); }); // Lantern Hawk blinded an enemy
 game.on('trap', () => sound.pulse(null, 'trap'));
 game.on('lockdown', () => sound.pulse(null, 'lockdown'));
 game.on('turretShot', ({ pos }) => sound.gunshot(WEAPONS.classic, pos));

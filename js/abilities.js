@@ -21,8 +21,8 @@ const AB_INPUT = { q: 'abQ', e: 'abE', c: 'abC', x: 'abX' }; // the input flag o
 
 // Numbers follow VALORANT_SPECS.md (the Valorant ability specs for patch 13.10) unless a comment says otherwise.
 export const LIFT_HEIGHT = 5; // Lift (Updraft) carries you about 5 m up
-export const DASH = { speed: 24.4, time: 0.45, exit: 7 }; // Tailwind: 11 m in 0.45 s, keep 7 m/s afterwards
-export const GLIDE_FALL = 2.5; // max fall speed while gliding, m/s
+export const DASH = { speed: 36.7, time: 0.3, exit: 7 }; // Tailwind: 11 m in 0.3 s, level, keep 7 m/s afterwards (issue #84: faster)
+export const GLIDE_FALL = 1.5; // max fall speed while gliding, m/s (issue #84: slower)
 // Thrown abilities: the VALORANT wiki's projectile classes as [speed in m/s, gravity scale on 9.8 m/s²].
 export const THROW = { lob: [6.3, 0.3], c1: [16.5, 0.7], c2: [18, 0.3], c3: [29, 0.45], c4: [41.25, 0.3], c5: [41.25, 0.15] };
 export const SMOKE = { radius: 2.8, life: 4.5, range: 14, grow: 0.25 };
@@ -322,16 +322,18 @@ function toggleAbilityGun(kit, id) {
 // Placed smokes sit on the ground: their centre just above the floor below (issue #81), so they rise as a dome.
 export const SMOKE_LIFT = 0.3;
 
-// Where a placed smoke goes: along the aim, `kit.dist` metres out, straight through walls (or, with
-// kit.stopAtWalls, in front of the first wall). Dropped onto the floor below, centred SMOKE_LIFT up.
+// Where a placed smoke goes: the point along your aim, `kit.dist` metres out, straight through walls (or, with
+// kit.stopAtWalls, in front of the first wall). It can be at any height (issue #84): only never below the floor
+// under it. It moves only when your aim or position does. A smoke placed in the air sinks slowly to the ground
+// (game.addSmoke's `settle`).
 function smokeTarget(kit, radius) {
   const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
   let t = kit.dist ?? 16;
   if (kit.stopAtWalls) { const hit = g.world.raycast(eye, d, t); if (hit) t = Math.max(1.5, hit.t - radius * 0.5); }
   const p = [eye[0] + d[0] * t, eye[1] + d[1] * t, eye[2] + d[2] * t];
   const top = Math.max(p[1], eye[1]) + 0.5; // aiming at the floor can put the point underground
-  const f = g.world.raycast([p[0], top, p[2]], [0, -1, 0], 60);
-  p[1] = (f ? top - f.t : 0) + SMOKE_LIFT;
+  const f = g.world.raycast([p[0], top, p[2]], [0, -1, 0], 80), floor = f ? top - f.t : 0;
+  if (p[1] < floor + SMOKE_LIFT) p[1] = floor + SMOKE_LIFT;
   return p;
 }
 
@@ -363,7 +365,7 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Slipstream', desc: 'Press to gather the wind (1 s); press again within 7.5 s to dash ~11 m the way you are moving. Unused, the charge is lost. In 5v5 it comes back after two kills.', charges: 1, cooldown: 12, instant: true, recharge: 'kills',
+        name: 'Slipstream', desc: 'Press to gather the wind (1 s); press again within 7.5 s to dash ~11 m in 0.3 s the way you are moving, in a straight line that keeps your height. Unused, the charge is lost. In 5v5 it comes back after two kills.', charges: 1, cooldown: 12, instant: true, recharge: 'kills',
         use(kit) {
           kit.tailwind = { readyAt: kit.now + 1, until: kit.now + 7.5 };
           kit.owner.game.emit('ability', { who: kit.owner, type: 'windup' });
@@ -376,7 +378,7 @@ export const AGENTS = {
           const len = hyp(inp.fwd, inp.side), sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
           if (len > 0) { dx = (-sy * inp.fwd + cy * inp.side) / len; dz = (-cy * inp.fwd - sy * inp.side) / len; }
           else { dx = -sy; dz = -cy; }
-          o.dash = { until: kit.now + DASH.time, dir: [dx, dz] };
+          o.dash = { until: kit.now + DASH.time, dir: [dx, dz], level: true }; // a straight line at the height she started at
           kit.tailwind = null;
           kit.lastUse.e = kit.now;
           o.game.emit('ability', { who: o, type: 'dash' });
@@ -420,15 +422,15 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'flash', name: 'Sunflare', desc: 'Hold a flare in your hand (no gun), then left click to curve it left or right click to curve it right. It follows a set curve laid along where you look, up or down too, and bounces off walls in its way (twice at most). It bursts just around the corner 0.5 s later (about 8 m of flight), blinding anyone facing it for up to 1.5 s. In 5v5 one is free each round and two kills bring a used one back.', charges: 2, cooldown: 14, recharge: 'kills', equip: 0.8, unequip: 0.48,
+        item: 'flash', name: 'Sunflare', desc: 'Hold a flare in your hand (no gun), then left click to curve it left or right click to curve it right. It follows a set curve laid along where you look, up or down too, and bounces off walls in its way (twice at most). It bursts just around the corner 0.5 s later (about 5.7 m of flight), blinding anyone facing it for up to 1.5 s. In 5v5 one is free each round and two kills bring a used one back.', charges: 2, cooldown: 14, recharge: 'kills', equip: 0.8, unequip: 0.48,
         arm: true, armHint: 'LEFT CLICK: CURVE LEFT · RIGHT CLICK: CURVE RIGHT',
         use(kit, mode) {
           const o = kit.owner, g = o.game, eye = o.eye();
           const f = dirFromAngles(o.yaw, o.pitch), r2 = right(o.yaw), r = [r2[0], 0, r2[1]], side = mode === 'right' ? 1 : -1;
-          // A set curve laid along where you look, up and down included: 2.5 m straight out, then a quarter turn to
-          // the side (radius 3.5 m), about 8 m of flight. A wall in the way bounces it off (up to twice) and the
+          // A set curve laid along where you look, up and down included: 1.8 m straight out, then a quarter turn to
+          // the side (radius 2.5 m), about 5.7 m of flight. A wall in the way bounces it off (up to twice) and the
           // rest of the curve carries on mirrored (issue #81).
-          const STRAIGHT = 2.5, R = 3.5, offs = [];
+          const STRAIGHT = 1.8, R = 2.5, offs = []; // a short curve (issue #84): about 5.7 m of flight
           for (let i = 1; i <= 4; i++) offs.push(f.map(v => v * STRAIGHT * i / 4));
           for (let i = 1; i <= 8; i++) {
             const a = (Math.PI / 2) * i / 8, fw = STRAIGHT + R * Math.sin(a), sd = side * R * (1 - Math.cos(a));
@@ -463,7 +465,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Rekindle', desc: 'Mark where you stand. For 10 s you can fight freely: if you die, or when time runs out, you burn away and re-form at the mark 2.4 s later at full health, with the shields you had. The death does not count.', points: 7,
+        name: 'Rekindle', desc: 'Mark where you stand. For 10 s you can fight freely: if you die, or when time runs out, you burn away and re-form at the mark 1 s later at full health, with the shields you had. The death does not count.', points: 7,
         use(kit) {
           const o = kit.owner;
           kit.rebirth = { pos: [...o.pos], yaw: o.yaw, pitch: o.pitch, until: kit.now + 10, armor: o.armor };
@@ -498,15 +500,15 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Shade', desc: 'Hold the orb: your view follows the smoke out through walls, and the sphere shows exactly where it will form. It passes through walls: hold right click to push it farther (up to 80 m), press R to make it stop at the first wall instead, left click to cast. The orb flies there at 64 m/s and the smoke lasts 14.7 s.', charges: 2, cooldown: 40, equip: 1,
-        armHint: 'LEFT CLICK: CAST · HOLD RIGHT CLICK: FARTHER · R: STOP AT WALLS', shadowSight: true,
+        name: 'Shade', desc: 'Hold the orb: your view follows the smoke out through walls, and the sphere shows exactly where it will form. It passes through walls and can sit at any height: hold right click to push it farther (up to 80 m), hold E to pull it closer, press R to make it stop at the first wall instead, left click to cast; switch to a weapon to put it away. The orb flies there at 64 m/s and the smoke lasts 14.7 s; placed up in the air, it sinks slowly to the ground.', charges: 2, cooldown: 40, equip: 1,
+        armHint: 'LEFT CLICK: CAST · HOLD RIGHT CLICK: FARTHER · HOLD E: CLOSER · R: STOP AT WALLS · SWITCH WEAPON TO PUT AWAY', shadowSight: true,
         smokePreview: 4.1, distance: { min: 4, max: 80, start: 16, speed: 22 },
         preview(kit) { return smokeTarget(kit, 4.1); },
         use(kit) {
           const o = kit.owner, pos = [...target(kit, this)], e = o.eye();
           const ft = hyp(pos[0] - e[0], pos[1] - e[1], pos[2] - e[2]) / 64; // the orb flies there at 64 m/s...
           o.game.emit('throw', { who: o, from: e, to: pos, time: Math.max(0.05, ft), color: 0xa67bff, straight: true });
-          later(kit, ft + 0.3, () => o.game.addSmoke(o, pos, kit.now, { radius: 4.1, life: 14.7, color: 0x5b3f8f })); // ...and blooms 0.3 s after it arrives
+          later(kit, ft + 0.3, () => o.game.addSmoke(o, pos, kit.now, { radius: 4.1, life: 14.7, color: 0x5b3f8f, settle: true })); // ...and blooms 0.3 s after it arrives
         },
       },
       x: {
@@ -529,10 +531,15 @@ export const AGENTS = {
     blurb: 'A tracker who knows where you are before you do. Scouts with his drone and bolts, then shoots through the walls.',
     abilities: {
       c: {
-        name: 'Kestrel', desc: 'Hold the drone, left click to launch it. Fly it smoothly (up to 5 m/s) with WASD and your mouse for up to 7 s while your body stands exposed (damage to your body ends it). Left click fires a tracking dart (every 5 s): an enemy it hits is revealed in two pings.', charges: 1, cooldown: 40, item: 'device', equip: 0.9, unequip: 0.7,
+        name: 'Kestrel', desc: 'Hold the drone, left click to launch it. Fly it smoothly (up to 5 m/s) with WASD and your mouse for up to 7 s, or press C again to leave it, while your body stands exposed (damage to your body ends it). Left click fires a tracking dart (every 5 s): an enemy it hits is revealed in two pings.', charges: 1, cooldown: 40, item: 'device', equip: 0.9, unequip: 0.7,
         use(kit) {
           const o = kit.owner, e = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           kit.pilot = o.game.addDevice({ kind: 'owl', owner: o, pos: [e[0] + d[0] * 0.8, e[1] + 0.3, e[2] + d[2] * 0.8], dir: d, life: 7, fly: true, dartReady: kit.now + 0.4 });
+        },
+        reuse(kit) { // C again while flying: leave the drone (it's gone)
+          if (kit.pilot?.kind !== 'owl') return false;
+          kit.pilot.removed = true; kit.pilot = null;
+          return true;
         },
       },
       q: {
@@ -612,7 +619,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Clampdown', desc: 'Take out the device (0.8 s), then left click to plant it. It can be shot (200 HP) while it charges for 13 s, and everyone sees the sphere it covers; then it detains every enemy within 32 m of it for 8 s: they cannot fire or use abilities and can barely move.', points: 9, equip: 0.8, unequip: 0.15,
+        name: 'Clampdown', desc: 'Take out the device (0.8 s), then left click to plant it. The device stands in the middle, where it can be shot (200 HP) to call it off while it charges for 13 s; everyone sees the sphere it covers and a countdown on their screen, and is told how many it caught; then it detains every enemy within 32 m of it for 8 s: they cannot fire or use abilities and can barely move.', points: 9, equip: 0.8, unequip: 0.15,
         use(kit) {
           const o = kit.owner;
           o.game.addZone({ kind: 'lockdown', owner: o, pos: aimPoint(o, 2.5, { floor: true, back: 0.5 }), r: 32, life: 13.1, armAt: kit.now + 13, dur: 8, slow: 0.833 }, kit.now); // detained: move x0.167
@@ -708,11 +715,11 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Overcast', desc: 'Take out the tablet (0.8 s), then the map opens: click up to three spots (one per charge) for sky smokes; press E again to call them in. Each lasts 19.25 s.', charges: 3, cooldown: 35, recharge: 'none', equip: 0.8, autoUse: true, unequip: 0.7,
+        name: 'Overcast', desc: 'Take out the tablet (0.8 s), then the map opens: each click calls a sky smoke onto that spot (one per charge, up to three); E or right click only closes the map. Each lasts 19.25 s.', charges: 3, cooldown: 35, recharge: 'none', equip: 0.8, autoUse: true, unequip: 0.7,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
-            key: 'e', title: 'OVERCAST', hint: 'Click up to ' + kit.charges.e + ' spots · E or right click to call them in', max: kit.charges.e, color: '#e0844f', radius: 4.15, range: 55,
+            key: 'e', title: 'OVERCAST', hint: 'Click to call in a smoke (' + kit.charges.e + ' left) · E or right click closes the map', max: kit.charges.e, placeEach: true, color: '#e0844f', radius: 4.15, range: 55,
             confirm: (picks) => {
               for (const p of picks) {
                 kit.charges.e--;
@@ -801,7 +808,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Nest', desc: 'Flood the area around you with a toxic cloud that spreads to 9 m over 5 s. It lasts as long as you stay inside it, and 8 s after you leave. Everyone inside, you included, is nearsighted (8 m); enemies also lose 50 health to Decay at once, then 10 a second. Enemies inside are outlined in red for your team, which makes them stand out but doesn’t show them through walls or past what you can see.', points: 9, equip: 0.5, unequip: 1.35,
+        name: 'Nest', desc: 'Flood the area around you with a toxic cloud that spreads to 14 m over 5 s. It lasts as long as you stay inside it, and 8 s after you leave. Everyone inside, you included, is nearsighted (8 m); enemies also lose 50 health to Decay at once, then 10 a second. Enemies inside are outlined in red for your team, which makes them stand out but doesn’t show them through walls or past what you can see.', points: 9, equip: 0.5, unequip: 1.35,
         use(kit) {
           const o = kit.owner, g = o.game, p = [...o.pos];
           kit.nest = g.addSmoke(o, [p[0], p[1] + 2, p[2]], kit.now, { radius: 1.5, life: 8, color: 0x3f9a50, kind: 'gas', nest: true });
@@ -864,17 +871,28 @@ export const AGENTS = {
     blurb: 'Breaks positions open from the other side of the wall: blasts, flashes and shockwaves that go straight through cover.',
     abilities: {
       c: {
-        name: 'Rubble', desc: 'Fire a charge at a wall up to 35 m ahead (25 m/s). 2.2 s later it blasts the far side three times, 0.6 s apart: 80 damage each to everyone in a strip 10 m deep and 6 m wide behind the wall.', charges: 1, cooldown: 25, equip: 0.9, unequip: 0.7,
+        name: 'Rubble', desc: 'Fire a charge at a wall up to 35 m ahead along your aim (25 m/s). 2.2 s later it blasts the far side three times, 0.6 s apart: 80 damage each to everyone in a long cylinder (10 m long, 3 m around) running on from the wall the way you were looking, up or down too. The cylinder shows while it charges.', charges: 1, cooldown: 25, equip: 0.9, unequip: 0.7,
         use(kit) {
-          const o = kit.owner, g = o.game, p = throughWall(o, 35, 0.3);
-          if (!p) return false;
-          const e = o.eye(), yaw = o.yaw, f = fwd2(yaw), ft = hyp(p[0] - e[0], p[2] - e[2]) / 25;
-          g.emit('throw', { who: o, from: e, to: p, time: Math.max(0.1, ft), color: 0xf28c38, wave: true });
-          const a = [p[0], p[1] + 1, p[2]], b = [a[0] + f[0] * 10, a[1], a[2] + f[1] * 10];
-          later(kit, ft, () => g.emit('quakeLine', { from: a, to: b, width: 6, life: 3.6 })); // the blast area lights up while it charges
+          const o = kit.owner, g = o.game, eye = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
+          // The charge sticks to the first wall along your aim (touching boxes count as one wall); the blast is a
+          // long cylinder running on from its far side, along your aim (issue #84).
+          const hits = g.world.raycastAll(eye, d, 47).filter(h => !h.box.floor);
+          if (!hits.length || hits[0].tIn > 35) return false;
+          let out = hits[0].tOut;
+          for (const h of hits.slice(1)) { if (h.tIn > out + 0.3) break; out = Math.max(out, h.tOut); }
+          const at = (t) => [eye[0] + d[0] * t, eye[1] + d[1] * t, eye[2] + d[2] * t];
+          const a = at(out + 0.1), L = 10, R = 3, ft = hits[0].tIn / 25;
+          g.emit('throw', { who: o, from: eye, to: at(hits[0].tIn), time: Math.max(0.1, ft), color: 0xf28c38, wave: true });
+          later(kit, ft, () => g.emit('beamWarn', { who: o, from: a, dir: d, len: L, width: R, time: 3.5, color: 0xf28c38 })); // the blast area shows while it charges
           for (const t of [2.2, 2.8, 3.4]) later(kit, ft + t, () => {
-            for (const c of g.inStrip(o, p, yaw, 0, 10, 3, 4, true)) { const en = g.isEnemy(o, c); g.damage(c, o, en ? 80 : 27, { part: 'body', def: src('rubble', 'Rubble'), dist: 0, point: c.eye(), wallbang: true, friendly: !en }); }
-            g.emit('pulse', { pos: [p[0] + f[0] * 5, p[1] + 0.6, p[2] + f[1] * 5], r: 4, type: 'blast', color: 0xf28c38, owner: o });
+            for (const c of g.combatants) {
+              if (!c.alive || c === o) continue;
+              const v = [c.pos[0] - a[0], c.pos[1] + 1 - a[1], c.pos[2] - a[2]], along = v[0] * d[0] + v[1] * d[1] + v[2] * d[2];
+              if (along < -0.5 || along > L || hyp(v[0] - d[0] * along, v[1] - d[1] * along, v[2] - d[2] * along) > R + 0.4) continue;
+              const en = g.isEnemy(o, c);
+              g.damage(c, o, en ? 80 : 27, { part: 'body', def: src('rubble', 'Rubble'), dist: 0, point: c.eye(), wallbang: true, friendly: !en });
+            }
+            g.emit('pulse', { pos: at(out + 5), r: 3, type: 'blast', color: 0xf28c38, owner: o });
           });
         },
       },
@@ -911,7 +929,7 @@ export const AGENTS = {
           for (let i = 0; i < N; i++) later(kit, 0.6 + 0.3 + i * 0.255, () => {
             const d0 = 8 + i * step, a = [from[0] + f[0] * d0, from[1] + 1, from[2] + f[1] * d0], b = [a[0] + f[0] * step, a[1], a[2] + f[1] * step];
             g.emit('quakeLine', { from: a, to: b, width: 18, life: 0.5 });
-            for (const c of g.inStrip(o, from, yaw, d0, d0 + step, 9, 6, true)) { g.concuss(c, 4); c.vel[1] = 6; c.grounded = false; }
+            for (const c of g.inStrip(o, from, yaw, d0, d0 + step, 9, 6, true)) { g.concuss(c, 4); c.vel[0] += f[0] * 7; c.vel[2] += f[1] * 7; c.vel[1] = 9; c.grounded = false; c.airCap = Math.max(c.airCap || 0, 7); } // thrown up and back (issue #84)
           });
           g.emit('ability', { who: o, type: 'ult' });
         },
@@ -1070,14 +1088,14 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Stalker', desc: 'Hold the tiger, left click to send it. You see through its eyes and steer with the mouse for up to 6 s (6.4 m/s, 80 HP). Left click makes it leap up to 12 m: the first enemy it hits takes 30, and everyone within 3.5 m of where it lands is concussed for up to 4 s.', charges: 1, cooldown: 40, equip: 0.8, unequip: 0.7,
+        name: 'Stalker', desc: 'Hold the tiger, left click to send it. You see through its eyes and drive it like yourself for up to 6 s (80 HP): WASD moves it the way you look and it stands still when you let go, Space jumps, Shift or crouch creeps silently (3.2 m/s instead of 6.4 m/s). Left click makes it leap up to 12 m: the first enemy it hits takes 30, and everyone within 3.5 m of where it lands is concussed for up to 4 s.', charges: 1, cooldown: 40, equip: 0.8, unequip: 0.7,
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
-          kit.pilot = o.game.addDevice({ kind: 'tiger', owner: o, pos: [o.pos[0] + f[0], o.pos[1], o.pos[2] + f[1]], dir: [f[0], 0, f[1]], life: 6, steer: true });
+          kit.pilot = o.game.addDevice({ kind: 'tiger', owner: o, pos: [o.pos[0] + f[0], o.pos[1], o.pos[2] + f[1]], dir: [f[0], 0, f[1]], life: 6, vel: [0, 0, 0] }); // driven like the Scout Drone (issue #84)
         },
       },
       e: {
-        name: 'Lantern Hawk', desc: 'Hold the hawk, left click to release it; it flies where you aim (18 m/s, 60 HP). Press E again to make it burst 0.3 s later, blinding anyone facing it for 1 to 2.25 s: the full time once it has flown 0.75 s (it bursts on its own after 2 s). In 5v5 one is free each round and a second costs 250.', charges: 2, cooldown: 50, equip: 0.8, unequip: 0.85,
+        name: 'Lantern Hawk', desc: 'Hold the hawk, left click to release it; it flies where you aim (18 m/s, 60 HP). Press E again to make it burst 0.3 s later, blinding anyone facing it for 1 to 2.25 s: the full time once it has flown 0.75 s. It also bursts by itself 0.3 s after an enemy first has it in view, and on its own after 2 s. You hear a bird call when it blinds an enemy. In 5v5 one is free each round and a second costs 250.', charges: 2, cooldown: 50, equip: 0.8, unequip: 0.85,
         use(kit) {
           const o = kit.owner, e = o.eye(), d = dirFromAngles(o.yaw, o.pitch);
           kit.hawk = o.game.addDevice({ kind: 'hawk', owner: o, pos: [e[0] + d[0], e[1], e[2] + d[2]], dir: d, life: 2, steer: true, fly: true, speed: 18 });
@@ -1089,12 +1107,12 @@ export const AGENTS = {
           h.removed = true;
           kit.hawk = null;
           const len = 1 + 1.25 * Math.min(1, (kit.now - h.born) / 0.75); // the longer it flew, the longer the blind (1-2.25 s, full after 0.75 s)
-          later(kit, 0.3, () => kit.owner.game.flash(kit.owner, [...h.pos], len));
+          later(kit, 0.3, () => { const g = kit.owner.game; if ((g.flash(kit.owner, [...h.pos], len) || []).some(c => g.isEnemy(kit.owner, c))) g.emit('birdCall', { who: kit.owner }); }); // a bird call when it blinds an enemy
           return true;
         },
       },
       x: {
-        name: 'Hunters', desc: 'Release three seekers (120 HP each) that track the three closest enemies for up to 15 s, through walls. Each one that reaches its target nearsights them for 3 s.', points: 8, equip: 0.8, unequip: 0.55,
+        name: 'Hunters', desc: 'Release three seekers (120 HP each) that track the three closest enemies for up to 15 s. They find their way around walls rather than through them; a breakable wall in the way (Frost Wall) they chew through, a little at a time. Each one that reaches its target nearsights them for 3 s.', points: 8, equip: 0.8, unequip: 0.55,
         use(kit) {
           const o = kit.owner, g = o.game;
           const targets = g.combatants.filter(c => c.alive && g.isEnemy(o, c)).sort((a, b) => hyp(a.pos[0] - o.pos[0], a.pos[2] - o.pos[2]) - hyp(b.pos[0] - o.pos[0], b.pos[2] - o.pos[2])).slice(0, 3);
@@ -1385,7 +1403,7 @@ export const AGENTS = {
     blurb: 'A gentleman marksman with his own guns: a heavy pistol, a teleport anchor, a trap — and a sniper rifle that ends rounds.',
     abilities: {
       c: {
-        item: 'device', name: 'Snare', desc: 'Hold the trap, left click to place it on the floor (12 m); it arms after 2 s. When it sees an enemy within 10 m, 0.9 s later the ground around it breaks into a 6 m field that slows by half for 6 s. It resets 10 s later. Enemies can shoot it (20 HP).', charges: 1, cooldown: 30,
+        item: 'device', name: 'Snare', desc: 'Hold the trap, left click to place it on the floor (12 m); it arms after 2 s. When it sees an enemy within 10 m, 0.9 s later the ground around it breaks into a 6 m field that slows by half for 6 s, and the trap is used up. Enemies can shoot it (20 HP).', charges: 1, cooldown: 30,
         use(kit) {
           const o = kit.owner, pos = aimPoint(o, 12, { floor: true, back: 0.4 });
           o.game.addDevice({ kind: 'trademark', owner: o, pos, life: 999, armAt: kit.now + 2 });
@@ -1423,7 +1441,7 @@ export const AGENTS = {
         },
       },
       x: {
-        name: 'Coup de Grace', desc: 'Summon a custom sniper rifle (1 s; 5 rounds, 1.6 shots a second): one hit to the body or head kills, and every kill leaves a 6 m field that slows by half for 4 s where the target fell. Right click to scope. Press X to holster it and again to draw it.', points: 8,
+        name: 'Coup de Grace', desc: 'Summon a custom sniper rifle (1 s; 5 rounds, 0.9 shots a second). It handles like an Operator: right click scopes in twice (2.5x, 5x) and a shot drops you out of the scope. One hit to the body or head kills, and every kill leaves a 6 m field that slows by half for 4 s where the target fell. Press X to holster it and again to draw it.', points: 8,
         use(kit) {
           drawAbilityGun(kit, 'tourdeforce');
           kit.owner.game.emit('ability', { who: kit.owner, type: 'ult' });
@@ -1458,15 +1476,23 @@ export const AGENTS = {
         },
       },
       e: {
-        item: 'orb', name: 'Lagoon', desc: 'Hold the orb: your view follows it out through walls, and the dome shows exactly where it will form, on the ground. Hold right click to push it farther (up to 80 m), press R to make it stop at the first wall instead, left click to cast. The orb flies there at 64 m/s and rises into a water dome 9.2 m across for 19.25 s that blocks sight; 0.8 s later its shell forms and stops bullets until it takes 680 damage.', charges: 1, cooldown: 30, equip: 1,
-        armHint: 'LEFT CLICK: CAST · HOLD RIGHT CLICK: FARTHER · R: STOP AT WALLS', shadowSight: true,
+        item: 'orb', name: 'Lagoon', desc: 'Hold the orb: your view follows it out through walls, and the dome shows exactly where it will form, at any height. Hold right click to push it farther (up to 80 m), hold E to pull it closer, press R to make it stop at the first wall instead, left click to cast; switch to a weapon to put it away. Placed up in the air, it sinks slowly to the ground. The orb flies there at 64 m/s and rises into a water dome 9.2 m across for 19.25 s that blocks sight. Press E again to raise its shell: 0.8 s later it stops bullets until it takes 680 damage.', charges: 1, cooldown: 30, equip: 1,
+        armHint: 'LEFT CLICK: CAST · HOLD RIGHT CLICK: FARTHER · HOLD E: CLOSER · R: STOP AT WALLS · SWITCH WEAPON TO PUT AWAY', shadowSight: true,
         smokePreview: 4.6, distance: { min: 4, max: 80, start: 16, speed: 22 }, // placed like Shade (issue #81)
         preview(kit) { return smokeTarget(kit, 4.6); },
         use(kit) {
           const o = kit.owner, g = o.game, e = o.eye(), pos = [...target(kit, this)];
           const ft = Math.max(0.05, hyp(pos[0] - e[0], pos[1] - e[1], pos[2] - e[2]) / 64);
           g.emit('throw', { who: o, from: e, to: pos, time: ft, color: 0x2fb3a8, straight: true });
-          later(kit, ft, () => g.addSmoke(o, pos, kit.now, { radius: 4.6, life: 19.25, color: 0x2fb3a8, kind: 'cove', grow: 0.8 }));
+          later(kit, ft, () => { kit.cove = g.addSmoke(o, pos, kit.now, { radius: 4.6, life: 19.25, color: 0x2fb3a8, kind: 'cove', grow: 0.8, settle: true }); });
+        },
+        // The shell only goes up when you press E again (issue #84), 0.8 s to form.
+        reuse(kit) {
+          const cv = kit.cove;
+          if (!cv || cv.shellOn || kit.now >= cv.until) return false;
+          cv.shellOn = true; cv.shellAt = kit.now + 0.8;
+          kit.owner.game.emit('ability', { who: kit.owner, type: 'windup' });
+          return true;
         },
       },
       x: {
@@ -1811,11 +1837,11 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Ruse', desc: 'Take out the tablet (0.6 s), then click up to two spots on the map (one per charge, within 55 m); press E or right click to drop smokes there 1 s later (13.5 s). Works while you are dead: one smoke, 5.5 s, within 42.5 m.', charges: 2, cooldown: 40, equip: 0.6, autoUse: true, unequip: 0.7,
+        name: 'Ruse', desc: 'Take out the tablet (0.6 s), then each click on the map (one per charge, within 55 m) drops a smoke there 1 s later (13.5 s); E or right click only closes the map. Works while you are dead: one smoke, 5.5 s, within 42.5 m.', charges: 2, cooldown: 40, equip: 0.6, autoUse: true, unequip: 0.7,
         use(kit) {
           const o = kit.owner;
           kit.mapPick = {
-            key: 'e', title: 'RUSE', hint: 'Click up to ' + kit.charges.e + ' spots · E or right click to drop the smokes', max: o.alive ? kit.charges.e : Math.min(1, kit.charges.e), color: '#e07bd0', radius: 4, range: o.alive ? 55 : 42.5,
+            key: 'e', title: 'RUSE', hint: 'Click to drop a smoke (' + kit.charges.e + ' left) · E or right click closes the map', placeEach: true, max: o.alive ? kit.charges.e : Math.min(1, kit.charges.e), color: '#e07bd0', radius: 4, range: o.alive ? 55 : 42.5,
             confirm: (picks) => {
               for (const p of picks) {
                 kit.charges.e--;
@@ -2057,6 +2083,12 @@ export class Kit {
   mapClick(pos) {
     const mp = this.mapPick;
     if (!mp || !pos || (mp.valid && !mp.valid(pos))) return false;
+    if (mp.placeEach) { // smokes (issue #84): each click places one there and then; nothing else places them
+      mp.placed = (mp.placed || 0) + 1;
+      mp.confirm([pos]);
+      if (mp.placed >= mp.max) { this.mapPick = null; this.mapClosed(mp); }
+      return true;
+    }
     mp.picks = mp.picks || [];
     mp.picks.push(pos);
     if (mp.picks.length >= mp.max) this.mapConfirm();
@@ -2150,10 +2182,10 @@ export class Kit {
     for (let i = 0; i < ABILITY_KEYS.length; i++) {
       const k = ABILITY_KEYS[i];
       if (!inp[AB_INPUT[k]]) continue;
-      if (this.armed && this.armed.k === k) { this.armed = null; continue; } // press again to put it away
+      if (this.armed && this.armed.k === k) { if (!ab[k].distance) this.armed = null; continue; } // press again to put it away (a placed smoke: hold it to pull the smoke closer; switch weapons to put it away)
       if (buyLock && !buyPhaseAllows(this.id, k)) { g.emit('abilityLocked', { who: o, key: k }); continue; } // issue #81: not at all in the buy phase
       if (this.mapPick && this.mapPick.key === k) { this.mapConfirm(); continue; } // press again to confirm map picks
-      const driftOk = !!this.drift && (k === 'c' || k === 'e'); // Phase Out: Double and Riftwalk still work (issue #81)
+      const driftOk = (!!this.drift && (k === 'c' || k === 'e')) || (!!this.blades && k !== 'x'); // Phase Out: Double and Riftwalk still work (issue #81); Edgestorm: the rest of her kit (issue #84)
       if (ab[k].reuse && (!this.busy() || this.view || this.pilot || driftOk) && ab[k].reuse(this)) continue; // second press: detonate / toggle / teleport
       if (this.busy() && !driftOk) continue;
       if (this.charges[ab[k].shares || k] <= 0 && !ab[k].free?.(this)) continue;
@@ -2185,6 +2217,7 @@ export class Kit {
         // Hold right click to push the marker out (wraps back in at max range); R makes it stop at walls.
         if (this.dist === undefined || this.distFor !== k) { this.dist = a.distance.start; this.distFor = k; }
         if (inp.alt) { this.dist += a.distance.speed / 128; if (this.dist > a.distance.max) this.dist = a.distance.min; }
+        else if (inp[{ c: 'abCHeld', q: 'abQHeld', e: 'abEHeld' }[k]] && now - this.armed.at > 0.25) this.dist = Math.max(a.distance.min, this.dist - a.distance.speed / 128); // hold the key: closer
         if (inp.reload && !this.prevReload) this.stopAtWalls = !this.stopAtWalls;
         this.prevReload = inp.reload;
         inp.altPressed = false;
@@ -2407,11 +2440,11 @@ export class Kit {
     for (const k of Object.keys(o.st)) if (k.endsWith('Until')) o.st[k] = 0;
     o.yaw = r.yaw; o.pitch = r.pitch;
     g.teleport(o, r.pos);
-    // Coming back takes 2.4 s: 1 s burning away (gone from sight), then 1.4 s re-forming at the mark. Nothing
-    // can touch him until it's done, and he can't move or shoot.
+    // Coming back takes 1 s (issue #84: was 2.4 s): 0.4 s burning away (gone from sight), then 0.6 s re-forming
+    // at the mark. Nothing can touch him until it's done, and he can't move or shoot.
     const now = this.now;
-    o.st.hiddenUntil = now + 1;
-    o.st.intangibleUntil = o.st.channelUntil = o.st.rootUntil = now + 2.4;
+    o.st.hiddenUntil = now + 0.4;
+    o.st.intangibleUntil = o.st.channelUntil = o.st.rootUntil = now + 1;
     g.emit('ability', { who: o, type: 'rekindled' });
   }
 
@@ -2421,7 +2454,7 @@ export class Kit {
       if (now >= b.next) { this.blades = null; o.equip(o.slot, now, true); }
       return;
     }
-    if (now < b.next) return;
+    if (now < b.next || this.armed || this.usedAt === now) return; // holding (or just used) another ability
     if (inp.altPressed) {
       // Fan out every remaining blade at once.
       const n = b.left;
@@ -2602,7 +2635,7 @@ export class Kit {
           later(this, 2.8, () => { c.st.revealUntil = this.now + 0.6; g.emit('tag', { pos: c.eye() }); });
         }
       }
-      else if (t.kind === 'tiger' && inp.firePressed && now - t.born > 0.3) t.leap = true; // left click: leap (game.tickDevices)
+      else if (t.kind === 'tiger' && inp.firePressed && now - t.born > 0.3) { t.leap = true; t.dir = [-Math.sin(o.yaw), 0, -Math.cos(o.yaw)]; } // left click: leap where you look (game.tickDevices)
       else if (t.kind === 'sdrone' && inp.firePressed && now >= (t.pulseAt ?? t.born + 0.6)) {
         // Scout Drone's pulse: a flattened sphere 16 m across the ground; revealed and suppressed for 8 s.
         t.pulseAt = now + 1.5;
@@ -2675,7 +2708,7 @@ export class Kit {
     // Viper's Pit holds while Venom stays inside it; once she leaves it ends 8 s later.
     const nz = this.nestZone;
     if (nz && now < nz.until) { // it spreads from 1.5 m to 9 m over 5 s
-      nz.r = Math.min(9, 1.5 + 7.5 * (now - nz.born) / 5);
+      nz.r = Math.min(14, 1.5 + 12.5 * (now - nz.born) / 5); // issue #84: bigger, 14 m
       if (this.nest) this.nest.radius = nz.r;
       if (o.alive && hyp(o.pos[0] - nz.pos[0], o.pos[2] - nz.pos[2]) < Math.max(nz.r, 2.5)) { nz.until = now + 8; if (this.nest) this.nest.until = now + 8; }
     }
@@ -2713,7 +2746,8 @@ export function applyDash(c, now, dt) {
     const k = c.st.slowUntil > now || c.st.stunUntil > now || c.st.hinderUntil > now ? 0.5 : 1; // slowed, concussed, hindered: dash x0.5
     c.vel[0] = c.dash.dir[0] * (c.dash.speed || DASH.speed) * k;
     c.vel[2] = c.dash.dir[1] * (c.dash.speed || DASH.speed) * k;
-    if (!c.dash.slide) c.vel[1] = Math.max(0, c.vel[1]) + PLAYER.gravity * dt; // hover: cancels this tick's gravity (a slide stays on the ground)
+    if (c.dash.level) c.vel[1] = PLAYER.gravity * dt; // Slipstream: no rise or fall at all (gravity is cancelled this tick)
+    else if (!c.dash.slide) c.vel[1] = Math.max(0, c.vel[1]) + PLAYER.gravity * dt; // hover: cancels this tick's gravity (a slide stays on the ground)
   } else {
     const ex = c.dash.exit || DASH.exit;
     c.vel[0] = c.dash.dir[0] * ex;
