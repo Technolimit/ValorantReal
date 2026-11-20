@@ -6,7 +6,7 @@ import { World } from './world.js';
 import { Combatant, dirFromAngles } from './entity.js';
 import { damageAt, WEAPONS, BUY_GROUPS } from './weapons.js';
 import { Bot, BOT_NAMES } from './bot.js';
-import { Kit, AGENT_ORDER, smokeBlocks, SMOKE, SLAB } from './abilities.js';
+import { Kit, AGENT_ORDER, smokeBlocks, SMOKE, SLAB, SMOKE_LIFT } from './abilities.js';
 import { dirFromAngles as dirOf } from './entity.js';
 import { netStep } from './net.js';
 import { SKINS, SKIN_ORDER, variantsOf } from './skins.js';
@@ -211,7 +211,7 @@ export class Game {
     // nearsighted in it as anyone, and the outline only makes those she can see stand out.
     for (const s of this.smokes) {
       if (!s.nest || now >= s.until) continue;
-      for (const c of this.combatants) if (this.affectable(c) && this.isEnemy(s.owner, c) && hyp(c.pos[0] - s.pos[0], c.pos[1] + 1 - s.pos[1], c.pos[2] - s.pos[2]) < s.radius) { c.st.outlineUntil = now + 0.15; c.st.outlineTeam = s.owner.team; }
+      for (const c of this.combatants) if (this.affectable(c) && this.isEnemy(s.owner, c) && hyp(c.pos[0] - s.pos[0], c.pos[1] + 1 - s.pos[1], c.pos[2] - s.pos[2]) < s.radius) { c.st.outlineUntil = now + 0.15; c.st.outlineTeam = s.owner.team; c.st.outlineBy = s.owner; }
     }
     for (const w of this.walls) {
       if (now >= w.until) this.removeWall(w);
@@ -235,10 +235,10 @@ export class Game {
 
   // grow / contract: seconds to reach full size and to shrink away at the end (default 0.75 s and 1 s; walls appear
   // at once). cyl: a vertical cylinder instead of a sphere (Cyber Cage).
-  addSmoke(owner, pos, now, { radius = SMOKE.radius, life = SMOKE.life, color = 0xcfdbe6, kind = 'smoke', nest = false, slab = null, grow, contract, cyl = null, settle = false } = {}) {
-    const s = { owner, pos, born: now, until: now + life, radius, color, kind, nest, slab, cyl };
+  addSmoke(owner, pos, now, { radius = SMOKE.radius, life = SMOKE.life, color = 0xcfdbe6, kind = 'smoke', nest = false, slab = null, grow, contract, cyl = null, settle = false, hidden = false } = {}) {
+    const s = { owner, pos, born: now, until: now + life, radius, color, kind, nest, slab, cyl, hidden }; // hidden: blocks sight, drawn by something else
     // settle: placed up in the air, it sinks slowly (1.2 m/s) until it sits on the floor below (issue #84).
-    if (settle) { const f = this.floorAt(pos[0], pos[2], pos[1] + 0.1); s.settleTo = (f ? f[1] : pos[1] - 0.3) + 0.3; }
+    if (settle) { const f = this.floorAt(pos[0], pos[2], pos[1] + 0.1); s.settleTo = (f ? f[1] : pos[1] - SMOKE_LIFT) + SMOKE_LIFT; }
     if (grow != null) s.grow = grow; else if (slab || nest) s.grow = 0;
     if (contract != null) s.contract = contract; else if (slab) s.contract = 0;
     if (SHOOTABLE[kind]) s.hp = SHOOTABLE[kind].hp;
@@ -272,6 +272,8 @@ export class Game {
           // A patch on the floor (molly, acid, slow field) covers its whole radius over steps, boxes and slopes, up
           // to 2 m above or 2.5 m below where it landed; only a wall thicker than 0.5 m in between keeps it out.
           if (dy > 2 || dy < -2.5 || !this.patchReaches(z, c)) continue;
+        } else if (z.orbital) { // Sky Hammer: the whole column, through walls, roofs and floors above
+          if (dy < -1.0 || dy > 40) continue;
         } else if (dy < -1.0 || dy > 3) continue;
         if (z.slab) { // a strip (Toxic Wall): along its length, and touching its thickness
           const sl = z.slab, along = dx * sl.dir[0] + dz * sl.dir[1], across = dz * sl.dir[0] - dx * sl.dir[1];

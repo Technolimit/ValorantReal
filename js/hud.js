@@ -431,11 +431,11 @@ export class Hud {
     const el = $('bowhud');
     if (el.hidden === show) el.hidden = !show;
     if (!show) return;
-    const lv = kit.chargeT > 0 ? Math.floor((kit.chargeT / a.charge) * 3 + 1e-6) : 0, nb = kit.bounces || 0;
+    const lv = Math.round(Math.min(1, Math.max(0, (kit.chargeT || 0) / a.charge)) * 100), nb = kit.bounces || 0; // a smooth charge (issue #87)
     const key = lv + ':' + nb;
     if (key === this.bowKey) return;
     this.bowKey = key;
-    el.querySelectorAll('.bars i').forEach((i, n) => i.classList.toggle('on', n < lv));
+    el.querySelector('.meter b').style.width = lv + '%';
     el.querySelectorAll('.bnc b').forEach((b, n) => b.classList.toggle('on', n < nb));
     el.querySelector('.bnc span').textContent = nb === 1 ? '1 BOUNCE' : nb + ' BOUNCES';
   }
@@ -481,6 +481,9 @@ export class Hud {
     }
     $('stunfx').style.opacity = (sk * 0.75).toFixed(3);
     if (sk > 0) $('stunfx').style.transform = `translate(${(Math.random() * 20 - 10) | 0}px, ${(Math.random() * 20 - 10) | 0}px)`;
+    // Nearsighted: a dark, blurred tunnel closes in from the screen edges, on top of the fog (issue #87).
+    const nl = p.alive && !(p.st.refractUntil > now) ? p.st.nearUntil - now : -1; // not on Refract's own green haze
+    $('nearfx').style.opacity = nl > 0 ? 1 : nl > -0.4 ? (1 + nl / 0.4).toFixed(3) : 0;
     // Channelling Nightwalk: the world darkens around you.
     const sh = p.kit?.shadow;
     $('dusk').style.opacity = sh ? 0.85 : p.kit?.mapPick ? 0.35 : p.kit?.drift ? 0.7 : p.kit?.view ? 0.3 : p.kit?.rebirth ? 0.25 : p.st.refractUntil > now ? 0.3 : p.st.intangibleUntil > now ? 0.5 : 0;

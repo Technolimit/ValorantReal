@@ -131,6 +131,33 @@ export class Minimap {
       x.fillStyle = 'rgba(210,210,225,0.45)';
       x.beginPath(); x.arc(p[0], p[1], Math.max(3 * k, s.radius * this.scale), 0, Math.PI * 2); x.fill();
     }
+    // Your team's utility (issue #87): fields as rings, deployable walls as bars, wires as lines and gadgets as small
+    // squares, each in its agent's colour.
+    const ours = (o) => o && !g.isEnemy(me, o);
+    const tint = (o) => o.kit?.agent.color || '#4fd1c5';
+    x.lineWidth = 1.5;
+    for (const z of g.zones) {
+      if (now >= z.until || !ours(z.owner) || z.gas || z.wall || !shows(z.pos)) continue;
+      const p = this.toMap(z.pos[0], z.pos[2]);
+      x.strokeStyle = tint(z.owner); x.globalAlpha = 0.85;
+      x.beginPath(); x.arc(p[0], p[1], Math.max(2.5 * k, (z.r || 2) * this.scale), 0, Math.PI * 2); x.stroke();
+    }
+    for (const w of g.walls) {
+      if (w.removed || !ours(w.owner) || w.arena || !w.box) continue;
+      const a = this.toMap(w.box.min[0], w.box.min[2]), b = this.toMap(w.box.max[0], w.box.max[2]);
+      x.fillStyle = tint(w.owner); x.globalAlpha = 0.85;
+      x.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(1.5, Math.abs(b[0] - a[0])), Math.max(1.5, Math.abs(b[1] - a[1])));
+    }
+    const SKIP = new Set(['proj', 'sweep', 'pushwall', 'blaze', 'missile', 'emitline', 'focusorb']);
+    for (const d of g.devices) {
+      if (d.removed || !d.pos || !ours(d.owner) || SKIP.has(d.kind) || !shows(d.pos)) continue;
+      x.globalAlpha = 1; x.strokeStyle = tint(d.owner); x.fillStyle = tint(d.owner);
+      const p = this.toMap(d.pos[0], d.pos[2]);
+      if (d.kind === 'wire' && d.b) { const q = this.toMap(d.b[0], d.b[2]); x.beginPath(); x.moveTo(p[0], p[1]); x.lineTo(q[0], q[1]); x.stroke(); continue; }
+      const r = 2.2 * k; x.fillRect(p[0] - r, p[1] - r, r * 2, r * 2);
+      x.strokeStyle = 'rgba(0,0,0,0.7)'; x.lineWidth = 1; x.strokeRect(p[0] - r, p[1] - r, r * 2, r * 2); x.lineWidth = 1.5;
+    }
+    x.globalAlpha = 1;
     // Ultimate orbs still on the map: small cyan dots.
     for (const o of g.mode?.orbs || []) {
       if (o.taken || !shows(o.pos)) continue;

@@ -75,7 +75,7 @@ Issue #81 asked for these. Several go against Valorant on purpose; the current n
   - Mirage: Double and Riftwalk work during Phase Out.
   - Vanta: Duel is an area 14 × 40 m that takes the closest enemy in it 0.8 s after the cast, not a travelling
     column.
-  - Lumen: Convergent Paths takes two steps, with its strip shown; Lightspeed pauses 0.3 s between dashes.
+  - Lumen: Convergent Paths takes two steps, with its strip shown; Lightspeed pauses 0.15 s between dashes (issue #87).
 - **Controllers.**
   - Umbra: Dread is drawn as a round disc.
   - Granite: Napalm skips along the ground and bursts 0.25 s after it settles.
@@ -141,6 +141,31 @@ Issue #81 asked for these. Several go against Valorant on purpose; the current n
 - **Not changed.** The gun models keep their sway and bob ("gun models should be immobile and not flexible" was
   tried and undone on request).
 
+## Changed at the request of issue #87
+
+- **Turning.** There is no cap on how fast you can turn, ultimates included.
+- **Custom game.** A lobby can be just you: 1 player and 0 bots.
+- **Smokes** settle 1 m higher.
+- **Two-step utility.** Tablets and devices come out in half the time.
+- **Minimap.** Your team's utility shows on it.
+- **Nearsight.** A dark, blurred tunnel closes in from the screen edges as well as the fog.
+- **Controllers.**
+  - Umbra: Nightwalk puts you exactly on the spot you picked, aiming where you aimed during the countdown.
+  - Granite: Sky Hammer is fully opaque and blocks sight while it burns. It still burns through walls, and
+    now everyone in its column, however high.
+  - Venom: Nest can't be seen into from outside.
+- **Initiators.**
+  - Hawke: you can move during Talon Strike. Arc Dart and Sonar Bolt charge smoothly over 1.2 s again instead
+    of in three steps.
+  - Quake: Glimmer goes on any part of the wall you aim at, at any height. Rubble's blast is smaller: 8 m long,
+    2.4 m around.
+  - Nyx: Terror's outline no longer shows through walls.
+  - Override: he drops to his hands and knees when downed during his ultimate.
+- **Duelists.**
+  - Mirage: Double places a node on the floor. Look at it (through walls too) and press F to send the decoy out
+    of it; with no charges left, C sends it from anywhere.
+  - Lumen: the pause between Lightspeed's two dashes is 0.15 s (was 0.3 s).
+
 ## Where the spec was unclear
 
 These follow one reading of the spec, which may not be what Valorant does:
@@ -189,8 +214,8 @@ The first measurement found these differences. They were fixed and measured agai
 - **Equip and unequip times.** Every ability waits for its equip time before it can be used, and your gun waits
   for the ability's unequip time before it comes back. Ultimates with an equip time are drawn with X and used
   with a click; pressing X again puts them away.
-- **Map-targeted abilities** (Overcast, Sky Hammer, Barrage, Ruse) equip the tablet first: 0.8, 0.74, 0.6 and
-  0.6 s. Missile Call has no equip time in the spec, so its map still opens at once; your gun now takes the
+- **Map-targeted abilities** (Overcast, Sky Hammer, Barrage, Ruse) equip the tablet first: 0.4, 0.37, 0.3 and
+  0.3 s (half the spec's times, issue #87). Missile Call has no equip time in the spec, so its map still opens at once; your gun now takes the
   spec's 0.42 s to come back after it.
 - **Overclock (High Gear)** has its 0.6 s equip and **Static Lanes (Fast Lane)** its 0.3 s cast.
 - **Sunflare (Curveball)** flies 4 m straight, then curves: 14 m of path at 20 m/s, popping 0.7 s after the
@@ -263,7 +288,7 @@ These now follow the spec:
 | Nightwalk (From the Shadows) | Teleports 4 s after you pick the spot; the shade has 1 HP | Same |
 | **Hawke (Sova)** | | |
 | Kestrel (Owl Drone) | Launches at 0.9 s; 7 s; 100 HP; enemies it sees hear a warning | Same (no boost) |
-| Arc Dart (Shock Bolt) | Bow out at 0.8 s, full charge 1 s later; 41 m/s; 75 at the impact, 41 at 3 m | Falloff slightly steeper |
+| Arc Dart (Shock Bolt) | Bow out at 0.8 s, full charge 1.2 s later; 41 m/s; 75 at the impact, 41 at 3 m | Falloff slightly steeper |
 | Sonar Bolt (Recon Bolt) | First ping 0.7 s after it sticks, second 1.6 s later; 20 HP | Same |
 | Talon Strike (Hunter's Fury) | Each beam 0.4 s after the click, after a warning line everyone sees; 80 a beam, 66 m long, through walls; reveal 1.2 s | Windup added (issue #77) |
 | **Bastion (Killjoy)** | | |
@@ -279,8 +304,8 @@ These now follow the spec:
 | **Granite (Brimstone)** | | |
 | Rally (Stim Beacon) | Instant throw at 16.5 m/s; field 0.5 s later; 6 m, 12 s | Same |
 | Napalm (Incendiary) | Usable at 1.1 s; 29 m/s; hops once on landing; fire 7.75 s, 60 a second (20 to you and teammates), 4.5 m | Same |
-| Overcast (Sky Smoke) | Tablet out at 0.8 s; smoke 1 s after you confirm; 4.15 m, 19.25 s | Same |
-| Sky Hammer (Orbital Strike) | Tablet out at 0.74 s; damage starts 2 s later, 9 m, about 130 a second for 3 s then fading | Same |
+| Overcast (Sky Smoke) | Tablet out at 0.4 s; smoke 1 s after you confirm; 4.15 m, 19.25 s | Same |
+| Sky Hammer (Orbital Strike) | Tablet out at 0.37 s; damage starts 2 s later, 9 m, about 130 a second for 3 s then fading | Same |
 | **Venom (Viper)** | | |
 | Acid Vial (Snake Bite) | Usable at 0.8 s; 29 m/s; pool 4.5 m, 6.5 s; Vulnerable while inside and 2 s after; 25 a second | Same rate, coarser ticks |
 | Miasma (Poison Cloud) | Usable at 0.8 s; gas rises over 0.6 s; Decay 10 on contact, then 10 a second | Same |
@@ -302,7 +327,7 @@ These now follow the spec:
 | Overclock (High Gear) | Sprint starts at once; the slide brings your best gun out at once | Same (Valorant: "INSTANTLY") |
 | Overload (Overdrive) | 20 shots a second; 18 a hit up close | Same |
 | **Mirage (Yoru)** | | |
-| Double (Fakeout) | Usable at 0.8 s; walks at 5.6 m/s for 10 s; shooting it flashes the shooter | Same |
+| Double (Fakeout) | Node usable at 0.8 s; F sends the decoy, which walks at 5.6 m/s for 10 s; shooting it flashes the shooter | Same |
 | Rebound (Blindside) | Usable at 0.8 s; 29 m/s; pops 0.7 s after it bounces; blind 1.5 s | Same |
 | Riftwalk (Gatecrash) | Usable at 0.8 s; teleport 0.5 s after the second press; F fakes it; tether 60 HP, 20 s | Same |
 | Phase Out (Dimensional Drift) | Untouchable and unseen 10 s | Same |
@@ -350,7 +375,7 @@ These now follow the spec:
 | Scout Drone (Stealth Drone) | Usable at 0.8 s; runs on the floor, 12 m of sight; 6 s; 42 HP; pulse suppresses and reveals 8 s | Grounded (issue #78) |
 | Sticky Charge (Special Delivery) | Usable at 0.5 s; 41 m/s; goes off 0.8 s after it sticks: 35 close, 28 at 3 m; concuss 2.5 s | Same |
 | Missile Call (Guided Salvo) | Map opens at once; missiles fly from you around walls (22 m/s; 14 m away: 0.98 s); three blasts of 65, 0.5 s apart; gun back 0.42 s after firing | Same |
-| Barrage (Armageddon) | Tablet out at 0.6 s; first blast 3.08 s after confirming; 60 a blast | Same (overlap fixed) |
+| Barrage (Armageddon) | Tablet out at 0.3 s; first blast 3.08 s after confirming; 60 a blast | Same (overlap fixed) |
 | **Override (KAY/O)** | | |
 | Fragment (FRAG/ment) | Usable at 0.7 s; first blast 0.5 s after it lands, then 3 more 1 s apart; 60 close, 36 at 3 m | Same |
 | Flashpoint (FLASH/drive) | Usable at 0.8 s; pops about 1.4 s after the throw; blind 2.25 s | Same |
@@ -359,11 +384,11 @@ These now follow the spec:
 | **Thistle (Clove)** | | |
 | Pick-Me-Up | Takes 0.7 s; +50 temporary health; 10% faster for 3 s | Same |
 | Meddle | Usable at 0.8 s; Decay 90 within 4 m | Same |
-| Ruse | Tablet out at 0.6 s; smoke 1 s after confirming; 4 m, 13.5 s | Same |
+| Ruse | Tablet out at 0.3 s; smoke 1 s after confirming; 4 m, 13.5 s | Same |
 | Not Dead Yet | Not measured here (needs you to die; covered by `check-abilities`) | — |
 | **Lumen (Waylay)** | | |
 | Saturate | Hinder 3 s within its radius | Same |
-| Lightspeed | Usable at 0.8 s; two dashes 0.5 s apart, about 9 m each, the first one up | Same |
+| Lightspeed | Usable at 0.8 s; the second dash starts 0.6 s after the first, about 9 m each, the first one up | Same |
 | Refract | Rewind takes 0.6 s for a 9.8 m path; a green haze 3 m out while rewinding | Lighter view (issue #78) |
 | Convergent Paths | Goes off 1 s after the cast; Hinder 6 s; you get +10% speed for 7 s | Same |
 

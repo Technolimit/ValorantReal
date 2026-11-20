@@ -317,11 +317,7 @@ document.addEventListener('mousemove', (e) => {
   // Same scale as Valorant: 0.07 degrees per count times sensitivity; zoomed views scale by 1/zoom.
   let deg = YAW_PER_COUNT * settings.sensitivity;
   if (zoom > 1) deg *= settings.zoomSensMult / zoom;
-  if (p.st.castLockUntil > game.time) { // casting a sitewide ultimate: turning is capped at 180 degrees a second
-    const t = performance.now(), dt = Math.min(0.1, (t - (castTurnT || t)) / 1000); castTurnT = t;
-    const want = Math.abs(e.movementX) * deg, max = 180 * Math.max(dt, 1 / 240);
-    if (want > max) deg *= max / want;
-  } else castTurnT = 0;
+  // No cap on how fast you can turn, ultimates included (issue #87).
   p.yaw -= e.movementX * deg * DEG;
   p.pitch -= e.movementY * deg * DEG * (settings.invertY ? -1 : 1);
   p.pitch = Math.max(-89 * DEG, Math.min(89 * DEG, p.pitch));
@@ -393,8 +389,8 @@ function clickBuy(button = 0) {
 const baseMode = () => (settings.mode === 'custom' ? settings.custom.base : settings.mode);
 // What a custom game passes to game.start (offline only): lobby size, bots, their behaviour and your cheats.
 function customOpts() {
-  const c = settings.custom, players = Math.max(2, Math.min(c.base === 'rounds' ? 10 : 12, c.players));
-  const bots = Math.max(1, Math.min(players - 1, c.bots));
+  const c = settings.custom, players = Math.max(1, Math.min(c.base === 'rounds' ? 10 : 12, c.players));
+  const bots = Math.max(0, Math.min(players - 1, c.bots)); // 1 player and 0 bots: just you (issue #87)
   return { botCount: bots, botMode: c.botMode, custom: { players, bots, cheats: { ...c.cheats } } };
 }
 
@@ -1167,15 +1163,15 @@ for (const b of document.querySelectorAll('.mode')) b.onclick = () => { settings
 // ---- custom game (issue #84): lobby size, bots and cheats ----
 function drawCustom() {
   const c = settings.custom, maxP = c.base === 'rounds' ? 10 : 12;
-  c.players = Math.max(2, Math.min(maxP, c.players));
-  c.bots = Math.max(1, Math.min(c.players - 1, c.bots));
+  c.players = Math.max(1, Math.min(maxP, c.players));
+  c.bots = Math.max(0, Math.min(c.players - 1, c.bots));
   $('custom-base').value = c.base;
   $('custom-players').max = maxP; $('custom-players').value = c.players; $('custom-players-v').textContent = c.players;
-  $('custom-bots').max = c.players - 1; $('custom-bots').value = c.bots; $('custom-bots-v').textContent = c.bots;
+  $('custom-bots').max = Math.max(0, c.players - 1); $('custom-bots').disabled = c.players <= 1; $('custom-bots').value = c.bots; $('custom-bots-v').textContent = c.bots;
   $('custom-botmode').value = c.botMode;
   for (const el of document.querySelectorAll('#custom-pop [data-cheat]')) el.checked = !!c.cheats[el.dataset.cheat];
   const t0 = Math.ceil(c.players / 2), t1 = Math.floor(c.players / 2), foes = Math.min(t1, c.bots), mates = Math.min(t0 - 1, c.bots - foes);
-  $('custom-note').textContent = c.base === 'rounds' ? `You and ${mates} bot${mates === 1 ? '' : 's'} against ${foes} bot${foes === 1 ? '' : 's'}.` : `You and ${c.bots} bot${c.bots === 1 ? '' : 's'}, everyone for themselves.`;
+  $('custom-note').textContent = !c.bots ? 'Just you: a practice lobby.' : c.base === 'rounds' ? `You and ${mates} bot${mates === 1 ? '' : 's'} against ${foes} bot${foes === 1 ? '' : 's'}.` : `You and ${c.bots} bot${c.bots === 1 ? '' : 's'}, everyone for themselves.`;
   const on = Object.entries(c.cheats).filter(([, v]) => v).length;
   $('custom-sum').textContent = `${c.base === 'rounds' ? 'Rounds' : 'Deathmatch'} · ${c.players} players · ${c.bots} bots${on ? ` · ${on} cheat${on === 1 ? '' : 's'}` : ''}`;
   saveSettings(settings);
@@ -1720,7 +1716,6 @@ function updateFps(t) {
   el.className = rate < 30 ? 'low' : rate < 55 ? 'mid' : '';
 }
 
-let castTurnT = 0; // last mouse event while a cast caps turning (see the mousemove handler)
 function frame(t) {
   requestAnimationFrame(frame);
   updateFps(t);
