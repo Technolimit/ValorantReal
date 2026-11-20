@@ -1,6 +1,6 @@
 // Three.js scene: map, characters, first-person viewmodel and effects (tracers, impacts, flashes).
 import * as THREE from '../vendor/three.module.min.js';
-import { HFOV, VIEW_RECOIL, HITBOX, GUN_HEIGHT } from './config.js';
+import { HFOV, VIEW_RECOIL, HITBOX, GUN_HEIGHT, PLAYER } from './config.js';
 import { gunModel, handsModel, studioEnv, ownGlow, poseMeleeParts, rocketModel, paintShellModel, bombletModel } from './models.js';
 import { MELEE, GUN_INSPECT, MODEL_INSPECTS, EQUIP_ANIMS, GUN_DRAWS, SWINGS, meleeId, inspectPose } from './melee.js';
 import { SwingTrails } from './swingfx.js';
@@ -309,7 +309,7 @@ function worldGun(id, skin) {
 onSkinsChanged((id) => { for (const k of worldGuns.keys()) if (k.endsWith(':' + id)) worldGuns.delete(k); });
 
 // How close an enemy has to be to see a hidden gadget (VALORANT_SPECS.md: stealth utility).
-const STEALTH = { wire: 3, swarm: 5.25, alarm: 7, cam: 8 };
+const STEALTH = { wire: 3, swarm: 5.25, alarm: 7, cam: 8, decoynode: 5 }; // (Mirage's Double node too, issue #87)
 
 // Swaps two corners of every triangle of a non-indexed geometry.
 function flipWinding(g) {
@@ -822,6 +822,7 @@ export class Renderer {
 
   // Smoke clouds: a single soft sphere (sized per agent) that swells in and thins out at the end.
   addSmoke(s) {
+    if (s.hidden) return; // a sight blocker drawn by something else (Sky Hammer's beam)
     if (!this.smokeMat) {
       this.smokeMat = new THREE.MeshLambertMaterial({ color: 0xd8e3ec, emissive: 0x56626e, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false });
       this.smokeGeo = new THREE.SphereGeometry(1, 28, 18);
@@ -870,7 +871,7 @@ export class Renderer {
       const ripples = new THREE.Mesh(this.smokeGeo, new THREE.MeshBasicMaterial({ color: 0x8fe8ff, wireframe: true, transparent: true, opacity: 0.22, depthWrite: false }));
       ripples.scale.setScalar(R * 1.01); ripples.userData.spin = 0.35;
       group.add(ripples);
-      group.userData.shell = ripples; // the rippling skin shows once the shell is raised (E again)
+      group.userData.coveSkin = ripples; // the rippling skin shows once the shell is raised (E again)
     }
     group.position.set(...s.pos);
     this.scene.add(group);
@@ -1000,7 +1001,7 @@ export class Renderer {
       if (z.kind === 'stim') { rim.material.opacity = 0.5 + 0.3 * Math.sin(now * 4); disc.material.opacity = 0.1; }
       if (z.orbital) {
         const armed = !z.armAt || now >= z.armAt;
-        for (const c of g.children) { if (c.userData.orbital) { c.scale.x = c.scale.z = armed ? 1 : 0.15 + 0.1 * Math.sin(now * 20); c.material.opacity = armed ? 0.88 : 0.3; } else if (c.userData.ph != null) c.visible = armed; } // the strike itself can't be seen through
+        for (const c of g.children) { if (c.userData.orbital) { c.scale.x = c.scale.z = armed ? 1 : 0.15 + 0.1 * Math.sin(now * 20); c.material.opacity = armed ? 1 : 0.3; c.material.depthWrite = armed; } else if (c.userData.ph != null) c.visible = armed; } // the strike itself can't be seen through
         disc.material.opacity = armed ? 0.5 : 0.15;
       }
       for (const c of g.children) if (c.userData.ph != null) c.scale.y = 0.6 + 0.5 * Math.abs(Math.sin(now * 9 + c.userData.ph));
@@ -1864,6 +1865,12 @@ export class Renderer {
       const body = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 8), mat(0x3b3420)); body.scale.set(1.4, 0.6, 1.4);
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const r = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.01, 12), mat(0x2b2f36, 0xd9a441)); r.position.set(sx * 0.22, 0.04, sz * 0.22); g.add(r); }
       light = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mat(0xffffff, 0xd9a441)); light.position.z = -0.2; g.add(body, light);
+    } else if (d.kind === 'decoynode') { // Mirage's Double, waiting: a flat ring with an arrow the way the decoy will walk
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.03, 6, 20), mat(0x2b2f45, 0x5a6cff)); ring.rotation.x = Math.PI / 2; ring.position.y = 0.04;
+      const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.2, 8), mat(0xffffff, 0x5a6cff)); arrow.rotation.x = -Math.PI / 2; arrow.position.set(0, 0.06, -0.24);
+      g.add(ring, arrow);
+      g.rotation.y = Math.atan2(-d.dir[0], -d.dir[2]);
+      g.userData.icon = ownerIcon(0x8f9bff); g.add(g.userData.icon);
     } else if (d.kind === 'swarm') {
       const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.06, 12), mat(0x2b3440)); disc.position.y = 0.03;
       light = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mat(0x9be15d, 0x9be15d)); light.position.y = 0.08;
@@ -2089,7 +2096,8 @@ export class Renderer {
       if (now >= sm.s.until) { this.scene.remove(sm.group); return false; }
       if (now < sm.s.born) { sm.group.visible = false; return true; } // not up yet (a gas wall rises emitter by emitter)
       sm.group.visible = true;
-      if (sm.group.userData.shell) sm.group.userData.shell.visible = !!sm.s.shellOn && now >= sm.s.shellAt; // Lagoon's shell, once raised
+      const skin = sm.group.userData.coveSkin;
+      if (skin) skin.userData.off = !(sm.s.shellOn && now >= sm.s.shellAt); // Lagoon's shell, once raised
       const grow = sm.slab ? Math.min(1, (now - sm.s.born) / 0.25) : smokeScale(sm.s, now);
       const fade = Math.min(1, (sm.s.until - now) / 0.4);
       if (sm.slab) { // a wall grows up out of the floor
@@ -2107,11 +2115,11 @@ export class Renderer {
       sm.mat.opacity = op * fade;
       const shell = sm.group.userData.shell;
       if (shell && !sm.fire) {
-        const R = (sm.s.radius || SMOKE.radius) * sm.group.scale.x, cp = this.camera.position;
+        const R = (sm.r0 || sm.s.radius || SMOKE.radius) * sm.group.scale.x, cp = this.camera.position; // the drawn radius (a Nest grows: its scale already holds that)
         const inside = sm.s.cyl ? hyp(cp.x - sm.s.pos[0], cp.z - sm.s.pos[2]) < R * 0.95 && Math.abs(cp.y - sm.s.pos[1]) < sm.s.cyl.up : hyp(cp.x - sm.s.pos[0], cp.y - sm.s.pos[1], cp.z - sm.s.pos[2]) < R * 0.95;
         shell.visible = inside;
         shell.material.opacity = op * fade; // from inside you see the pocket, not the world beyond the cloud
-        for (const m of sm.group.children) if (m !== shell) m.visible = !inside;
+        for (const m of sm.group.children) if (m !== shell) m.visible = !inside && !m.userData.off;
       }
       for (const m of sm.group.children) m.rotation.y += m.userData.spin * 0.016;
       return true;
@@ -2675,7 +2683,7 @@ export class Renderer {
     const shade = p.alive && p.kit?.shadow?.phase === 'channel' ? { pos: p.kit.shadow.dest, kind: 'shade' } : null;
     const ride = p.alive && (p.kit?.pilot || p.kit?.view || shade);
     this.riding = !!ride;
-    if (ride) cam.position.set(ride.pos[0], ride.pos[1] + (ride.kind === 'cam' || ride.kind === 'owl' ? 0 : ride.kind === 'sdrone' ? 0.35 : ride.kind === 'shade' ? 1.7 : 0.7), ride.pos[2]); // the Stealth Drone runs on the floor
+    if (ride) cam.position.set(ride.pos[0], ride.pos[1] + (ride.kind === 'cam' || ride.kind === 'owl' ? 0 : ride.kind === 'sdrone' ? 0.35 : ride.kind === 'shade' ? PLAYER.standEye : 0.7), ride.pos[2]); // the Stealth Drone runs on the floor; a Nightwalk shade looks from the eye height you arrive at, so your aim stays on the same thing
     // Shade: the view flies out with the smoke marker, through walls, and the world turns to shadow so you
     // can see where it will land (characters are hidden: it shows the map, not enemies).
     const held = !ride && !spec && p.alive && ((p.kit?.armed && p.kit.agent.abilities[p.kit.armed.k]) || (p.kit?.steerHand && p.kit.agent.abilities.c)); // Hound: hand out while steering
@@ -2954,6 +2962,15 @@ export class Renderer {
       part(ch.legs, 'legs', 0.02);
       part(ch.body, 'body', 0.0);
       part(ch.head, 'head', 0.0);
+      // Down in Overload (issue #87): on hands and knees, body level, head low and forward, arms to the floor.
+      const down = !!(c.kit?.downed && !c.kit.downed.upAt);
+      if (down) {
+        ch.legs.position.set(0, 0.22, 0.28); ch.legs.scale.set(ch.legs.scale.x, 0.44, ch.legs.scale.z * 1.6);
+        ch.body.rotation.x = -1.35; ch.body.position.set(0, 0.62, -0.12);
+        ch.head.position.set(0, 0.66, -0.62);
+        if (!ch.arms) { ch.arms = [-1, 1].map(sx => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.55, 0.1), ch.body.material); m.position.set(sx * 0.17, 0.28, -0.42); ch.group.add(m); return m; }); }
+      } else ch.body.rotation.x = 0;
+      if (ch.arms) for (const m of ch.arms) m.visible = down;
       const hy = ch.head.position.y;
       ch.visor.position.set(0, hy + 0.02, -0.12);
       ch.visor.scale.set(0.2, 0.07, 0.04);
@@ -2999,7 +3016,7 @@ export class Renderer {
       // Revealed (sonar, traps, lockdown): glowing red silhouette drawn through walls.
       const shown = c.st && c.st.revealUntil > this.game.time && !(c.st.hiddenUntil > this.game.time) && this.game.isEnemy(this.game.player, c);
       // Outlined (inside an enemy Venom's Nest, for her team): bright red, but only where you can see them.
-      const outlined = !shown && c.st && c.st.outlineUntil > this.game.time && c.st.outlineTeam === this.game.player.team && !(c.st.hiddenUntil > this.game.time);
+      const outlined = !shown && c.st && c.st.outlineUntil > this.game.time && (c.st.outlineBy ? !this.game.isEnemy(this.game.player, c.st.outlineBy) : c.st.outlineTeam === this.game.player.team) && !(c.st.hiddenUntil > this.game.time); // Venom's Nest, Nyx's Terror
       for (const m of [ch.body, ch.head, ch.legs, ch.gun, ch.visor]) {
         m.material.emissive.setHex(shown ? 0xff2244 : outlined ? 0xd0102a : hot ? 0x553333 : this.bloomSet?.has(c) ? (pk.regrow?.on ? 0x3f9a1f : 0x1f5a12) : m === ch.visor ? (ch.visorGlow || 0) : 0x000000);
         if (m.material.depthTest === shown) { m.material.depthTest = !shown; m.material.transparent = shown; m.material.opacity = shown ? 0.9 : 1; m.renderOrder = shown ? 10 : 0; }

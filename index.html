@@ -24,7 +24,7 @@ button { font: inherit; }
 #hud { position: fixed; inset: 0; pointer-events: none; user-select: none; }
 #crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); image-rendering: pixelated; }
 #bowhud { position: absolute; left: 50%; top: calc(50% + 34px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; pointer-events: none; }
-#bowhud .bars { display: flex; gap: 4px; } #bowhud .bars i { width: 22px; height: 4px; background: rgba(255,255,255,0.25); border-radius: 2px; } #bowhud .bars i.on { background: #6ab7ff; box-shadow: 0 0 6px #6ab7ff; }
+#bowhud .meter { width: 74px; height: 4px; background: rgba(255,255,255,0.25); border-radius: 2px; overflow: hidden; } #bowhud .meter b { display: block; height: 100%; width: 0; background: #6ab7ff; box-shadow: 0 0 6px #6ab7ff; }
 #bowhud .bnc { display: flex; gap: 5px; align-items: center; font: 600 10px system-ui; letter-spacing: 1px; color: rgba(255,255,255,0.8); } #bowhud .bnc b { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.7); } #bowhud .bnc b.on { background: #6ab7ff; border-color: #6ab7ff; }
 
 /* Scope view (snipers, the Warden) and the reticle that floats over the view when aiming down sights; both drawn
@@ -122,6 +122,9 @@ button { font: inherit; }
 #blind { position: absolute; inset: 0; background: #fff; opacity: 0; }
 #stunfx { position: absolute; inset: -20px; opacity: 0; pointer-events: none; mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+#nearfx { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  background: radial-gradient(ellipse at center, transparent 16%, rgba(18, 13, 24, 0.55) 34%, rgba(18, 13, 24, 0.95) 62%);
+  backdrop-filter: blur(5px); -webkit-mask-image: radial-gradient(ellipse at center, transparent 10%, #000 40%); mask-image: radial-gradient(ellipse at center, transparent 10%, #000 40%); }
 #dusk { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle, transparent 40%, rgba(60, 20, 110, 0.75)); }
 #dusk.ember { background: radial-gradient(circle, transparent 55%, rgba(255, 110, 40, 0.6)); }
 #dusk.refract { background: radial-gradient(circle, rgba(120, 255, 180, 0.15) 30%, rgba(90, 230, 160, 0.55)); }
@@ -760,8 +763,9 @@ button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
 <canvas id="view"></canvas>
 
 <div id="hud" hidden>
+  <div id="nearfx"></div>
   <canvas id="crosshair"></canvas>
-  <div id="bowhud" hidden><div class="bars"><i></i><i></i><i></i></div><div class="bnc"><b></b><b></b><span></span></div></div>
+  <div id="bowhud" hidden><div class="meter"><b></b></div><div class="bnc"><b></b><b></b><span></span></div></div>
   <canvas id="ads-reticle"></canvas>
   <canvas id="scope" hidden></canvas>
   <div id="vignette"></div>
@@ -875,7 +879,7 @@ button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
         <div id="custom-pop" class="party-pop custom-pop" hidden>
           <header><b>Custom game</b><button id="custom-close" type="button" aria-label="Close">&times;</button></header>
           <label><small>Rules</small><select id="custom-base"><option value="dm">Deathmatch</option><option value="rounds">5v5 Rounds (plant / defuse)</option></select></label>
-          <label><small>Players in the lobby (you included): <b id="custom-players-v"></b></small><input id="custom-players" type="range" min="2" max="12" step="1"></label>
+          <label><small>Players in the lobby (you included): <b id="custom-players-v"></b></small><input id="custom-players" type="range" min="1" max="12" step="1"></label>
           <label><small>Bots: <b id="custom-bots-v"></b></small><input id="custom-bots" type="range" min="0" max="11" step="1"></label>
           <label><small>Bots</small><select id="custom-botmode"><option value="fight">Fight</option><option value="static">Stand still</option></select></label>
           <small>Cheats (for you)</small>

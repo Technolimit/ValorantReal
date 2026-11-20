@@ -73,13 +73,14 @@ Tapfire's side comes from screenshots of the game (Divide and the Range, Novembe
   spec describes. Close to Valorant.
 - **Concussed.** The view turns grey, blurs and shakes, with static over it. Close to Valorant, which the spec
   describes as a blurred, greyscale view with noise.
-- **Nearsight.** The world fades into purple-black fog past the range → a dark tunnel closing in from the
-  screen edges.
+- **Nearsight.** The world fades into purple-black fog past the range, and a dark, blurred tunnel closes in from
+  the screen edges. Close to Valorant.
 - **Deafened, detained, suppressed, hindered, Vulnerable, Decay.** A line of text at the bottom right →
   status icons next to your health, and greyed or crossed-out ability icons when suppressed.
 - **Inside a smoke.** A light grey haze, with the smoke's wall around you. Close to Valorant.
 - **Minimap.** It goes dark while you're concussed or nearsighted, shows only the last 3 m around you inside a
-  smoke, and the ability map can't be opened while you're flashed. Close to Valorant.
+  smoke, and the ability map can't be opened while you're flashed. Your team's utility shows on it: smokes and
+  areas as rings in the agent's colour, walls, devices and wires. Close to Valorant.
 - **Damage taken.** Arrows around the centre point toward the shooter, with a red vignette. Close to Valorant's
   red arcs.
 - **After you die.** The view drops and turns to face your killer for 2.5 s, then you spectate a teammate.
@@ -157,12 +158,12 @@ Only what differs beyond the shared points above.
 | Hawke (Sova) | Plain bow. Sonar Bolt: a small glowing tip and halo. Kestrel: sphere with flat wings. Talon Strike: a bigger glowing bow of its own in hand, then straight beams; the warning line follows the shot while it can still be nudged. | Detailed bow with a nocked arrow; Recon Bolt sends visible scan waves; Owl Drone is a modelled drone. |
 | Bastion (Killjoy) | Sentry: grey cylinder with a green box head. Watchdog: grey ball with a red light. Hive: small disc, with an icon over it that its owner sees through walls; it burns a faint half dome. Clampdown: a device in the middle (drum, glowing core, blinking light) inside a large translucent dome; a countdown on everyone's screen. | Killjoy's yellow-and-black robots; Nanoswarm bursts into a swarm of bots; Lockdown has a large device and an expanding field. |
 | Blitz (Raze) | Boomer: orange ball on two wheels. Kicker: pink box. Splatter: coloured cluster bomb. Finale: rocket model and a glow sphere. | Boom Bot is a modelled robot; Blast Pack and Paint Shells burst in colourful paint. |
-| Granite (Brimstone) | Overcast: grey spheres. Sky Hammer: red column of light with a red disc. Napalm: disc with flame cones. | Sky Smokes drop from the sky; Orbital Strike is a laser with a burning ring; his wrist device shows in first person. |
+| Granite (Brimstone) | Overcast: grey spheres. Sky Hammer: red column of light with a red disc; the column turns solid once the strike lands. Napalm: disc with flame cones. | Sky Smokes drop from the sky; Orbital Strike is a laser with a burning ring; his wrist device shows in first person. |
 | Venom (Viper) | Plain green spheres and slabs. Acid Vial: green disc. Nest: a very large green sphere. | Swirling green gas with emitters on the ground; acid bubbles in the pool. |
 | Vex (Reyna) | Glare: purple sphere with a white centre. Soul orbs: purple balls. | A purple eye; floating soul orbs with trails; Empress shows on her eyes. |
 | Quake (Breach) | Fissure and Aftershock Wave: flat orange strips and wedges on the floor. Glimmer: white glow. | The ground cracks and heaves; the flash comes through the wall in a bright burst. |
 | Volt (Neon) | Static Lanes: blue slabs. Overload: a glowing rod from the fingertip. | Electric walls with lightning; Overdrive is a crackling beam. |
-| Mirage (Yoru) | Double: a translucent blue box figure. Phase Out: dark screen tint. | Fakeout is a copy of Yoru; Dimensional Drift shows a mask and another-dimension view. |
+| Mirage (Yoru) | Double: a ring with an arrow on the floor, then a translucent blue box figure walking out of it. Phase Out: dark screen tint. | Fakeout is a copy of Yoru; Dimensional Drift shows a mask and another-dimension view. |
 | Fawn (Skye) | Stalker: green box animal. Lantern Hawk: glowing body with flat wings. Hunters: green glowing ovals. Bloom: teammates glow green. | Trailblazer is a Tasmanian tiger, Guiding Light a hawk, Seekers spirit creatures, all modelled. |
 | Lattice (Cypher) | Tripline: thin line between two small boxes. Watcher: dark ball with a light. Gridlock: small hexagon disc, with an icon its owner sees through walls; the cage is a grey cylinder. | Modelled wire anchors and camera; cages are thin grey cylinders. |
 | Nyx (Fade) | Hound: box animal that floats and bobs. Grasp: a line from the centre to each one held. Omen Eye: dark sphere with a pink core. Terror: a translucent strip. Terror trails: a pink line from her along the way each marked enemy went, hidden by walls. | Prowlers and the Haunt eye are creature models; Nightfall is a dark wave. |

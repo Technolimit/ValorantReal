@@ -220,7 +220,9 @@ const checks = [
       __place(g, p, 12); __tick(g, 0.3);
       k.ultPoints = 99; k.agent.abilities.x.use(k); __tick(g, 0.5);
       k.charges.c = 1; p.input.abC = true; g.tick(); p.input.abC = false; __tick(g, 1); p.input.firePressed = true; g.tick(); p.input.firePressed = false; __tick(g, 0.2);
-      out.doubleInDrift = !!k.drift && g.devices.some(d => d.kind === 'decoy' && d.owner === p); }
+      const node = g.devices.find(d => d.kind === 'decoynode' && d.owner === p && !d.removed); // Double places a node (issue #87)
+      if (node) { __aim(p, [node.pos[0], node.pos[1] + 0.15, node.pos[2]]); k.activateInView(); g.tick(); }
+      out.doubleInDrift = !!k.drift && !!node && g.devices.some(d => d.kind === 'decoy' && d.owner === p); }
     { // Solace: a wall turned 45 degrees blocks sight along its line, and its owner can shoot it down
       const g = await __start({ agent: 'solace', map: 'arena' }), p = g.player;
       __place(g, p, 16); __tick(g, 0.3);
@@ -375,6 +377,73 @@ const checks = [
     const g2 = await __start({ mode: 'custom', custom: { base: 'dm', players: 5, bots: 4, botMode: 'fight', cheats: { money: false, abilities: false, ult: false, ammo: false, invincible: false } }, map: 'arena' });
     const dmBots = g2.bots.length;
     return { pass: !!m && mates === 1 && foes === 3 && cheatsOn && p.alive && p.hp === 100 && dmBots === 4, mates, foes, cheatsOn, alive: p.alive, dmBots };
+  }],
+  ['Issue #87: solo custom lobby, smokes 1 m up, moving during Talon Strike, smooth bow charge, Double node, Glimmer at any height, smaller Rubble, Terror outline, solid Sky Hammer that still burns through walls, Override on hands and knees, nearsight tunnel, team utility on the minimap', async () => {
+    const out = {};
+    const until = (g, f, max = 5) => { for (let i = 0; i < max * 128; i++) { if (f()) return g.time; g.tick(); } return null; };
+    { // Custom: one player and no bots; the round runs on instead of ending at once
+      const g = await __start({ mode: 'custom', custom: { base: 'rounds', players: 1, bots: 0, botMode: 'static', cheats: {} }, map: 'divide' });
+      __live(g); const r = g.mode.round; __tick(g, 5);
+      out.soloLobby = g.combatants.length === 1 && g.mode.phase === 'live' && g.mode.round === r; }
+    { // Overcast: the smoke sits 1 m above the floor
+      const g = await __start({ agent: 'granite' }), p = g.player, k = p.kit; __place(g, p, 20); __tick(g, 1.3);
+      p.input.abE = true; until(g, () => !!k.mapPick); p.input.abE = false;
+      const at = __ahead(p, 10); at[1] = p.pos[1]; k.mapClick(at); k.mapConfirm(); __tick(g, 1.5);
+      const sm = g.smokes[g.smokes.length - 1];
+      out.smokeLift = sm ? +(sm.pos[1] - p.pos[1]).toFixed(2) : null; }
+    { // Talon Strike: you can walk with the bow out; Arc Dart's speed follows the charge smoothly
+      const g = await __start({ agent: 'hawke' }), p = g.player, k = p.kit; __place(g, p, 20); __tick(g, 0.5);
+      k.ultPoints = 99; k.agent.abilities.x.use(k); __tick(g, 1.5);
+      const x0 = [...p.pos]; p.input.fwd = 1; __tick(g, 0.5); p.input.fwd = 0;
+      out.walkedInTalon = !!k.beams && Math.hypot(p.pos[0] - x0[0], p.pos[2] - x0[2]) > 1;
+      const sp = [0.25, 0.5, 0.75].map(pw => k.agent.abilities.q.throw({ power: pw })[0]);
+      out.smoothCharge = sp[0] < sp[1] && sp[1] < sp[2] && Math.abs((sp[1] - sp[0]) - (sp[2] - sp[1])) < 1e-9; }
+    { // Double: a node on the floor; with no charge left, C sends the decoy out of it
+      const g = await __start({ agent: 'mirage' }), p = g.player, k = p.kit; __place(g, p, 20); __tick(g, 0.5);
+      k.agent.abilities.c.use(k);
+      const node = g.devices.find(d => d.kind === 'decoynode' && d.owner === p && !d.removed);
+      k.charges.c = 0; const sent = k.agent.abilities.c.reuse(k);
+      const decoy = g.devices.find(d => d.kind === 'decoy' && d.owner === p);
+      out.doubleNode = !!node && sent && !!decoy && Math.hypot(decoy.pos[0] - node.pos[0], decoy.pos[2] - node.pos[2]) < 0.01 && node.removed; }
+    { // Glimmer aimed high on a wall bursts high behind it; Rubble's blast is 8 m long and 2.4 m around
+      const g = await __start({ agent: 'quake' }), p = g.player, k = p.kit; __place(g, p, 20); __tick(g, 0.5);
+      const w = __ahead(p, 5); __box(g, [w[0] - 4, p.pos[1], w[2] - 0.5], [w[0] + 4, p.pos[1] + 10, w[2]]);
+      const eye = p.eye(); __aim(p, [w[0], eye[1] + 3, w[2]]);
+      const hi = k.agent.abilities.q.preview(k); __aim(p, [w[0], eye[1], w[2]]);
+      const lvl = k.agent.abilities.q.preview(k);
+      out.glimmerHeight = hi && lvl ? +(hi[1] - lvl[1]).toFixed(2) : null;
+      let warn = null; g.on('beamWarn', (e) => { warn = e; });
+      k.agent.abilities.c.use(k); __tick(g, 0.5);
+      out.rubble = warn ? `${warn.len}x${warn.width}` : null; }
+    { // Terror: enemies are outlined (not revealed through walls)
+      const g = await __start({ agent: 'nyx', botCount: 1, botMode: 'static' }), p = g.player, k = p.kit, b = g.bots[0]; __place(g, p, 20); __tick(g, 0.5);
+      b.pos = __ahead(p, 8); b.pos[1] = p.pos[1]; b.prevPos = [...b.pos];
+      k.ultPoints = 99; k.agent.abilities.x.use(k); __tick(g, 2);
+      out.terrorOutline = b.st.outlineUntil > g.time && b.st.outlineBy === p && !(b.st.revealUntil > g.time); }
+    { // Sky Hammer: once it lands nothing can be seen through it, and it still burns through walls and up the column
+      const g = await __start({ agent: 'granite', botCount: 2, botMode: 'static' }), p = g.player, k = p.kit, [b1, b2] = g.bots; __place(g, p, 20); __tick(g, 0.5);
+      k.ultPoints = 99; p.input.abX = true; until(g, () => !!k.mapPick); p.input.abX = false;
+      const at = __ahead(p, 12); at[1] = p.pos[1]; k.mapClick(at); k.mapConfirm();
+      __box(g, [at[0] + 3, at[1], at[2] - 3], [at[0] + 3.5, at[1] + 3, at[2] + 3]); // a wall between the centre and b1, off to the side
+      b1.pos = [at[0] + 5, at[1], at[2]]; b2.pos = [at[0] - 3, at[1] + 6, at[2]]; // b1 behind the wall, b2 6 m up
+      for (const b of [b1, b2]) { b.prevPos = [...b.pos]; b.vel = [0, 0, 0]; b.hp = 9999; b.armor = 0; }
+      __box(g, [b2.pos[0] - 1, b2.pos[1] - 0.5, b2.pos[2] - 1], [b2.pos[0] + 1, b2.pos[1], b2.pos[2] + 1]); // a ledge for b2
+      const e = p.eye(), far = __ahead(p, 19), before = g.canSee(e, far); __tick(g, 2.3);
+      out.skyHammerSolid = before && g.smokes.some(s => s.kind === 'orbital') && !g.canSee(e, far);
+      __tick(g, 1); out.skyHammerThroughWalls = b1.hp < 9999 && b2.hp < 9999; }
+    { // Override: downed in his ultimate, he crouches low on hands and knees
+      const g = await __start({ agent: 'override', botCount: 1, botMode: 'static' }), p = g.player, k = p.kit, b = g.bots[0]; __place(g, p, 12); __tick(g, 0.5);
+      k.nullUntil = g.time + 10; k.nullSaved = false;
+      g.damage(p, b, 500, { part: 'body', def: { id: 'vandal', name: 'Vandal' }, dist: 4, point: p.eye() }); __tick(g, 0.4);
+      out.downedLow = !!k.downed && p.crouched; }
+    { // Nearsight darkens the screen edges; your team's utility shows on the minimap
+      const g = await __start({ agent: 'venom' }), p = g.player, h = window.__game; __place(g, p, 12); __tick(g, 0.5);
+      g.status(p, 'near', 3, { near: 6 }); h.hud.update(1 / 60, { dx: 0, dy: 0 });
+      out.nearTunnel = document.getElementById('nearfx').style.opacity === '1';
+      g.addSmoke(p, __ahead(p, 6), g.time, { radius: 4 });
+      let err = null; try { h.minimap.update(true); } catch (x) { err = String(x); }
+      out.minimapUtility = err || true; }
+    return { pass: out.soloLobby && out.smokeLift === 1 && out.walkedInTalon && out.smoothCharge && out.doubleNode && out.glimmerHeight > 2 && out.rubble === '8x2.4' && out.terrorOutline && out.skyHammerSolid && out.skyHammerThroughWalls && out.downedLow && out.nearTunnel && out.minimapUtility === true, ...out };
   }],
   ['Collaterals: a headshot or a killing shot carries on to the enemy behind; a body shot that does not kill stops', async () => {
     const g = await __start({ agent: 'cinder', map: 'arena', botCount: 2, botMode: 'static' });
@@ -983,10 +1052,10 @@ const checks = [
     const newShaders = r.renderer.info.programs.length - programs;
     return { pass: hiddenFirstPerson && shownInCamera && !!k.cam.dart && newShaders === 0, hiddenFirstPerson, shownInCamera, dartHit: !!k.cam.dart, newShaders };
   }],
-  ['Leaving a camera, piloted gadget, Shade view or Nightwalk puts your aim back where it was; the ability itself still goes where you looked', async () => {
+  ['Leaving a camera, piloted gadget or Shade view puts your aim back where it was; after Nightwalk you aim where you aimed during the countdown', async () => {
     const out = {};
     // Look away while the view is elsewhere, then check the facing once it comes back.
-    const run = async (name, agent, enter, leave) => {
+    const run = async (name, agent, enter, leave, keep = false) => {
       const g = await __start({ agent });
       const p = g.player, k = p.kit;
       if (!__place(g, p, 14)) { out[name] = 'no open ground'; return; }
@@ -996,7 +1065,7 @@ const checks = [
       const away = k.aimBefore ? 1 : 0;
       for (let i = 0; i < 40; i++) { p.yaw += 0.03; p.pitch -= 0.005; g.tick(); } // the mouse turns the remote view
       leave(g, p, k);
-      const back = Math.abs(p.yaw) < 1e-9 && Math.abs(p.pitch + 0.1) < 1e-9;
+      const back = keep ? Math.abs(p.yaw - 1.2) < 1e-6 && Math.abs(p.pitch + 0.3) < 1e-6 : Math.abs(p.yaw) < 1e-9 && Math.abs(p.pitch + 0.1) < 1e-9;
       out[name] = away && back ? 'ok' : { away, yaw: +p.yaw.toFixed(3), pitch: +p.pitch.toFixed(3) };
       return g;
     };
@@ -1005,7 +1074,7 @@ const checks = [
     await run('owlDrone', 'hawke', (g, p, k) => k.agent.abilities.c.use(k), (g) => __tick(g, 8));
     await run('tiger', 'fawn', (g, p, k) => k.agent.abilities.q.use(k), (g) => __tick(g, 7));
     await run('scoutDrone', 'ballast', (g, p, k) => k.agent.abilities.c.use(k), (g) => __tick(g, 7));
-    await run('nightwalk', 'umbra', (g, p, k) => { k.ultPoints = k.ultCost; const d = __ahead(p, 6); d[1] = p.pos[1]; k.chooseShadow(d); }, (g) => __tick(g, 4.5));
+    await run('nightwalk', 'umbra', (g, p, k) => { k.ultPoints = k.ultCost; const d = __ahead(p, 6); d[1] = p.pos[1]; k.chooseShadow(d); }, (g) => __tick(g, 4.5), true);
     let smokeYaw = null;
     await run('shadeView', 'umbra', (g, p, k) => { p.input.abE = true; },
       (g, p, k) => { __tick(g, 0.8); p.input.firePressed = true; g.tick(); __tick(g, 3); const s = g.smokes[g.smokes.length - 1]; smokeYaw = s ? Math.atan2(-(s.pos[0] - p.pos[0]), -(s.pos[2] - p.pos[2])) : null; });
@@ -1100,7 +1169,7 @@ const checks = [
     const over = !k.overdrive && !k.highGear && p.gun === p.inv[p.slot];
     return { pass: sprinting && speed > 8 && shots >= 3 && slid && stillSprinting && firedSliding && killed && refilled && over, sprinting, speed: +speed.toFixed(1), shots, slid, stillSprinting, firedSliding, killed, refilled, endsAfterMeter: over };
   }],
-  ['Convergent Paths: holds aim and movement back while casting, bursts after 1 s into a 13.5 m wide beam (6 s Hinder), then +10% speed for 7 s', async () => {
+  ['Convergent Paths: holds movement back while casting, bursts after 1 s into a 13.5 m wide beam (6 s Hinder), then +10% speed for 7 s', async () => {
     const g = await __start({ agent: 'lumen' });
     const p = g.player, k = p.kit, b = g.bots[0];
     if (!__place(g, p, 30)) return { error: 'no open ground' };
@@ -1157,7 +1226,7 @@ const checks = [
     const terror = 100 - b.hp;
     return { pass: onEmitter >= 10 && between >= 10 && Math.abs(terror - 75) < 0.5, onEmitter: +onEmitter.toFixed(1), betweenEmitters: +between.toFixed(1), terrorDecay: +terror.toFixed(1) };
   }],
-  ['Valorant controls: tablets and ultimates have a draw (ultimates then a click); the gun comes back after the unequip time', async () => {
+  ['Valorant controls: tablets (half the spec\'s draw, issue #87) and ultimates have a draw (ultimates then a click); the gun comes back after the unequip time', async () => {
     const until = (g, f, max = 5) => { for (let i = 0; i < max * 128; i++) { if (f()) return g.time; g.tick(); } return null; };
     const out = {};
     { const g = await __start({ agent: 'granite' }), p = g.player, k = p.kit; __place(g, p, 20); p.give('vandal'); p.equip('primary', g.time, true); __tick(g, 1.3);
@@ -1168,7 +1237,7 @@ const checks = [
       __tick(g, 0.7); p.input.firePressed = true; g.tick(); out.castOnClick = k.ultPoints === 0; }
     { const g = await __start({ agent: 'cinder' }), p = g.player, k = p.kit; __place(g, p, 20); p.give('vandal'); p.equip('primary', g.time, true); __tick(g, 1.3);
       p.input.abQ = true; g.tick(); __tick(g, 0.85); p.input.firePressed = true; g.tick(); out.emberGunBack = +(p.gun.equipEnd - g.time).toFixed(2); }
-    return { pass: Math.abs(out.overcastMap - 0.8) < 0.03 && Math.abs(out.gunBackAfterMap - 0.7) < 0.03 && out.ultArmed && out.earlyClickIgnored && out.castOnClick && Math.abs(out.emberGunBack - 0.7) < 0.03, ...out };
+    return { pass: Math.abs(out.overcastMap - 0.4) < 0.03 && Math.abs(out.gunBackAfterMap - 0.7) < 0.03 && out.ultArmed && out.earlyClickIgnored && out.castOnClick && Math.abs(out.emberGunBack - 0.7) < 0.03, ...out };
   }],
   ['Status rules: slows weaken jumps, mollies stop at thick walls only and reach up onto boxes, Mindread is a snapshot, a smoke grows in', async () => {
     const out = {};

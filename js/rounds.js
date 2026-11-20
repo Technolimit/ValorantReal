@@ -70,7 +70,7 @@ export class RoundMode {
     // A custom game (issue #84) sets the lobby: your team is half of it (rounded up), the enemy the rest, and its
     // bots fill the enemy side first, then yours. Otherwise it is 5 against 5.
     const cu = this.opts.custom;
-    const foes = cu ? Math.max(1, Math.min(Math.floor(cu.players / 2), cu.bots)) : 5;
+    const foes = cu ? Math.max(0, Math.min(Math.floor(cu.players / 2), cu.bots)) : 5; // a custom lobby can be just you
     const mates = cu ? Math.max(0, Math.min(Math.ceil(cu.players / 2) - 1, cu.bots - foes)) : 4;
     for (let i = 0; i < mates + foes; i++) {
       const team = i < mates ? 0 : 1;
@@ -245,9 +245,11 @@ export class RoundMode {
       return this.endRound('atk', 'detonated');
     }
     // Eliminations
+    // A side with nobody on it at all (a custom game with no bots) can't be eliminated: the round runs on the clock.
     const atkAlive = this.alive('atk').length, defAlive = this.alive('def').length;
-    if (defAlive === 0) return this.endRound('atk', 'eliminated');
-    if (atkAlive === 0 && this.phase === 'live') return this.endRound('def', 'eliminated');
+    const has = (s) => this.game.combatants.some(c => this.side(c) === s);
+    if (defAlive === 0 && has('def')) return this.endRound('atk', 'eliminated');
+    if (atkAlive === 0 && this.phase === 'live' && has('atk')) return this.endRound('def', 'eliminated');
     if (!this._nextPlan || now >= this._nextPlan) { this._nextPlan = now + 0.5; this.planBots(false); }
   }
 

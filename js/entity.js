@@ -225,7 +225,7 @@ export class Combatant {
     this.prevEyeY = this.pos[1] + this.eyeOff + this.stepSmooth;
     const inp = this.input;
 
-    this.updateCrouch(inp.crouch, world);
+    this.updateCrouch(inp.crouch || !!(this.kit?.downed && !this.kit.downed.upAt), world); // down in Overload: on hands and knees (issue #87)
 
     let wx = 0, wz = 0;
     const len = hyp(inp.fwd, inp.side);
