@@ -7,7 +7,7 @@ import { patternPreview } from './gun.js';
 import { MELEE } from './melee.js';
 import { KillBanner, bannerColors } from './killbanner.js';
 import { keyLabel } from './keybinds.js';
-import { AGENTS, SMOKE, BLADES, BEAMS, insideSlab, bloomTargets, BLOOM, PICKUPS, smokeScale } from './abilities.js';
+import { AGENTS, SMOKE, BLADES, BEAMS, insideSlab, bloomTargets, BLOOM, PICKUPS, smokeScale, bowLevel } from './abilities.js';
 import { hyp } from './vmath.js';
 
 const DEG = Math.PI / 180;
@@ -431,11 +431,11 @@ export class Hud {
     const el = $('bowhud');
     if (el.hidden === show) el.hidden = !show;
     if (!show) return;
-    const lv = Math.round(Math.min(1, Math.max(0, (kit.chargeT || 0) / a.charge)) * 100), nb = kit.bounces || 0; // a smooth charge (issue #87)
+    const lv = kit.chargeT > 0 ? bowLevel(Math.min(1, kit.chargeT / a.charge)) : 0, nb = kit.bounces || 0; // bars lit: the step it would fire at
     const key = lv + ':' + nb;
     if (key === this.bowKey) return;
     this.bowKey = key;
-    el.querySelector('.meter b').style.width = lv + '%';
+    el.querySelectorAll('.bars i').forEach((i, n) => i.classList.toggle('on', n < lv));
     el.querySelectorAll('.bnc b').forEach((b, n) => b.classList.toggle('on', n < nb));
     el.querySelector('.bnc span').textContent = nb === 1 ? '1 BOUNCE' : nb + ' BOUNCES';
   }

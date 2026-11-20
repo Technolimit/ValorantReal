@@ -378,7 +378,7 @@ const checks = [
     const dmBots = g2.bots.length;
     return { pass: !!m && mates === 1 && foes === 3 && cheatsOn && p.alive && p.hp === 100 && dmBots === 4, mates, foes, cheatsOn, alive: p.alive, dmBots };
   }],
-  ['Issue #87: solo custom lobby, smokes 1 m up, moving during Talon Strike, smooth bow charge, Double node, Glimmer at any height, smaller Rubble, Terror outline, solid Sky Hammer that still burns through walls, Override on hands and knees, nearsight tunnel, team utility on the minimap', async () => {
+  ['Issue #87: solo custom lobby, smokes 1 m up, moving during Talon Strike, bow charge in three steps (1/3, 2/3, full), Double node, Glimmer at any height, smaller Rubble, Terror outline, solid Sky Hammer that still burns through walls, Override on hands and knees, nearsight tunnel, team utility on the minimap', async () => {
     const out = {};
     const until = (g, f, max = 5) => { for (let i = 0; i < max * 128; i++) { if (f()) return g.time; g.tick(); } return null; };
     { // Custom: one player and no bots; the round runs on instead of ending at once
@@ -396,8 +396,8 @@ const checks = [
       k.ultPoints = 99; k.agent.abilities.x.use(k); __tick(g, 1.5);
       const x0 = [...p.pos]; p.input.fwd = 1; __tick(g, 0.5); p.input.fwd = 0;
       out.walkedInTalon = !!k.beams && Math.hypot(p.pos[0] - x0[0], p.pos[2] - x0[2]) > 1;
-      const sp = [0.25, 0.5, 0.75].map(pw => k.agent.abilities.q.throw({ power: pw })[0]);
-      out.smoothCharge = sp[0] < sp[1] && sp[1] < sp[2] && Math.abs((sp[1] - sp[0]) - (sp[2] - sp[1])) < 1e-9; }
+      const sp = [0.05, 0.49, 0.5, 0.99, 1].map(pw => +(k.agent.abilities.q.throw({ power: pw })[0] / 41.25).toFixed(3));
+      out.bowSteps = sp.join(','); }
     { // Double: a node on the floor; with no charge left, C sends the decoy out of it
       const g = await __start({ agent: 'mirage' }), p = g.player, k = p.kit; __place(g, p, 20); __tick(g, 0.5);
       k.agent.abilities.c.use(k);
@@ -443,7 +443,7 @@ const checks = [
       g.addSmoke(p, __ahead(p, 6), g.time, { radius: 4 });
       let err = null; try { h.minimap.update(true); } catch (x) { err = String(x); }
       out.minimapUtility = err || true; }
-    return { pass: out.soloLobby && out.smokeLift === 1 && out.walkedInTalon && out.smoothCharge && out.doubleNode && out.glimmerHeight > 2 && out.rubble === '8x2.4' && out.terrorOutline && out.skyHammerSolid && out.skyHammerThroughWalls && out.downedLow && out.nearTunnel && out.minimapUtility === true, ...out };
+    return { pass: out.soloLobby && out.smokeLift === 1 && out.walkedInTalon && out.bowSteps === '0.333,0.333,0.667,0.667,1' && out.doubleNode && out.glimmerHeight > 2 && out.rubble === '8x2.4' && out.terrorOutline && out.skyHammerSolid && out.skyHammerThroughWalls && out.downedLow && out.nearTunnel && out.minimapUtility === true, ...out };
   }],
   ['Collaterals: a headshot or a killing shot carries on to the enemy behind; a body shot that does not kill stops', async () => {
     const g = await __start({ agent: 'cinder', map: 'arena', botCount: 2, botMode: 'static' });
