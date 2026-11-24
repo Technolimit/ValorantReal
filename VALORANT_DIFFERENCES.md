@@ -165,6 +165,7 @@ Issue #81 asked for these. Several go against Valorant on purpose; the current n
   - Mirage: Double places a node on the floor. Look at it (through walls too) and press F to send the decoy out
     of it; with no charges left, C sends it from anywhere.
   - Lumen: the pause between Lightspeed's two dashes is 0.15 s (was 0.3 s).
+- **Steering.** Firebreak and Riptide head wherever you look with no limit on how fast they turn.
 
 ## Where the spec was unclear
 

@@ -428,7 +428,7 @@ export const AGENTS = {
     passive: { name: 'Kindled', desc: 'Your own fire heals you instead of hurting you.' },
     abilities: {
       c: {
-        item: 'orb', name: 'Firebreak', desc: 'Hold the flame, then left click: a wall of fire races out 20 m ahead (30 m/s, so it is up in about 0.67 s). Keep the button held and turn to bend it. It stands 8 s, blocks sight, burns enemies (30/s) and heals you (up to 50).', charges: 1, cooldown: 25, equip: 0.8, unequip: 0.5,
+        item: 'orb', name: 'Firebreak', desc: 'Hold the flame, then left click: a wall of fire races out 20 m ahead (30 m/s, so it is up in about 0.67 s). Keep the button held and turn to bend it: it heads wherever you look, as fast as you turn. It stands 8 s, blocks sight, burns enemies (30/s) and heals you (up to 50).', charges: 1, cooldown: 25, equip: 0.8, unequip: 0.5,
         armHint: 'LEFT CLICK: CAST · KEEP HOLDING AND TURN TO BEND IT',
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
@@ -1502,7 +1502,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'orb', name: 'Riptide', desc: 'Hold the water, then left click: a wall of water 8 m high races forward along the ground (20 m/s, up to 60 m), through walls. Keep the button held and turn to steer it; right click stops it early. It stands 15 s, blocks sight and slows whoever crosses it.', charges: 1, cooldown: 40, equip: 0.6, unequip: 0.6,
+        item: 'orb', name: 'Riptide', desc: 'Hold the water, then left click: a wall of water 8 m high races forward along the ground (20 m/s, up to 60 m), through walls. Keep the button held and turn to steer it: it heads wherever you look, as fast as you turn. Right click stops it early. It stands 15 s, blocks sight and slows whoever crosses it.', charges: 1, cooldown: 40, equip: 0.6, unequip: 0.6,
         armHint: 'LEFT CLICK: CAST · KEEP HOLDING AND TURN TO STEER · RIGHT CLICK STOPS IT',
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);

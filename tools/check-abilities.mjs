@@ -445,6 +445,33 @@ const checks = [
       out.minimapUtility = err || true; }
     return { pass: out.soloLobby && out.smokeLift === 1 && out.walkedInTalon && out.bowSteps === '0.333,0.333,0.667,0.667,1' && out.doubleNode && out.glimmerHeight > 2 && out.rubble === '8x2.4' && out.terrorOutline && out.skyHammerSolid && out.skyHammerThroughWalls && out.downedLow && out.nearTunnel && out.minimapUtility === true, ...out };
   }],
+  ['Turning is never capped: the view turns as far as the mouse moves (ultimates too); Firebreak and Riptide head where you look at once', async () => {
+    const out = {};
+    // Pointer lock that always succeeds, so the game's own resume path runs and the mouse handler is live.
+    const cv = document.getElementById('view'), proto = HTMLCanvasElement.prototype, req = proto.requestPointerLock;
+    Object.defineProperty(Document.prototype, 'pointerLockElement', { get: () => cv, configurable: true });
+    proto.requestPointerLock = async function () { setTimeout(() => document.dispatchEvent(new Event('pointerlockchange')), 0); };
+    try {
+      const h = window.__game; h.frozen = true;
+      Object.assign(h.settings, { mode: 'dm', botCount: 1, agent: 'cinder', map: 'arena', botMode: 'static', sensitivity: 0.4 });
+      await h.startMatch({}); h.frozen = true; await new Promise(r => setTimeout(r, 50));
+      const g = h.game, p = g.player, DEG = Math.PI / 180;
+      const turn = (counts, n) => { const y0 = p.yaw; for (let i = 0; i < n; i++) document.dispatchEvent(new MouseEvent('mousemove', { movementX: counts })); return +((y0 - p.yaw) / DEG).toFixed(2); };
+      out.oneMove = turn(2000, 1);           // 2000 counts x 0.07 x 0.4 = 56 degrees
+      out.flick = turn(500, 20);             // 280 degrees in 20 quick moves
+      p.st.castLockUntil = g.time + 5; out.inUltCast = turn(2000, 3); // 168 degrees
+      // Firebreak (Cinder) and Riptide (Marina): turn 70 degrees while holding; the wall's head follows in one tick.
+      for (const [agent, k] of [['cinder', 'c'], ['marina', 'q']]) {
+        const g2 = await __start({ agent }), q = g2.player; __place(g2, q, 30); __tick(g2, 0.5);
+        q.kit.agent.abilities[k].use(q.kit); q.input.fire = true; g2.tick();
+        const d = g2.devices.find(x => x.kind === 'blaze' && x.owner === q);
+        q.yaw += 70 * DEG; g2.tick();
+        out[agent] = d ? +(Math.abs(d.yaw - q.yaw) / DEG).toFixed(3) : 'no wall';
+        q.input.fire = false;
+      }
+    } finally { proto.requestPointerLock = req; delete Document.prototype.pointerLockElement; }
+    return { pass: out.oneMove === 56 && out.flick === 280 && out.inUltCast === 168 && out.cinder === 0 && out.marina === 0, ...out };
+  }],
   ['Collaterals: a headshot or a killing shot carries on to the enemy behind; a body shot that does not kill stops', async () => {
     const g = await __start({ agent: 'cinder', map: 'arena', botCount: 2, botMode: 'static' });
     const p = g.player, [b1, b2] = g.bots;
