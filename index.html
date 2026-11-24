@@ -24,7 +24,7 @@ button { font: inherit; }
 #hud { position: fixed; inset: 0; pointer-events: none; user-select: none; }
 #crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); image-rendering: pixelated; }
 #bowhud { position: absolute; left: 50%; top: calc(50% + 34px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; pointer-events: none; }
-#bowhud .meter { width: 74px; height: 4px; background: rgba(255,255,255,0.25); border-radius: 2px; overflow: hidden; } #bowhud .meter b { display: block; height: 100%; width: 0; background: #6ab7ff; box-shadow: 0 0 6px #6ab7ff; }
+#bowhud .bars { display: flex; gap: 4px; } #bowhud .bars i { width: 22px; height: 4px; background: rgba(255,255,255,0.25); border-radius: 2px; } #bowhud .bars i.on { background: #6ab7ff; box-shadow: 0 0 6px #6ab7ff; }
 #bowhud .bnc { display: flex; gap: 5px; align-items: center; font: 600 10px system-ui; letter-spacing: 1px; color: rgba(255,255,255,0.8); } #bowhud .bnc b { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.7); } #bowhud .bnc b.on { background: #6ab7ff; border-color: #6ab7ff; }
 
 /* Scope view (snipers, the Warden) and the reticle that floats over the view when aiming down sights; both drawn
@@ -765,7 +765,7 @@ button.set-opt.on:hover { background: rgba(255, 255, 255, 0.28); }
 <div id="hud" hidden>
   <div id="nearfx"></div>
   <canvas id="crosshair"></canvas>
-  <div id="bowhud" hidden><div class="meter"><b></b></div><div class="bnc"><b></b><b></b><span></span></div></div>
+  <div id="bowhud" hidden><div class="bars"><i></i><i></i><i></i></div><div class="bnc"><b></b><b></b><span></span></div></div>
   <canvas id="ads-reticle"></canvas>
   <canvas id="scope" hidden></canvas>
   <div id="vignette"></div>

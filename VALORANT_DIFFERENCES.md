@@ -155,8 +155,8 @@ Issue #81 asked for these. Several go against Valorant on purpose; the current n
     now everyone in its column, however high.
   - Venom: Nest can't be seen into from outside.
 - **Initiators.**
-  - Hawke: you can move during Talon Strike. Arc Dart and Sonar Bolt charge smoothly over 1.2 s again instead
-    of in three steps.
+  - Hawke: you can move during Talon Strike. Arc Dart and Sonar Bolt charge in three steps: a tap fires at a
+    third of full power, 0.6 s gives two thirds and 1.2 s full.
   - Quake: Glimmer goes on any part of the wall you aim at, at any height. Rubble's blast is smaller: 8 m long,
     2.4 m around.
   - Nyx: Terror's outline no longer shows through walls.
@@ -165,6 +165,7 @@ Issue #81 asked for these. Several go against Valorant on purpose; the current n
   - Mirage: Double places a node on the floor. Look at it (through walls too) and press F to send the decoy out
     of it; with no charges left, C sends it from anywhere.
   - Lumen: the pause between Lightspeed's two dashes is 0.15 s (was 0.3 s).
+- **Steering.** Firebreak and Riptide head wherever you look with no limit on how fast they turn.
 
 ## Where the spec was unclear
 

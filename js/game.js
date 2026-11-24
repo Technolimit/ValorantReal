@@ -924,12 +924,9 @@ export class Game {
         if (hit) { d.removed = true; continue; } // players don't stop it: they can walk through
         b.min = nmin; b.max = nmax;
       } else if (d.kind === 'blaze') {
-        // Growing fire wall: the head moves forward, bending toward where you look while you hold the key.
-        if (d.owner.input[d.key] && d.owner.alive) {
-          const diff = Math.atan2(Math.sin(d.owner.yaw - d.yaw), Math.cos(d.owner.yaw - d.yaw));
-          const turn = d.key === 'fire' ? 4 : 1.6; // Firebreak follows the cursor quickly (issue #84), ~230 degrees a second
-          d.yaw += Math.max(-turn * DT, Math.min(turn * DT, diff));
-        }
+        // Growing wall (Firebreak, Riptide): the head moves forward, heading where you look while you hold the key.
+        // No limit on how fast it turns: it follows your aim as fast as you turn.
+        if (d.owner.input[d.key] && d.owner.alive) d.yaw = d.owner.yaw;
         const step = d.speed * DT, nx = d.pos[0] - Math.sin(d.yaw) * step, nz = d.pos[2] - Math.cos(d.yaw) * step;
         let f = this.floorAt(nx, nz, d.pos[1] + 0.6);
         if (d.through) { const g0 = this.world.raycast([nx, d.pos[1] + 0.5, nz], [0, -1, 0], 6); f = g0 ? [nx, d.pos[1] + 0.5 - g0.t, nz] : null; } // flows along the ground, through walls

@@ -116,11 +116,11 @@ function floorUnder(g, p) {
   const f = g.world.raycast([p[0], p[1] + 0.3, p[2]], [0, -1, 0], 6.3);
   return f ? [p[0], p[1] + 0.3 - f.t, p[2]] : [...p];
 }
-// Hawke's bow.
-// Issue #87: a smooth charge again, as before the spec's four steps. The longer you hold, the faster and flatter it
-// flies: 18 m/s dropping like a lob with no charge, up to 41.25 m/s and nearly flat at full (1.2 s). Gives
+// Hawke's bow: three charge steps. A tap fires at a third of full power; holding 0.6 s makes it two thirds and
+// 1.2 s full. Power is the launch speed (41.25 m/s at full); the arrow drops the same at every step. Gives
 // [speed, gravity scale], as THROW's classes do.
-const bowShot = (kit) => { const p = Math.max(0, Math.min(1, kit.power ?? 1)); return [18 + 23.25 * p, 0.3 - 0.15 * p]; };
+export const bowLevel = (p) => (p >= 1 ? 3 : p >= 0.5 ? 2 : 1);
+const bowShot = (kit) => [41.25 * bowLevel(Math.max(0, Math.min(1, kit.power ?? 1))) / 3, 0.15];
 const bowHint = (kit) => `HOLD LEFT CLICK TO CHARGE · RIGHT CLICK: BOUNCES (${kit.bounces || 0})`;
 // Kicker (Blast Pack) going off: it throws everyone near it, and once armed it hurts enemies too.
 function blowSatchel(o, d) {
@@ -428,7 +428,7 @@ export const AGENTS = {
     passive: { name: 'Kindled', desc: 'Your own fire heals you instead of hurting you.' },
     abilities: {
       c: {
-        item: 'orb', name: 'Firebreak', desc: 'Hold the flame, then left click: a wall of fire races out 20 m ahead (30 m/s, so it is up in about 0.67 s). Keep the button held and turn to bend it. It stands 8 s, blocks sight, burns enemies (30/s) and heals you (up to 50).', charges: 1, cooldown: 25, equip: 0.8, unequip: 0.5,
+        item: 'orb', name: 'Firebreak', desc: 'Hold the flame, then left click: a wall of fire races out 20 m ahead (30 m/s, so it is up in about 0.67 s). Keep the button held and turn to bend it: it heads wherever you look, as fast as you turn. It stands 8 s, blocks sight, burns enemies (30/s) and heals you (up to 50).', charges: 1, cooldown: 25, equip: 0.8, unequip: 0.5,
         armHint: 'LEFT CLICK: CAST · KEEP HOLDING AND TURN TO BEND IT',
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
@@ -569,7 +569,7 @@ export const AGENTS = {
         },
       },
       q: {
-        name: 'Arc Dart', desc: 'Draw the bow. Hold left click to charge (over 1.2 s: the longer you hold, the faster and flatter it flies, smoothly), release to fire. Right click sets 0, 1 or 2 bounces. The dart crackles for 0.35 s where it ends up, then explodes: 75 damage within 1.5 m, down to 30 at 4 m.', charges: 2, cooldown: 25, item: 'bow', charge: 1.2, equip: 0.8, bounces: true,
+        name: 'Arc Dart', desc: 'Draw the bow. Hold left click to charge in three steps, release to fire: a tap fires at a third of full power, 0.6 s gives two thirds and 1.2 s full power (each step flies faster). Right click sets 0, 1 or 2 bounces. The dart crackles for 0.35 s where it ends up, then explodes: 75 damage within 1.5 m, down to 30 at 4 m.', charges: 2, cooldown: 25, item: 'bow', charge: 1.2, equip: 0.8, bounces: true,
         armHint: bowHint, throw: bowShot,
         use(kit) {
           const o = kit.owner, g = o.game;
@@ -584,7 +584,7 @@ export const AGENTS = {
         },
       },
       e: {
-        name: 'Sonar Bolt', desc: 'Draw the bow. Hold left click to charge (over 1.2 s: the longer you hold, the farther it flies), release to fire; right click sets 0, 1 or 2 bounces. The bolt sticks where it lands and pulses twice (0.7 s after landing, then 1.6 s later), revealing every enemy in its line of sight within 30 m. Enemies can shoot it out (20 HP).', charges: 1, cooldown: 50, item: 'bow', charge: 1.2, equip: 0.8, bounces: true,
+        name: 'Sonar Bolt', desc: 'Draw the bow. Hold left click to charge in three steps (a third of full power on a tap, two thirds at 0.6 s, full at 1.2 s), release to fire; right click sets 0, 1 or 2 bounces. The bolt sticks where it lands and pulses twice (0.7 s after landing, then 1.6 s later), revealing every enemy in its line of sight within 30 m. Enemies can shoot it out (20 HP).', charges: 1, cooldown: 50, item: 'bow', charge: 1.2, equip: 0.8, bounces: true,
         armHint: bowHint, throw: bowShot,
         use(kit) {
           const o = kit.owner, g = o.game;
@@ -1502,7 +1502,7 @@ export const AGENTS = {
         },
       },
       q: {
-        item: 'orb', name: 'Riptide', desc: 'Hold the water, then left click: a wall of water 8 m high races forward along the ground (20 m/s, up to 60 m), through walls. Keep the button held and turn to steer it; right click stops it early. It stands 15 s, blocks sight and slows whoever crosses it.', charges: 1, cooldown: 40, equip: 0.6, unequip: 0.6,
+        item: 'orb', name: 'Riptide', desc: 'Hold the water, then left click: a wall of water 8 m high races forward along the ground (20 m/s, up to 60 m), through walls. Keep the button held and turn to steer it: it heads wherever you look, as fast as you turn. Right click stops it early. It stands 15 s, blocks sight and slows whoever crosses it.', charges: 1, cooldown: 40, equip: 0.6, unequip: 0.6,
         armHint: 'LEFT CLICK: CAST · KEEP HOLDING AND TURN TO STEER · RIGHT CLICK STOPS IT',
         use(kit) {
           const o = kit.owner, f = fwd2(o.yaw);
