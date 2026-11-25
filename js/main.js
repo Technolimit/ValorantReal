@@ -1,5 +1,6 @@
 // Entry point: input, menus, settings UI and the fixed-tick game loop.
 import { Game } from './game.js';
+import { RANKS } from './bot.js';
 import { Renderer } from './render.js';
 import { Sound } from './audio.js';
 import { Hud, paintCrosshair } from './hud.js';
@@ -394,6 +395,8 @@ function customOpts() {
   return { botCount: bots, botMode: c.botMode, custom: { players, bots, cheats: { ...c.cheats } } };
 }
 
+const BOT_RANKS = Object.fromEntries(Object.entries(RANKS).map(([id, r]) => [id, r.label]));
+
 // ---- match flow ----
 async function startMatch(extra = {}) {
   sound.init();
@@ -483,7 +486,7 @@ const TABS = [
         ['map', 'Deathmatch map', 'select', MAPS],
         ['side', '5v5 starting side', 'select', { random: 'Random', atk: 'Attack', def: 'Defense' }],
         ['botCount', 'Bots (deathmatch)', 'range', { min: 1, max: 10, step: 1 }],
-        ['difficulty', 'Bot difficulty', 'select', { easy: 'Easy', normal: 'Normal', hard: 'Hard', pro: 'Pro' }],
+        ['difficulty', 'Bot rank', 'select', BOT_RANKS, 'How well bots aim and move, from Iron to Radiant. Each rank lands about that rank\'s real headshot rate.'],
         ['botMode', 'Bot behaviour', 'select', { fight: 'Fight back', passive: 'Move, never shoot', static: 'Stand still' }],
         ['botWeapons', 'Bot weapons', 'select', { rifles: 'Vandal / Phantom', match: 'Same as mine', random: 'Random' }],
         ['killLimit', 'Kill limit', 'number', { min: 1, max: 200, step: 1 }],
@@ -1169,6 +1172,7 @@ function drawCustom() {
   $('custom-players').max = maxP; $('custom-players').value = c.players; $('custom-players-v').textContent = c.players;
   $('custom-bots').max = Math.max(0, c.players - 1); $('custom-bots').disabled = c.players <= 1; $('custom-bots').value = c.bots; $('custom-bots-v').textContent = c.bots;
   $('custom-botmode').value = c.botMode;
+  $('custom-botrank').value = settings.difficulty;
   for (const el of document.querySelectorAll('#custom-pop [data-cheat]')) el.checked = !!c.cheats[el.dataset.cheat];
   const t0 = Math.ceil(c.players / 2), t1 = Math.floor(c.players / 2), foes = Math.min(t1, c.bots), mates = Math.min(t0 - 1, c.bots - foes);
   $('custom-note').textContent = !c.bots ? 'Just you: a practice lobby.' : c.base === 'rounds' ? `You and ${mates} bot${mates === 1 ? '' : 's'} against ${foes} bot${foes === 1 ? '' : 's'}.` : `You and ${c.bots} bot${c.bots === 1 ? '' : 's'}, everyone for themselves.`;
@@ -1182,6 +1186,8 @@ $('custom-base').onchange = (e) => { settings.custom.base = e.target.value; draw
 $('custom-players').oninput = (e) => { settings.custom.players = +e.target.value; drawCustom(); };
 $('custom-bots').oninput = (e) => { settings.custom.bots = +e.target.value; drawCustom(); };
 $('custom-botmode').onchange = (e) => { settings.custom.botMode = e.target.value; drawCustom(); };
+$('custom-botrank').innerHTML = Object.entries(BOT_RANKS).map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
+$('custom-botrank').onchange = (e) => { settings.difficulty = e.target.value; drawCustom(); };
 for (const el of document.querySelectorAll('#custom-pop [data-cheat]')) el.onchange = () => { settings.custom.cheats[el.dataset.cheat] = el.checked; drawCustom(); };
 drawCustom();
 $('menu-settings').onclick = () => openSettings('menu');

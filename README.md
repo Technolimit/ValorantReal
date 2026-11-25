@@ -17,7 +17,7 @@ It also works as-is on any static host (GitHub Pages, Netlify, an S3 bucket).
 `playwright`). Pass `--offline` to skip the two-tab online checks, or `--only <text>` to run just the checks whose
 name contains it. `node tools/check-agent-select.mjs` checks the
 agent select: the pick rules, offline 5v5, and an online room with a player joining mid-match. `node tools/check-spike.mjs`
-checks that bots carry the spike out of spawn and plant it on Divide. `node tools/check-bot-wallbang.mjs` checks that bots
+checks that bots carry the spike out of spawn and plant it on Divide. `node tools/measure-bot-ranks.mjs [seconds] [rank,...|all] [--calibrate]` plays bot-only deathmatch at each bot rank (Iron to Radiant) and prints their headshot rate next to the real one for that rank, time to first shot, turn speed and time spent strafing; `--calibrate` tunes each rank's headshot chance to match. `node tools/check-bot-wallbang.mjs` checks that bots
 stop shooting when their target ducks behind a wall, and still shoot when they can see it.
 `node tools/check-dm-loadout.mjs` checks the deathmatch loadout screen (every gun free, a click equips it now and for every respawn).
 `node tools/check-buy-drop.mjs` checks that buying over a carried-over gun drops it and buying over one bought this round sells it back.

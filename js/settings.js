@@ -1,6 +1,8 @@
 // Player settings, saved in localStorage.
 import { DEFAULT_BINDS, DEFAULT_BINDS2 } from './keybinds.js';
 
+const LEGACY_RANK = { easy: 'silver', normal: 'gold', hard: 'diamond', pro: 'immortal' }; // as in bot.js
+
 const KEY = 'tapfire-settings-v1';
 
 export const DEFAULTS = {
@@ -34,7 +36,7 @@ export const DEFAULTS = {
   chError: 'off', // 'off' | 'firing' (lines spread with movement and firing error)
   // match
   botCount: 6,
-  difficulty: 'normal',
+  difficulty: 'gold', // bot rank: iron .. radiant (bot.js RANKS)
   botMode: 'fight',
   botWeapons: 'rifles',
   killLimit: 40,
@@ -61,6 +63,7 @@ export function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || '{}');
     if (s.dmgNumV !== 2) { s.damageNumbers = false; s.dmgNumV = 2; } // damage numbers are now off unless you turn them on
+    if (LEGACY_RANK[s.difficulty]) s.difficulty = LEGACY_RANK[s.difficulty]; // Easy / Normal / Hard / Pro became ranks
     const custom = { ...DEFAULTS.custom, ...(s.custom || {}), cheats: { ...DEFAULTS.custom.cheats, ...(s.custom?.cheats || {}) } };
     return { ...DEFAULTS, ...s, custom, loadout: { ...DEFAULTS.loadout, ...(s.loadout || {}) }, skins: { ...(s.skins || {}) }, binds: { ...DEFAULT_BINDS, ...(s.binds || {}) }, binds2: { ...DEFAULT_BINDS2, ...(s.binds2 || {}) } };
   } catch {
